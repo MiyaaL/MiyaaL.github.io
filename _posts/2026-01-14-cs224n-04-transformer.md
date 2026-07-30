@@ -42,7 +42,7 @@ source_commit: b9c77fd
 - 也没有非线性，因为模型结构的第三点公式只是对$v_i$进行加权累加，因此需要添加非线性层FFN：
 
 $$
-m_i = MLP(o_i) = W_2 * ReLU(W_1o_i + b_1) + b_2
+m_i = \operatorname{MLP}(o_i) = W_2 \operatorname{ReLU}(W_1 o_i + b_1) + b_2
 $$
 
 通过$ReLU$激活函数来添加非线性。
@@ -67,9 +67,14 @@ $$
 ![CS224N 模型结构（图 4）](/assets/posts/cs224n/week-04/week4-4.png)
 
 单头注意力的缺点在于，$softmax(QK^T)$是在token维度做的归一化，随着序列长度增加，会逐渐变得难以捕捉局部信息。最直接的办法就是在token维度分段做$attention \;|\; softmax$，这也就是MHA的思想。
+
 $$
-o_l = softmax(\frac {XQ_lK_l^TX^T} {\sqrt{d/h}}) * XV_l
+o_l
+  = \operatorname{softmax}\!\left(
+      \frac{XQ_lK_l^{T}X^{T}}{\sqrt{d/h}}
+    \right)XV_l
 $$
+
 最终的输出就是$concat(o_l), l \in [0,h)$。
 
 ### 2.2 训练方法
@@ -81,13 +86,15 @@ $$
 #### 2.2.2 Layer normalization
 
 在层的方向（一般就是隐藏层的feature方向）进行归一化，与之相对的还有batch norm（顾名思义就是在批次的方向进行归一化）。这种归一化有利于训练稳定。
+
 $$
-\begin{align}
-o &= \frac {x-\mu} {\sqrt{\sigma} + \epsilon} * \gamma + \beta \\
-\mu &= \sum_{j=1}^d x_j \\
-\sigma &= \sqrt{\frac{1}{d}\sum_{j=1}^d(x_j - \mu)^2}
-\end{align}
+\begin{aligned}
+o &= \frac{x-\mu}{\sqrt{\sigma} + \epsilon}\,\gamma + \beta, \\
+\mu &= \sum_{j=1}^{d} x_j, \\
+\sigma &= \sqrt{\frac{1}{d}\sum_{j=1}^{d}(x_j-\mu)^2}.
+\end{aligned}
 $$
+
 其中$\gamma$和$\beta$是可以被训练的参数。
 
 ### 2.3 transformer block
@@ -110,9 +117,11 @@ transformer也可以组成上周所讲的seq2seq形式，在Encoder-Decoder中�
 ![CS224N Transformer Encoder-Decoder（图 5）](/assets/posts/cs224n/week-04/week4-5.png)
 
 假设Encoder输出为$H=[h_1;...;h_n]$，Decoder输出为$Z=[z_1;...;z_n]$，那么cross-attention计算如下：
+
 $$
-o_{cross-attention}=softmax(ZQ(HK)^T)HV
+o_{\text{cross-attention}} = \operatorname{softmax}\!\left(ZQ(HK)^{T}\right)HV
 $$
+
 也就是，我们拿Decoder的隐藏层状态$Z$作为query，去查询其在Encoder中的相关情况，并作加权累加。
 
 ## 3 transformer架构缺点及变种

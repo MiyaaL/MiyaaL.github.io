@@ -27,17 +27,21 @@ layout: default
     </div>
   </header>
 
-  <div class="container post-container">
-    <div class="post-content">
-      {{ content }}
+  <div class="container post-body" data-post-body>
+    {% include post-toc.html %}
+    <div class="post-main">
+      <div class="post-content">
+        {{ content }}
+      </div>
+      {% if page.series %}
+        {% include series-navigation.html %}
+      {% endif %}
+      <footer class="post-end">
+        <span aria-hidden="true"></span>
+        <p>感谢阅读。</p>
+        <a href="{{ '/blog/' | relative_url }}">继续浏览文章 <span aria-hidden="true">→</span></a>
+      </footer>
     </div>
-    {% if page.series %}
-      {% include series-navigation.html %}
-    {% endif %}
-    <footer class="post-end">
-      <span aria-hidden="true"></span>
-      <p>感谢阅读。</p>
-      <a href="{{ '/blog/' | relative_url }}">继续浏览文章 <span aria-hidden="true">→</span></a>
-    </footer>
   </div>
 </article>
+<script src="{{ '/assets/js/post-toc.js' | relative_url }}"></script>

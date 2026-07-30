@@ -916,9 +916,26 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .post-content mjx-container[display="true"] {
+  max-width: 100%;
+  padding: 10px 0 13px;
+  margin-block: 1.35em;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 4px 0;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.post-content mjx-container a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.post-content mjx-container a:hover {
+  text-decoration: underline;
+}
+
+.post-content [id^="mjx-eqn"] {
+  scroll-margin-top: 84px;
 }
 
 .post-end {

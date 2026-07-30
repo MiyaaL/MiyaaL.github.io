@@ -38,18 +38,30 @@ n-gram语言模型采用滑动窗口来统计窗口n内的单次出现频率，�
 ## 2 Evaluating Language Models（模型评估）
 
 一般模型评估方式是使用困惑度（perplexity），计算方式如下：
+
 $$
-perplexity=\prod_{t-1}^{T} (\frac{1}{P_{LM}(x^{(t+1)}|x^{(t)},...,x^{(1)})})^{1/T} \label{1.1} \tag{1.1}
+\operatorname{perplexity}
+  = \prod_{t=1}^{T}
+    \left(
+      \frac{1}
+           {P_{\mathrm{LM}}(x^{(t+1)} \mid x^{(t)}, \ldots, x^{(1)})}
+    \right)^{1/T}
+  \label{1.1} \tag{1.1}
 $$
+
 它来源于交叉熵损失函数：
 
 ![CS224N Evaluating Language Models（模型评估）（图 1）](/assets/posts/cs224n/week-03/week3-1.png)
 
 比较奇怪为什么这里的交叉熵并没有做“交叉”，而只是计算了信息量，一般意义上的交叉熵：
+
 $$
-H(P,Q)=-\sum_i p(x_i)log(q(x_i)) \label{1.2} \tag{1.2}
+\mathcal{H}(P,Q)
+  = -\sum_i p(x_i)\log q(x_i)
+  \label{1.2} \tag{1.2}
 $$
-式$\ref{1.1}$的计算结果越大，说明模型能力越差，这与交叉熵的性质是吻合的。
+
+式 $\eqref{1.1}$ 的计算结果越大，说明模型能力越差，这与交叉熵的性质是吻合的。
 
 ## 3 Recurrent Neural Networks (RNN)
 

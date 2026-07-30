@@ -154,14 +154,25 @@ Understanding)、BIG-Bench等等，可以用来评估模型微调的能力。他
 - 获取奖励模型$RM_{\phi}(s)$，通过人类评分比较数据集训练得到
 - 以参数$p_{\theta}^{RL}(s)$初始化模型
 - 开始训练并通过如下方式进行更新：
+
 $$
-R(s) = RM_{\phi}(s) - \beta log(\frac{p_{\theta}^{RL}(s)}{p^{PT}(s)}) \label{2.1} \tag{2.1}
+R(s)
+  = RM_{\phi}(s)
+    - \beta \log\!\left(
+        \frac{p_{\theta}^{\mathrm{RL}}(s)}{p^{\mathrm{PT}}(s)}
+      \right)
+  \label{2.1} \tag{2.1}
 $$
 
 其中KL散度被定义为如下公式，作为防止RLHF训练参数偏移预训练参数过多而添加的惩罚项。
+
 $$
-log(\frac{p_{\theta}^{RL}(s)}{p^{PT}(s)}) \label{2.2} \tag{2.2}
+\log\!\left(
+  \frac{p_{\theta}^{\mathrm{RL}}(s)}{p^{\mathrm{PT}}(s)}
+\right)
+\label{2.2} \tag{2.2}
 $$
+
 可以看出，当$p_{\theta}^{RL}(s)$和$p^{PT}(s)$越是接近，或者完全一致时，惩罚项将越趋近于0。
 
 ### 2.3 RL + Reward Modeling 限制
@@ -173,24 +184,67 @@ $$
 DPO的idea主要是想绕过奖励模型RM，直接从偏好数据获取优化策略，主要基于以下理论推导：
 
 1. 假设初始情况下我们follow RLHF的期望最大化原则：
+
 $$
-E_{\hat{y} \sim p_{\theta}^{RL}(\hat y | x)}[RM_{\phi}(x,\hat y) - \beta log (\frac{p_{\theta}^{RL}(\hat y | x)}{p^{PT}(\hat y | x)})] \label{2.3} \tag{2.3}
+\mathbb{E}_{\hat{y} \sim p_{\theta}^{\mathrm{RL}}(\hat{y} \mid x)}
+\left[
+  RM_{\phi}(x,\hat{y})
+  - \beta \log\!\left(
+      \frac{p_{\theta}^{\mathrm{RL}}(\hat{y} \mid x)}
+           {p^{\mathrm{PT}}(\hat{y} \mid x)}
+    \right)
+\right]
+\label{2.3} \tag{2.3}
 $$
+
 2. 而在Bradley-Terry模型下，我们认为人类偏好可以由下述loss来描述：
+
 $$
-J_{DPO}(\theta) = -E_{(x,y_w,y_l)\sim D}[log\sigma(RM_{\theta}(x,y_w)-RM_{\theta}(x,y_l))] \label{2.4} \tag{2.4}
+J_{\mathrm{DPO}}(\theta)
+  = -\mathbb{E}_{(x,y_w,y_l)\sim D}
+    \left[
+      \log \sigma\!\left(
+        RM_{\theta}(x,y_w)-RM_{\theta}(x,y_l)
+      \right)
+    \right]
+  \label{2.4} \tag{2.4}
 $$
+
 其中，$y_w$表示"win"，$RM_{\theta}(x,y_w)$为正，越大表示正反馈越大；$y_l$表示"loss"，$RM_{\theta}(x,y_l)$为负，越小表示负反馈越大。
-3. 我们假设奖励函数可以由下述方式表示，因为它更符合式$\eqref{2.3}$的表达形式，并且$Z(x)$也可以满足奖励函数的任意形式。
+3. 我们假设奖励函数可以由下述方式表示，因为它更符合式 $\eqref{2.3}$ 的表达形式，并且$Z(x)$也可以满足奖励函数的任意形式。
+
 $$
-RM_{\theta}(x,\hat y)=\beta log (\frac{p_{\theta}^{RL}(\hat y | x)}{p^{PT}(\hat y | x)}) + Z(x) \label{2.5} \tag{2.5}
+RM_{\theta}(x,\hat{y})
+  = \beta \log\!\left(
+      \frac{p_{\theta}^{\mathrm{RL}}(\hat{y} \mid x)}
+           {p^{\mathrm{PT}}(\hat{y} \mid x)}
+    \right)
+    + Z(x)
+  \label{2.5} \tag{2.5}
 $$
+
 4. 那么Bradley-Terry模型下，loss最终可以描述为下述形式：
+
 $$
-J_{DPO}(\theta) = -E_{(x,y_w,y_l)\sim D}[log\sigma( \beta log \frac{p_{\theta}^{RL}(y_w|x)}{p^{PT}(y_w|x)} - \beta log \frac{p_{\theta}^{RL}(y_l|x)}{p^{PT}(y_l|x)})] \label{2.6} \tag{2.6}
+\begin{aligned}
+J_{\mathrm{DPO}}(\theta)
+  = -\mathbb{E}_{(x,y_w,y_l)\sim D}
+    \Bigg[
+      \log \sigma\!\Bigg(
+        &\beta \log
+          \frac{p_{\theta}^{\mathrm{RL}}(y_w \mid x)}
+               {p^{\mathrm{PT}}(y_w \mid x)} \\
+        &- \beta \log
+          \frac{p_{\theta}^{\mathrm{RL}}(y_l \mid x)}
+               {p^{\mathrm{PT}}(y_l \mid x)}
+      \Bigg)
+    \Bigg]
+\end{aligned}
+\label{2.6} \tag{2.6}
 $$
+
     - 可以看到，与$y_w$和$y_l$均无关的$Z(x)$被我们约掉了，这是Bradley-Terry模型下最大的一个假设。
-    - 式$eqref{2.6}$的表达形式说明Bradley-Terry模型下loss的计算完全不依赖于Reward模型，而仅与参数$p$有关。它描述了"winning sample"和"losing sample"在RL(强化学习模型)与PT(预训练模型)参数存在gap时对损失的贡献情况。随着RL的进行，损失函数$J_{DPO}(\theta)$逐步趋近于0。
+    - 式 $\eqref{2.6}$ 的表达形式说明Bradley-Terry模型下loss的计算完全不依赖于Reward模型，而仅与参数$p$有关。它描述了"winning sample"和"losing sample"在RL(强化学习模型)与PT(预训练模型)参数存在gap时对损失的贡献情况。随着RL的进行，损失函数$J_{DPO}(\theta)$逐步趋近于0。
 
 下图展示了RLHF和DPO的流程区别，开源大模型现在几乎全部使用了DPO而不是RLHF。
 ![CS224N Direct Preference Optimization(DPO)（图 12）](/assets/posts/cs224n/week-05/week5-12.png)

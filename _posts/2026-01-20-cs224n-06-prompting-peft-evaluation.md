@@ -146,9 +146,11 @@ LoRA中低秩矩阵的秩可以低到什么程度呢？答案是即使在r=1时�
 ### 1.7 A functional perspective of adaptation
 
 这是通过在模型上添加一个额外的增量函数来实现adaptation，一般称这个增量函数为**adapters**，它其实就是一个简单的FFN网络：
+
 $$
-f_{\phi}(x)=W^U(\sigma(W^Dx))
+f_{\phi}(x) = W^{U}\!\left(\sigma(W^{D}x)\right)
 $$
+
 只不过，**adapters**是一种“**轻量级、旁路式、用于微调的FFN**”，而不是用来替代transformer中原有的FFN模块。
 
 ![CS224N A functional perspective of adaptation（图 7）](/assets/posts/cs224n/week-06/week6-7.png)

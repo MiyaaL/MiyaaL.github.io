@@ -45,44 +45,76 @@ source_commit: b9c77fd
 ### 2.1 基本概念
 
 这一步是一个学习的过程，而非像WordNet中那样，由人类来主观指定。学习的过程从初始状态指定的各个词向量向着最大似然的方向逼近：
+
 $$
-L(\theta)=\prod_{t=1}^T\prod_{-m{\le}j{\le}m,\,j\ne0}P(w_{t+1}|w_t;\theta)\\
-J(\theta)=-\frac{1}{T}logL(\theta) \label{1.2.1} \tag{1.2.1}
+\begin{aligned}
+L(\theta)
+  &= \prod_{t=1}^{T}
+     \prod_{\substack{-m \le j \le m \\ j \ne 0}}
+     P(w_{t+j} \mid w_t; \theta) \\
+J(\theta)
+  &= -\frac{1}{T}\log L(\theta)
+\end{aligned}
+\label{1.2.1} \tag{1.2.1}
 $$
+
 其中，$m$表示窗口长度，是一个固定值，$\theta$表示所有的待优化参数，$t$表示当前词所在的位置索引，$T$表示当前训练的输入语句，$L$函数为最大似然函数，$J$函数表示优化的目标函数，学习的过程也是$J$函数极小化的过程。
 
 比较有趣的是，这里使用了两个向量来表示词$w$：
+
 $$
-v_w\; when \; w \; is \; a \; center \; word \\
-u_w\; when \; w \; is \; a \; centext \; word
+\begin{aligned}
+v_w &\quad \text{when } w \text{ is a center word}, \\
+u_w &\quad \text{when } w \text{ is a context word}.
+\end{aligned}
 $$
+
 那么对于一个center word $c$和context word $o$来说，$P$函数的计算公式为：
+
 $$
-P(o|c)=\frac{exp(u_o^Tv_c)}{\sum_{w{\in}V}exp(u_w^Tv_c)}  \label{1.2.2} \tag{1.2.2}
+P(o \mid c)
+  = \frac{\exp(u_o^{T}v_c)}
+         {\sum_{w \in V}\exp(u_w^{T}v_c)}
+  \label{1.2.2} \tag{1.2.2}
 $$
+
 这里相当于做了一个类似与$softmax$的求权操作，$exp$指数操作保证了非负性，而大V对应的是词表范围的的归一化。
 
 有了$P$、$L$、$J$函数，接着通过极小化$J$函数，我们便可以从初始的$θ$不断迭代，拿到我们想要的最终的$θ$。我们期望的$θ$应该是包含了词表内所有单词向量$v$、$u$的一个大矩阵，维度应该是：[vocabulary size, feature size]。上述迭代过程假如用梯度下降可以表达为：
+
 $$
-{\theta}^{new}={\theta}^{old}-\alpha\nabla_{\theta}J(\theta) \label{1.2.3} \tag{1.2.3}
+\theta^{\mathrm{new}}
+  = \theta^{\mathrm{old}} - \alpha \nabla_{\theta}J(\theta)
+  \label{1.2.3} \tag{1.2.3}
 $$
+
 其中$\alpha$就是我们所熟知的学习率，决定着梯度下降的步长。回顾上述$J$函数的表达式可以发现，$J$函数的计算代价是非常昂贵的，它需要计算所有的$P$（$T*2m$次$P$函数的计算），会随着语料库的变大而变得代价无法接受。针对上述梯度下降过高的计算成本，可以通过小批量梯度下降来进行优化：对所有语料进行采样，对每个采样窗口内的语料分别进行梯度下降。
 
 ### 2.2 主要模型
 
 #### 2.2.1 Skip-grams(SG)模型
 
-式$\ref{1.2.2}$的计算成本是很高的，所以一般SG模型都会进行负采样（negative sampling）。仔细观察式$\ref{1.2.2}$的分母部分，可以看出，非center周边窗口部分的词$u_w$全部都与$v_c$进行了内积计算，这正是计算成本过高的原因。因此为了减少窗口外词向量内积计算，改变计算形式如下：
+式 $\eqref{1.2.2}$ 的计算成本是很高的，所以一般SG模型都会进行负采样（negative sampling）。仔细观察式 $\eqref{1.2.2}$ 的分母部分，可以看出，非center周边窗口部分的词$u_w$全部都与$v_c$进行了内积计算，这正是计算成本过高的原因。因此为了减少窗口外词向量内积计算，改变计算形式如下：
+
 $$
-J_{neg-sample}(u_o,v_c,U)=-log \sigma (u_o^T v_c) - \sum _ {k\in\{K \; sampled \; indices\}} log \sigma (-u_k^T v_c) \label{1.2.4} \tag{1.2.4}
+J_{\text{neg-sample}}(u_o,v_c,U)
+  = -\log \sigma(u_o^{T}v_c)
+    - \sum_{k \in \mathcal{K}}\log \sigma(-u_k^{T}v_c)
+  \label{1.2.4} \tag{1.2.4}
 $$
-这里，用$sigmoid$计算代替了softmax计算，式$\ref{1.2.4}$右侧第二项即是负采样项。
+
+这里，用$sigmoid$计算代替了softmax计算，式 $\eqref{1.2.4}$ 右侧第二项即是负采样项。
+
 $$
-\sigma(x) = \frac {1} {1+e^{-x}} \label{1.2.5} \tag{1.2.5}
+\sigma(x) = \frac{1}{1 + e^{-x}}
+  \label{1.2.5} \tag{1.2.5}
 $$
+
 而$k$的采样遵循$unigram \;distribution$概率分布：
+
 $$
-P(w)=\frac {U(w)^{3/4}} {Z} \label{1.2.6} \tag{1.2.6}
+P(w) = \frac{U(w)^{3/4}}{Z}
+  \label{1.2.6} \tag{1.2.6}
 $$
 
 #### 2.2.2 Continuous Bag of Words (CBOW)模型
@@ -91,7 +123,7 @@ $$
 
 ### 2.3 共现矩阵（co-occurrence matrix）
 
-可以想见，式$\ref{1.2.4}$的计算矩阵是相当稀疏的，在矩阵更新时要尽可能的避免全量更新（因为其稀疏特征）。这里可以采用基于窗口的共现矩阵来进行局部更新：
+可以想见，式 $\eqref{1.2.4}$ 的计算矩阵是相当稀疏的，在矩阵更新时要尽可能的避免全量更新（因为其稀疏特征）。这里可以采用基于窗口的共现矩阵来进行局部更新：
 
 ![CS224N 共现矩阵（co-occurrence matrix）（图 1）](/assets/posts/cs224n/week-01/week1-1.png)
 
@@ -141,12 +173,21 @@ $$
 ### 2.5 词意感知
 
 一个词向量如何感知一个单词的多重语意？答案就是词向量可以是当前单词的多重语意对应的子词向量的加权和：
+
 $$
-v_{pike} = \alpha _1 v_{pike_1} + \alpha _2 v_{pike_2} + \alpha _3 v_{pike_3}  \label{1.2.7} \tag{1.2.7}
+v_{\mathrm{pike}}
+  = \alpha_1 v_{\mathrm{pike}_1}
+    + \alpha_2 v_{\mathrm{pike}_2}
+    + \alpha_3 v_{\mathrm{pike}_3}
+  \label{1.2.7} \tag{1.2.7}
 $$
+
 其中$\alpha_i$是依词意出现频率划定的加权系数：
+
 $$
-\alpha_i = \frac {f_i} {\sum f}, \; f \; is \; frequency \label{1.2.8} \tag{1.2.8}
+\alpha_i = \frac{f_i}{\sum_j f_j},
+\qquad f_i \text{ denotes frequency}
+\label{1.2.8} \tag{1.2.8}
 $$
 
 ### 2.6 深度学习分类-命名实体识别 Named Entity Recognition（NER）
