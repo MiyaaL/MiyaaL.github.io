@@ -1,0 +1,66 @@
+---
+layout: default
+title: Blog
+description: 关于 CUDA、GPU 算子优化与高性能系统的技术笔记。
+permalink: /blog/
+---
+{% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
+{% assign all_tags = "" | split: "" %}
+{% for post in published_posts %}
+  {% if post.tags %}
+    {% assign all_tags = all_tags | concat: post.tags %}
+  {% endif %}
+{% endfor %}
+{% assign all_tags = all_tags | uniq | sort %}
+
+<section class="archive-hero">
+  <div class="container archive-container">
+    <p class="eyebrow">WRITING</p>
+    <h1>Blog<span aria-hidden="true">.</span></h1>
+    <p>记录 GPU Kernel、算子优化和高性能系统实践。保持好奇，持续测量。</p>
+  </div>
+</section>
+
+<section class="archive-section">
+  <div class="container archive-container">
+    <div class="archive-tools" data-js-only>
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m20 20-4-4"></path>
+        </svg>
+        <label class="sr-only" for="post-search">搜索文章</label>
+        <input id="post-search" type="search" placeholder="搜索标题、摘要或标签…" autocomplete="off">
+        <button id="search-clear" class="search-clear" type="button" aria-label="清除搜索" hidden>清除</button>
+      </div>
+
+      {% if all_tags.size > 0 %}
+        <div class="tag-filters" aria-label="按标签筛选">
+          <button class="tag-filter is-active" type="button" data-tag="" aria-pressed="true">全部</button>
+          {% for tag in all_tags %}
+            {% assign tag_posts = site.tags[tag] | where_exp: "post", "post.draft != true" %}
+            <button class="tag-filter" type="button" data-tag="{{ tag | downcase | escape }}" aria-pressed="false">
+              {{ tag }} <span>{{ tag_posts.size }}</span>
+            </button>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="archive-summary">
+      <p><span id="result-count">{{ published_posts.size }}</span> 篇文章</p>
+      <span>按时间倒序</span>
+    </div>
+
+    <div id="post-list" class="post-grid archive-grid">
+      {% for post in published_posts %}
+        {% include post-card.html post=post filterable=true %}
+      {% endfor %}
+    </div>
+
+    <div id="no-results" class="empty-state" hidden>
+      <p>没有找到匹配的文章。</p>
+      <button id="reset-filters" class="text-button" type="button">清除筛选</button>
+    </div>
+  </div>
+</section>

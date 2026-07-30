@@ -1,0 +1,16 @@
+{
+  "name": "MiyaaL",
+  "short_name": "MiyaaL",
+  "description": "GPU Kernel & 高性能计算",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "icons": [
+    {
+      "src": "/assets/icons/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

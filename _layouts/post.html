@@ -1,0 +1,33 @@
+---
+layout: default
+---
+<article class="post">
+  <header class="post-header container post-container">
+    <a class="back-link" href="{{ '/blog/' | relative_url }}"><span aria-hidden="true">←</span> 返回 Blog</a>
+    <p class="eyebrow">ARTICLE</p>
+    <h1>{{ page.title }}</h1>
+    {% if page.description %}<p class="post-description">{{ page.description }}</p>{% endif %}
+    <div class="post-meta">
+      <time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%Y年%m月%d日" }}</time>
+      {% if page.tags and page.tags.size > 0 %}
+        <span aria-hidden="true">·</span>
+        <ul class="tag-list" aria-label="文章标签">
+          {% for tag in page.tags %}
+            <li><a href="{{ '/blog/' | relative_url }}?tag={{ tag | url_encode }}">#{{ tag }}</a></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="container post-container">
+    <div class="post-content">
+      {{ content }}
+    </div>
+    <footer class="post-end">
+      <span aria-hidden="true"></span>
+      <p>感谢阅读。</p>
+      <a href="{{ '/blog/' | relative_url }}">继续浏览文章 <span aria-hidden="true">→</span></a>
+    </footer>
+  </div>
+</article>

@@ -1,0 +1,64 @@
+title: MiyaaL
+tagline: GPU Kernel & 高性能计算
+description: 专注于 CUDA、GPU 算子优化与高性能系统。
+url: https://miyaal.github.io
+baseurl: ""
+repository: MiyaaL/MiyaaL.github.io
+theme: null
+
+lang: zh-CN
+timezone: Asia/Shanghai
+permalink: /blog/:year/:month/:day/:title/
+
+author:
+  name: MiyaaL
+  url: https://github.com/MiyaaL
+
+social:
+  name: MiyaaL
+  links:
+    - https://github.com/MiyaaL
+
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    block:
+      line_numbers: false
+
+excerpt_separator: <!--more-->
+strict_front_matter: true
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+feed:
+  path: feed.xml
+
+defaults:
+  - scope:
+      path: ""
+      type: posts
+    values:
+      layout: post
+      author: MiyaaL
+      math: false
+      mermaid: false
+  - scope:
+      path: ""
+    values:
+      layout: page
+
+exclude:
+  - compose.yaml
+  - Gemfile
+  - Gemfile.lock
+  - LICENSE
+  - CONTENT-LICENSE.md
+  - README.md
+  - vendor
+  - .bundle-cache

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="{{ page.lang | default: site.lang }}">
+  <head>
+    {% include head.html %}
+  </head>
+  <body class="layout-{{ page.layout | default: 'default' }}">
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    {% include header.html %}
+    <main id="main-content">
+      {{ content }}
+    </main>
+    {% include footer.html %}
+    <script src="{{ '/assets/js/main.js' | relative_url }}"></script>
+  </body>
+</html>

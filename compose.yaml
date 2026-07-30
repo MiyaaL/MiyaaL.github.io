@@ -1,0 +1,19 @@
+services:
+  site:
+    image: ruby:3.2-bookworm
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /site
+    init: true
+    environment:
+      BUNDLE_PATH: /site/.bundle-cache
+      HOME: /tmp/jekyll-home
+      JEKYLL_ENV: development
+    command:
+      - sh
+      - -c
+      - mkdir -p "$$HOME" && bundle install && bundle exec jekyll serve --host 0.0.0.0 --livereload --force_polling
+    ports:
+      - "4000:4000"
+      - "35729:35729"
+    volumes:
+      - .:/site
