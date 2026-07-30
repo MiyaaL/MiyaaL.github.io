@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Blog
-description: 工程实践与课程学习记录，涵盖 GPU 优化、高性能系统和自然语言处理。
+description: 工程实践与课程学习记录，涵盖 GPU 优化、高性能系统、自然语言处理与大语言模型。
 permalink: /blog/
 ---
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
@@ -17,22 +17,35 @@ permalink: /blog/
   <div class="container archive-container">
     <p class="eyebrow">WRITING / 技术文章</p>
     <h1>Blog</h1>
-    <p>工程实践与课程学习记录，涵盖 GPU 优化、高性能系统和自然语言处理。</p>
+    <p>工程实践与课程学习记录，涵盖 GPU 优化、高性能系统、自然语言处理与大语言模型。</p>
   </div>
 </section>
 
-<section class="course-series-strip" aria-labelledby="course-series-title">
+<section class="course-series-strip" aria-labelledby="course-series-heading">
   <div class="container archive-container">
-    <a class="course-series-link" href="{{ '/courses/cs224n/' | relative_url }}">
-      <span class="course-series-copy">
-        <span class="course-series-label">COURSE SERIES / 课程系列</span>
-        <span id="course-series-title" class="course-series-title">
-          Stanford CS224N
-          <span class="course-series-meta">7 篇 · NLP · Spring 2025</span>
+    <h2 id="course-series-heading" class="sr-only">课程系列</h2>
+    <div class="course-series-list">
+      <a class="course-series-link" href="{{ '/courses/cs224n/' | relative_url }}">
+        <span class="course-series-copy">
+          <span class="course-series-label">COURSE SERIES / 课程系列</span>
+          <span class="course-series-title">
+            Stanford CS224N
+            <span class="course-series-meta">7 篇 · NLP · Spring 2025</span>
+          </span>
         </span>
-      </span>
-      <span aria-hidden="true">→</span>
-    </a>
+        <span aria-hidden="true">→</span>
+      </a>
+      <a class="course-series-link" href="{{ '/courses/cs336/' | relative_url }}">
+        <span class="course-series-copy">
+          <span class="course-series-label">COURSE SERIES / 课程系列</span>
+          <span class="course-series-title">
+            Stanford CS336
+            <span class="course-series-meta">14 篇 · LLM Systems · Spring 2025</span>
+          </span>
+        </span>
+        <span aria-hidden="true">→</span>
+      </a>
+    </div>
   </div>
 </section>
 

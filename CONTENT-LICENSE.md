@@ -9,8 +9,8 @@ covered by the repository's MIT License:
 - Original images and other media under `assets/posts/`
 
 Third-party course names, lecture screenshots, and related materials under
-`assets/posts/cs224n/` remain the property of their respective rights holders
-and are not licensed by this repository.
+`assets/posts/cs224n/` and `assets/posts/cs336/` remain the property of their
+respective rights holders and are not licensed by this repository.
 
 You may link to this content and quote brief excerpts with attribution.
 Reproduction, redistribution, translation, or commercial use requires prior

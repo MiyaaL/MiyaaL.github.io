@@ -18,6 +18,10 @@
   padding: 0 0 22px;
 }
 
+.course-series-list .course-series-link + .course-series-link {
+  border-top: 0;
+}
+
 .course-series-link {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
