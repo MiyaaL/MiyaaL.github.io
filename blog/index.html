@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Blog
-description: 关于 CUDA、GPU 算子优化与高性能系统的技术笔记。
+description: 工程实践与课程学习记录，涵盖 GPU 优化、高性能系统和自然语言处理。
 permalink: /blog/
 ---
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
@@ -17,7 +17,22 @@ permalink: /blog/
   <div class="container archive-container">
     <p class="eyebrow">WRITING / 技术文章</p>
     <h1>Blog</h1>
-    <p>CUDA、GPU 算子优化与高性能系统相关的工程记录。</p>
+    <p>工程实践与课程学习记录，涵盖 GPU 优化、高性能系统和自然语言处理。</p>
+  </div>
+</section>
+
+<section class="course-series-strip" aria-labelledby="course-series-title">
+  <div class="container archive-container">
+    <a class="course-series-link" href="{{ '/courses/cs224n/' | relative_url }}">
+      <span class="course-series-copy">
+        <span class="course-series-label">COURSE SERIES / 课程系列</span>
+        <span id="course-series-title" class="course-series-title">
+          Stanford CS224N
+          <span class="course-series-meta">7 篇 · NLP · Spring 2025</span>
+        </span>
+      </span>
+      <span aria-hidden="true">→</span>
+    </a>
   </div>
 </section>
 

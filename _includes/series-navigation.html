@@ -1,0 +1,39 @@
+{% assign series_posts = site.posts | where: "series", page.series | sort: "course_order" %}
+{% assign previous_post = nil %}
+{% assign next_post = nil %}
+{% assign found_current = false %}
+{% for series_post in series_posts %}
+  {% if found_current and next_post == nil %}
+    {% assign next_post = series_post %}
+    {% break %}
+  {% endif %}
+  {% if series_post.url == page.url %}
+    {% assign found_current = true %}
+  {% elsif found_current == false %}
+    {% assign previous_post = series_post %}
+  {% endif %}
+{% endfor %}
+{% assign series_url = "/courses/" | append: page.series_slug | append: "/" %}
+
+<nav class="series-navigation" aria-label="{{ page.series }} 课程导航">
+  <div class="series-navigation-header">
+    <span>COURSE SERIES / 课程系列</span>
+    <a href="{{ series_url | relative_url }}">{{ page.series }} · 全部 {{ series_posts.size }} 篇</a>
+  </div>
+  <div class="series-navigation-links">
+    {% if previous_post %}
+      <a class="series-previous" href="{{ previous_post.url | relative_url }}">
+        <span>← 上一讲 · {{ previous_post.course_label }}</span>
+        <strong>{{ previous_post.title }}</strong>
+      </a>
+    {% else %}
+      <span class="series-nav-placeholder" aria-hidden="true"></span>
+    {% endif %}
+    {% if next_post %}
+      <a class="series-next" href="{{ next_post.url | relative_url }}">
+        <span>下一讲 · {{ next_post.course_label }} →</span>
+        <strong>{{ next_post.title }}</strong>
+      </a>
+    {% endif %}
+  </div>
+</nav>

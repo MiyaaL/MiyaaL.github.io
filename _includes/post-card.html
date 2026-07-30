@@ -1,10 +1,11 @@
 {% assign post = include.post %}
 {% assign post_description = post.description | default: post.excerpt | strip_html | normalize_whitespace %}
+{% assign searchable_description = post_description | append: " " | append: post.category | append: " " | append: post.series %}
 <article
   class="post-entry{% if include.filterable %} filterable-post{% endif %}"
   {% if include.filterable %}
     data-title="{{ post.title | downcase | escape }}"
-    data-description="{{ post_description | downcase | escape }}"
+    data-description="{{ searchable_description | downcase | escape }}"
     data-tags="{{ post.tags | join: '|' | downcase | escape }}"
   {% endif %}
 >
@@ -12,6 +13,12 @@
     <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%Y.%m.%d" }}</time>
   </div>
   <div class="post-entry-body">
+    {% if post.series %}
+      {% assign post_series_url = "/courses/" | append: post.series_slug | append: "/" %}
+      <p class="post-entry-series">
+        <a href="{{ post_series_url | relative_url }}">课程笔记 / {{ post.series }} / {{ post.course_label }}</a>
+      </p>
+    {% endif %}
     <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
     <p>{{ post_description | truncate: 160 }}</p>
     {% if post.tags and post.tags.size > 0 %}

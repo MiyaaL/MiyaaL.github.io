@@ -4,7 +4,14 @@ layout: default
 <article class="post">
   <header class="post-header container post-container">
     <a class="back-link" href="{{ '/blog/' | relative_url }}"><span aria-hidden="true">←</span> 返回 Blog</a>
-    <p class="eyebrow">ARTICLE / 技术文章</p>
+    {% if page.series %}
+      {% assign page_series_url = "/courses/" | append: page.series_slug | append: "/" %}
+      <p class="eyebrow post-series-label">
+        <a href="{{ page_series_url | relative_url }}">课程笔记 / {{ page.series }} / {{ page.course_label }}</a>
+      </p>
+    {% else %}
+      <p class="eyebrow">ARTICLE / 技术文章</p>
+    {% endif %}
     <h1>{{ page.title }}</h1>
     {% if page.description %}<p class="post-description">{{ page.description }}</p>{% endif %}
     <div class="post-meta">
@@ -24,6 +31,9 @@ layout: default
     <div class="post-content">
       {{ content }}
     </div>
+    {% if page.series %}
+      {% include series-navigation.html %}
+    {% endif %}
     <footer class="post-end">
       <span aria-hidden="true"></span>
       <p>感谢阅读。</p>
