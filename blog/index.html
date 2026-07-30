@@ -15,9 +15,9 @@ permalink: /blog/
 
 <section class="archive-hero">
   <div class="container archive-container">
-    <p class="eyebrow">WRITING</p>
-    <h1>Blog<span aria-hidden="true">.</span></h1>
-    <p>记录 GPU Kernel、算子优化和高性能系统实践。保持好奇，持续测量。</p>
+    <p class="eyebrow">WRITING / 技术文章</p>
+    <h1>Blog</h1>
+    <p>CUDA、GPU 算子优化与高性能系统相关的工程记录。</p>
   </div>
 </section>
 
@@ -52,7 +52,7 @@ permalink: /blog/
       <span>按时间倒序</span>
     </div>
 
-    <div id="post-list" class="post-grid archive-grid">
+    <div id="post-list" class="post-list archive-list">
       {% for post in published_posts %}
         {% include post-card.html post=post filterable=true %}
       {% endfor %}

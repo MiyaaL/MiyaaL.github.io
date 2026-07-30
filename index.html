@@ -1,7 +1,7 @@
 ---
 layout: default
-title: MiyaaL — GPU Kernel & 高性能计算
-description: 专注于 CUDA、GPU 算子优化与高性能系统。
+title: GPU Kernel & 高性能计算
+description: CUDA 与 GPU 算子优化相关的工程记录。
 permalink: /
 ---
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
@@ -9,27 +9,23 @@ permalink: /
 <section class="hero">
   <div class="container hero-grid">
     <div class="hero-copy">
-      <p class="eyebrow">HELLO, I'M</p>
-      <h1>MiyaaL<span aria-hidden="true">.</span></h1>
+      <p class="eyebrow">PROFILE / 个人简介</p>
+      <h1>MiyaaL</h1>
       <p class="hero-role">GPU Kernel <span>&amp;</span> 高性能计算</p>
-      <p class="hero-intro">专注于 CUDA、GPU 算子优化与高性能系统。记录工程实践、性能洞察，以及对底层技术的持续探索。</p>
+      <p class="hero-intro">CUDA 与 GPU 算子优化相关的工程记录。内容涵盖内核设计、性能分析和高性能系统。</p>
       <div class="hero-actions">
-        <a class="button button-primary" href="{{ '/blog/' | relative_url }}">浏览文章 <span aria-hidden="true">→</span></a>
-        <a class="button button-ghost" href="https://github.com/MiyaaL" target="_blank" rel="me noopener">GitHub <span aria-hidden="true">↗</span></a>
+        <a href="{{ '/blog/' | relative_url }}">浏览文章 <span aria-hidden="true">→</span></a>
+        <a href="https://github.com/MiyaaL" target="_blank" rel="me noopener">GitHub <span aria-hidden="true">↗</span></a>
       </div>
     </div>
 
-    <aside class="focus-card" aria-label="关注方向">
-      <div class="focus-card-header">
-        <span>focus.md</span>
-        <span>01</span>
-      </div>
-      <ol>
-        <li><span>01</span><strong>CUDA Kernel</strong><small>从硬件出发优化关键路径</small></li>
-        <li><span>02</span><strong>GPU Operators</strong><small>测量、剖析、持续迭代</small></li>
-        <li><span>03</span><strong>Systems</strong><small>构建清晰而高效的系统</small></li>
-      </ol>
-      <div class="focus-card-status"><span aria-hidden="true"></span> learning in public</div>
+    <aside class="expertise" aria-label="研究方向">
+      <p class="eyebrow">AREAS / 研究方向</p>
+      <dl>
+        <div><dt>CUDA Kernel</dt><dd>关键路径与硬件效率</dd></div>
+        <div><dt>GPU Operators</dt><dd>测量、剖析与迭代</dd></div>
+        <div><dt>Systems</dt><dd>清晰而高效的系统设计</dd></div>
+      </dl>
     </aside>
   </div>
 </section>
@@ -38,14 +34,14 @@ permalink: /
   <div class="container">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">LATEST NOTES</p>
+        <p class="eyebrow">WRITING / 最新文章</p>
         <h2>最新文章</h2>
       </div>
       <a href="{{ '/blog/' | relative_url }}">查看全部 <span aria-hidden="true">→</span></a>
     </div>
 
     {% if published_posts.size > 0 %}
-      <div class="post-grid">
+      <div class="post-list">
         {% for post in published_posts limit: 6 %}
           {% include post-card.html post=post %}
         {% endfor %}

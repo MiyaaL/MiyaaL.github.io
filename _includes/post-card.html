@@ -1,27 +1,25 @@
 {% assign post = include.post %}
 {% assign post_description = post.description | default: post.excerpt | strip_html | normalize_whitespace %}
 <article
-  class="post-card{% if include.filterable %} filterable-post{% endif %}"
+  class="post-entry{% if include.filterable %} filterable-post{% endif %}"
   {% if include.filterable %}
     data-title="{{ post.title | downcase | escape }}"
     data-description="{{ post_description | downcase | escape }}"
     data-tags="{{ post.tags | join: '|' | downcase | escape }}"
   {% endif %}
 >
-  <div class="post-card-meta">
+  <div class="post-entry-date">
     <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%Y.%m.%d" }}</time>
+  </div>
+  <div class="post-entry-body">
+    <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
+    <p>{{ post_description | truncate: 160 }}</p>
     {% if post.tags and post.tags.size > 0 %}
-      <span aria-hidden="true">/</span>
       <ul class="tag-list" aria-label="文章标签">
-        {% for tag in post.tags limit: 2 %}
+        {% for tag in post.tags %}
           <li><a href="{{ '/blog/' | relative_url }}?tag={{ tag | url_encode }}">#{{ tag }}</a></li>
         {% endfor %}
       </ul>
     {% endif %}
   </div>
-  <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
-  <p>{{ post_description | truncate: 132 }}</p>
-  <a class="post-card-link" href="{{ post.url | relative_url }}" aria-label="阅读《{{ post.title }}》">
-    阅读文章 <span aria-hidden="true">→</span>
-  </a>
 </article>
