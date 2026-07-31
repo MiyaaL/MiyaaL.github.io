@@ -5,6 +5,9 @@ description: 工程实践与课程学习记录，涵盖 GPU 优化、高性能�
 permalink: /blog/
 ---
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
+{% assign cs224n_posts = published_posts | where: "series", "Stanford CS224N" %}
+{% assign cs336_posts = published_posts | where: "series", "Stanford CS336" %}
+{% assign essay_posts = published_posts | where_exp: "post", "post.tags contains '随笔'" %}
 {% assign all_tags = "" | split: "" %}
 {% for post in published_posts %}
   {% if post.tags %}
@@ -21,30 +24,50 @@ permalink: /blog/
   </div>
 </section>
 
-<section class="course-series-strip" aria-labelledby="course-series-heading">
+<section class="topic-directory-strip" aria-labelledby="topic-directory-heading">
   <div class="container archive-container">
-    <h2 id="course-series-heading" class="sr-only">课程系列</h2>
-    <div class="course-series-list">
-      <a class="course-series-link" href="{{ '/courses/cs224n/' | relative_url }}">
-        <span class="course-series-copy">
-          <span class="course-series-label">COURSE SERIES / 课程系列</span>
-          <span class="course-series-title">
-            Stanford CS224N
-            <span class="course-series-meta">7 篇 · NLP · Spring 2025</span>
-          </span>
-        </span>
-        <span aria-hidden="true">→</span>
-      </a>
-      <a class="course-series-link" href="{{ '/courses/cs336/' | relative_url }}">
-        <span class="course-series-copy">
-          <span class="course-series-label">COURSE SERIES / 课程系列</span>
-          <span class="course-series-title">
-            Stanford CS336
-            <span class="course-series-meta">14 篇 · LLM Systems · Spring 2025</span>
-          </span>
-        </span>
-        <span aria-hidden="true">→</span>
-      </a>
+    <h2 id="topic-directory-heading" class="sr-only">主题目录</h2>
+    <div class="topic-directory-list">
+      <div class="topic-directory-row">
+        <div class="topic-directory-label">
+          <span class="topic-directory-kicker">COURSE SERIES</span>
+          <span class="topic-directory-name">课程系列</span>
+        </div>
+        <div class="topic-directory-items">
+          <a class="topic-directory-link" href="{{ '/courses/cs224n/' | relative_url }}">
+            <span class="topic-directory-copy">
+              <span class="topic-directory-title">Stanford CS224N</span>
+              <span class="topic-directory-meta">{{ cs224n_posts.size }} 篇 · NLP · Spring 2025</span>
+            </span>
+            <span class="topic-directory-arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="topic-directory-link" href="{{ '/courses/cs336/' | relative_url }}">
+            <span class="topic-directory-copy">
+              <span class="topic-directory-title">Stanford CS336</span>
+              <span class="topic-directory-meta">{{ cs336_posts.size }} 篇 · LLM Systems · Spring 2025</span>
+            </span>
+            <span class="topic-directory-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+
+      {% if essay_posts.size > 0 %}
+        <div class="topic-directory-row">
+          <div class="topic-directory-label">
+            <span class="topic-directory-kicker">PERSONAL</span>
+            <span class="topic-directory-name">个人随笔</span>
+          </div>
+          <div class="topic-directory-items">
+            <a class="topic-directory-link" href="{{ '/blog/' | relative_url }}?tag={{ '随笔' | url_encode }}">
+              <span class="topic-directory-copy">
+                <span class="topic-directory-title">随笔与思考</span>
+                <span class="topic-directory-meta">{{ essay_posts.size }} 篇 · 个人记录</span>
+              </span>
+              <span class="topic-directory-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
+      {% endif %}
     </div>
   </div>
 </section>

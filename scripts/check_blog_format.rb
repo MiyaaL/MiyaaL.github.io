@@ -286,19 +286,37 @@ require_css(
 require_css(
   errors,
   ROOT.join("assets/css/course.css"),
-  ".course-series-copy",
-  [/grid-template-columns:\s*180px minmax\(0,\s*1fr\);/, /align-items:\s*start;/]
+  ".topic-directory-row",
+  [/grid-template-columns:\s*180px minmax\(0,\s*1fr\);/, /border-bottom:\s*1px solid var\(--border\);/]
 )
 require_css(
   errors,
   ROOT.join("assets/css/course.css"),
-  ".course-series-title",
-  [/flex-direction:\s*column;/, /font-size:\s*16px;/, /font-weight:\s*600;/]
+  ".topic-directory-label",
+  [/color:\s*var\(--text-soft\);/, /font-size:\s*12px;/, /font-weight:\s*500;/]
 )
 require_css(
   errors,
   ROOT.join("assets/css/course.css"),
-  ".course-series-meta",
+  ".topic-directory-items",
+  [/grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(230px,\s*1fr\)\);/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/course.css"),
+  ".topic-directory-link",
+  [/grid-template-columns:\s*minmax\(0,\s*1fr\) auto;/, /padding:\s*18px 20px;/, /border-left:\s*1px solid var\(--border\);/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/course.css"),
+  ".topic-directory-title",
+  [/font-size:\s*16px;/, /font-weight:\s*600;/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/course.css"),
+  ".topic-directory-meta",
   [/color:\s*var\(--text-soft\);/, /font-family:\s*var\(--font-sans\);/, /font-size:\s*12px;/, /font-weight:\s*500;/]
 )
 require_css(
@@ -319,8 +337,29 @@ course_css = ROOT.join("assets/css/course.css").read(encoding: "UTF-8")
 unless main_css.match?(/@media \(max-width:\s*560px\).*?\.tag-filters\s*\{[^}]*flex-wrap:\s*wrap;[^}]*overflow:\s*visible;/m)
   add_error(errors, ROOT.join("assets/css/main.css"), "移动端标签必须自然换行且不得横向滚动")
 end
-if course_css.match?(/@media \(max-width:\s*620px\).*?\.course-series-meta\s*\{[^}]*display:\s*none;/m)
-  add_error(errors, ROOT.join("assets/css/course.css"), "移动端不得隐藏课程元信息")
+unless course_css.match?(/@media \(max-width:\s*620px\).*?\.topic-directory-row\s*\{[^}]*grid-template-columns:\s*1fr;.*?\.topic-directory-items\s*\{[^}]*grid-template-columns:\s*1fr;.*?\.topic-directory-link\s*\{[^}]*border-left:\s*0;/m)
+  add_error(errors, ROOT.join("assets/css/course.css"), "移动端主题目录必须纵向堆叠且移除左边框")
+end
+
+blog_page = ROOT.join("blog/index.html").read(encoding: "UTF-8")
+if blog_page.include?("course-series-link")
+  add_error(errors, ROOT.join("blog/index.html"), "不得恢复逐课程独占一行的旧结构")
+end
+if blog_page.scan(%q{class="topic-directory-row"}).length < 2
+  add_error(errors, ROOT.join("blog/index.html"), "主题目录至少应包含课程系列与个人随笔两行")
+end
+if blog_page.scan(">COURSE SERIES<").length != 1
+  add_error(errors, ROOT.join("blog/index.html"), "COURSE SERIES 标签必须只出现一次")
+end
+course_label = blog_page.index(">COURSE SERIES<")
+cs224n_link = blog_page.index("/courses/cs224n/")
+cs336_link = blog_page.index("/courses/cs336/")
+personal_label = blog_page.index(">PERSONAL<")
+unless [course_label, cs224n_link, cs336_link, personal_label].all? && course_label < cs224n_link && cs224n_link < cs336_link && cs336_link < personal_label
+  add_error(errors, ROOT.join("blog/index.html"), "CS224N 与 CS336 必须并列在 PERSONAL 主题之前的同一课程目录中")
+end
+unless blog_page.include?("cs224n_posts.size") && blog_page.include?("cs336_posts.size") && blog_page.include?("essay_posts.size")
+  add_error(errors, ROOT.join("blog/index.html"), "主题文章数必须由 Jekyll 动态计算")
 end
 
 if errors.empty?
