@@ -54,11 +54,13 @@ defaults:
       layout: page
 
 exclude:
+  - AGENTS.md
   - compose.yaml
   - Gemfile
   - Gemfile.lock
   - LICENSE
   - CONTENT-LICENSE.md
   - README.md
+  - scripts
   - vendor
   - .bundle-cache
