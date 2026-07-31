@@ -9,7 +9,7 @@ MiyaaL 的个人主页与技术博客，使用 GitHub Pages 原生支持的 Jeky
 - 中文技术简约风，支持系统、浅色、深色三种主题模式
 - 首页自动展示最近 6 篇文章
 - Blog 归档支持标签筛选与本地关键词搜索
-- Markdown、Rouge 代码高亮和一键复制
+- Markdown 与 HTML 文章、Rouge 代码高亮和一键复制
 - 按文章启用 LaTeX 公式与 Mermaid 图表
 - RSS、Sitemap、SEO 元数据和响应式布局
 - 不依赖数据库、后端服务或前端框架
@@ -35,13 +35,18 @@ docker compose run --rm --service-ports site \
 
 ## 写一篇新文章
 
-已发布文章位于 `_posts/`，文件名必须使用：
+已发布文章按专题放在 `_posts/` 的子目录中，文件名必须使用：
 
 ```text
-YYYY-MM-DD-英文短名.md
+_posts/<专题目录>/YYYY-MM-DD-英文短名.md
+_posts/<专题目录>/YYYY-MM-DD-英文短名.html
 ```
 
-可以从 `_drafts/template.md` 复制，文章头部格式如下：
+当前目录约定是 `courses/<课程名>/`、`essays/`、`chip-architecture/` 和
+`technical-analysis/`。没有内容的目录不需要提前创建。
+
+Markdown 文章可以从 `_drafts/template.md` 复制；HTML 技术报告可以从
+`_drafts/technical-analysis/report-template.html` 复制。两种格式使用相同的文章头部：
 
 ```yaml
 ---
@@ -59,8 +64,26 @@ mermaid: false
 
 ### 草稿
 
-草稿放入 `_drafts/`，发布时再移动到 `_posts/YYYY-MM-DD-英文短名.md`。
-这是 Jekyll 的原生草稿机制，可以保证 GitHub Pages 不会生成草稿详情页。
+草稿按专题放入 `_drafts/`，发布时再移动到对应的
+`_posts/<专题目录>/YYYY-MM-DD-英文短名.md` 或 `.html`。这是 Jekyll 的原生草稿机制，
+可以保证 GitHub Pages 不会生成草稿详情页。
+
+### HTML 技术报告
+
+HTML 报告是带 YAML Front Matter 的正文片段，继续使用站点统一的文章布局；不要写完整的
+`<!doctype html>`、`<html>`、`<head>` 或 `<body>` 外壳。正文使用语义化 HTML：
+
+```html
+<section>
+  <h2>测试方法</h2>
+  <p>说明环境、基线与测量协议。</p>
+  <pre><code class="language-python">print("result")</code></pre>
+</section>
+```
+
+文章标题只写在 Front Matter 中，正文从 `<h2>` 开始。左侧目录会自动读取
+`<h2>`–`<h4>`；HTML 图片必须同时提供 `src="/assets/posts/..."` 和有意义的 `alt`。
+HTML 源文件不会解析 Markdown 语法。
 
 ### LaTeX 公式
 
@@ -76,7 +99,7 @@ $$
 
 ### Mermaid 图表
 
-先设置 `mermaid: true`，再使用 Mermaid 代码块：
+先设置 `mermaid: true`。Markdown 使用 Mermaid 代码块：
 
 ````markdown
 ```mermaid
@@ -84,6 +107,8 @@ flowchart LR
     Input --> Kernel --> Output
 ```
 ````
+
+HTML 使用 `<pre><code class="language-mermaid">...</code></pre>`。
 
 ### 图片
 
@@ -117,10 +142,13 @@ git push
 
 ```text
 .
-├── _drafts/          # 尚未发布的文章
+├── _drafts/          # 按专题组织的 Markdown/HTML 草稿与模板
 ├── _includes/        # 可复用页面片段
 ├── _layouts/         # 页面和文章模板
-├── _posts/           # 已发布 Markdown 文章
+├── _posts/           # 按专题组织的已发布 Markdown/HTML 文章
+│   └── courses/
+│       ├── cs224n/
+│       └── cs336/
 ├── assets/
 │   ├── css/          # 站点样式
 │   ├── icons/        # 图标

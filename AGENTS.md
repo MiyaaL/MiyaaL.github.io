@@ -15,7 +15,23 @@
 
 ## 文章位置与 Front Matter
 
-已发布文章放在 `_posts/YYYY-MM-DD-english-slug.md`，草稿放在 `_drafts/`。文件名 slug 只使用小写英文字母、数字和连字符。
+已发布文章按专题放在 `_posts/<topic>/YYYY-MM-DD-english-slug.md` 或 `.html`，草稿在 `_drafts/` 下使用对应的专题目录。文件名 slug 只使用小写英文字母、数字和连字符。
+
+专题目录使用稳定的英文名称，站内展示继续使用中文标题：
+
+```text
+_posts/
+├── courses/
+│   ├── cs224n/              # Stanford CS224N
+│   └── cs336/               # Stanford CS336
+├── essays/                  # 个人随笔
+├── chip-architecture/       # 芯片架构
+└── technical-analysis/      # 技术分析与 HTML 报告
+```
+
+没有文章的专题不创建占位文件；新增首篇文章时再建立目录。移动文章不得改变既有 `permalink`；没有显式 permalink 的普通文章由全站 permalink 规则保持 URL 与目录层级解耦。
+
+新增顶层专题时，必须同步更新 `scripts/check_blog_format.rb` 的 `TOPIC_DIRECTORIES`，并在该专题确实有文章后再更新 Blog 主题目录。
 
 普通文章至少包含：
 
@@ -64,7 +80,9 @@ source_commit: 0123abc
 - 标签主题入口使用 `/blog/?tag=<标签>`，并确认 Blog 初始化时能自动选中对应标签。
 - 桌面端同一主题的多个入口优先并列；移动端保持字号并改为纵向堆叠。
 
-## Markdown 结构
+## Markdown 与 HTML 结构
+
+### Markdown 文章
 
 - 文章标题只写在 Front Matter 中；正文不得出现 H1。
 - 正文主要层级使用 H2–H4，以便自动生成左侧目录。已有导入笔记中的 H5/H6 可以保留；新内容不要继续加深层级。
@@ -74,6 +92,16 @@ source_commit: 0123abc
 - 列表、图片、公式和代码块前后保留清晰空行。不要留下空列表项。
 - 粗体只用于真正需要强调的术语或结论，不用整段粗体制造视觉层级。
 - 保持中文技术写作简洁；英文术语、模型名和 API 名称使用业界通行大小写。
+
+### HTML 技术报告
+
+- HTML 报告放在 `_posts/technical-analysis/YYYY-MM-DD-english-slug.html`；草稿从 `_drafts/technical-analysis/report-template.html` 复制。
+- 文件必须以与 Markdown 文章相同的 YAML Front Matter 开始。Front Matter 之后只写可嵌入 `.post-content` 的 HTML 正文片段，不写 `<!doctype>`、`<html>`、`<head>` 或 `<body>`。
+- HTML 源文件不会解析 Markdown 语法；段落、列表、表格、图片和代码必须分别使用 `<p>`、`<ul>/<ol>`、`<table>`、`<img>` 和 `<pre><code>`。
+- 标题仍只使用 `<h2>`–`<h4>`，不得写 `<h1>` 或手工目录。目录脚本会读取这些标题并生成可点击导航，缺少 id 时会自动补齐。
+- 代码语言通过 `<code class="language-python">` 等 class 标注；Mermaid 使用 `<pre><code class="language-mermaid">...</code></pre>` 并设置 `mermaid: true`。
+- 图片使用 `<img src="/assets/posts/..." alt="有意义的说明">`。不要用内联样式改变站点排版；报告专用媒体仍放在 `assets/posts/<article>/`。
+- HTML 报告与 Markdown 文章使用同一 `post` layout、标签索引、LaTeX 开关、系列导航和提交前检查，不单独复制页面外壳。
 
 ## LaTeX 与 Mermaid
 
@@ -90,11 +118,12 @@ $$
 - 在 `$$` 内需要多行对齐时使用 `\begin{aligned}...\end{aligned}`，不要嵌套 `align` 或 `align*`。
 - 需要引用的公式使用唯一的 `\label{...}`，正文使用 `\eqref{...}`；提交前确保每个引用都有对应 label。
 - 避免让 TeX 花括号形成 Liquid 的 `{{ ... }}`；必要时调整空格或等价写法。
-- Mermaid 图表使用带 `mermaid` 语言标记的 fenced code block，并设置 `mermaid: true`。
+- Mermaid 图表必须设置 `mermaid: true`。Markdown 使用带 `mermaid` 语言标记的 fenced code block；HTML 使用 `<pre><code class="language-mermaid">...</code></pre>`。
 
 ## 图片与外部材料
 
 - 图片放在 `assets/posts/<article-or-series>/` 下，正文使用站点根路径：`/assets/posts/...`。
+- Markdown 使用 `![说明](/assets/posts/...)`；HTML 使用 `<img src="/assets/posts/..." alt="说明">`。
 - 每张图片必须有描述内容的 alt 文本，不能使用空 alt、`image` 或无意义编号。
 - 不提交正文未使用的临时截图、源仓库缓存、作业文件或用户明确排除的材料。
 - 课程截图和第三方材料必须保留来源/版权说明，不得暗示为本站原创。
