@@ -1,6 +1,6 @@
 title: MiyaaL
-tagline: GPU Kernel & 高性能计算
-description: 专注于 CUDA、GPU 算子优化与高性能系统。
+tagline: AI Infra
+description: 关注 LLM、VLA 基础设施、性能建模与优化分析。
 url: https://miyaal.github.io
 baseurl: ""
 repository: MiyaaL/MiyaaL.github.io

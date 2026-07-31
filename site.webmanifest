@@ -1,7 +1,7 @@
 {
   "name": "MiyaaL",
   "short_name": "MiyaaL",
-  "description": "GPU Kernel & 高性能计算",
+  "description": "AI Infra：LLM、VLA 基础设施、性能建模与优化分析",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0e14",
