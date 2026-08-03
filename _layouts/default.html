@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="{{ page.lang | default: site.lang }}">
+<html lang="{{ page.lang | default: site.lang }}" data-theme="dark" data-theme-mode="dark">
   <head>
     {% include head.html %}
   </head>
   <body class="layout-{{ page.layout | default: 'default' }}">
+    <canvas class="space-background" data-starfield aria-hidden="true"></canvas>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     {% include header.html %}
     <main id="main-content">
@@ -11,5 +12,6 @@
     </main>
     {% include footer.html %}
     <script src="{{ '/assets/js/main.js' | relative_url }}"></script>
+    <script src="{{ '/assets/js/starfield.js' | relative_url }}"></script>
   </body>
 </html>

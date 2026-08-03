@@ -1,7 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#070b13">
 {% seo %}
 <link rel="alternate" type="application/atom+xml" title="{{ site.title }} Feed" href="{{ '/feed.xml' | absolute_url }}">
 <link rel="icon" type="image/svg+xml" href="{{ '/assets/icons/favicon.svg' | relative_url }}">
@@ -14,15 +13,24 @@
 
 <script>
   (function () {
-    document.documentElement.classList.add("js");
+    var root = document.documentElement;
+    var themeColor = document.querySelector('meta[name="theme-color"]');
+    root.classList.add("js");
     try {
-      var mode = localStorage.getItem("theme-mode") || "system";
-      document.documentElement.dataset.themeMode = mode;
+      var storedMode = localStorage.getItem("theme-mode");
+      var mode = ["system", "light", "dark"].indexOf(storedMode) >= 0 ? storedMode : "dark";
+      root.dataset.themeMode = mode;
       if (mode === "light" || mode === "dark") {
-        document.documentElement.dataset.theme = mode;
+        root.dataset.theme = mode;
+      } else {
+        root.removeAttribute("data-theme");
+      }
+      if (mode === "light" || (mode === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+        themeColor.setAttribute("content", "#f4f6f9");
       }
     } catch (_) {
-      document.documentElement.dataset.themeMode = "system";
+      root.dataset.themeMode = "dark";
+      root.dataset.theme = "dark";
     }
   }());
 </script>

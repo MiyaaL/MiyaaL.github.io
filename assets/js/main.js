@@ -3,6 +3,7 @@
 
   var root = document.documentElement;
   var themeToggle = document.querySelector(".theme-toggle");
+  var themeColor = document.querySelector('meta[name="theme-color"]');
   var colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
   var modes = ["system", "light", "dark"];
   var modeLabels = {
@@ -14,9 +15,9 @@
   function readThemeMode() {
     try {
       var stored = localStorage.getItem("theme-mode");
-      return modes.indexOf(stored) >= 0 ? stored : "system";
+      return modes.indexOf(stored) >= 0 ? stored : "dark";
     } catch (_) {
-      return "system";
+      return "dark";
     }
   }
 
@@ -25,6 +26,7 @@
   }
 
   function applyThemeMode(mode, persist) {
+    var theme = resolvedTheme(mode);
     root.dataset.themeMode = mode;
     if (mode === "system") {
       root.removeAttribute("data-theme");
@@ -45,8 +47,12 @@
       themeToggle.setAttribute("aria-label", "当前主题：" + modeLabels[mode] + "；点击切换");
     }
 
+    if (themeColor) {
+      themeColor.setAttribute("content", theme === "dark" ? "#070b13" : "#f4f6f9");
+    }
+
     window.dispatchEvent(new CustomEvent("site-theme-change", {
-      detail: { theme: resolvedTheme(mode) }
+      detail: { theme: theme }
     }));
   }
 
