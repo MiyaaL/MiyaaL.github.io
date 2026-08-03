@@ -5,6 +5,9 @@
   </head>
   <body class="layout-{{ page.layout | default: 'default' }}">
     <canvas class="space-background" data-starfield aria-hidden="true"></canvas>
+    <div class="moon" aria-hidden="true">
+      <span class="moon-crescent"></span>
+    </div>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     {% include header.html %}
     <main id="main-content">
