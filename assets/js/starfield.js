@@ -12,6 +12,7 @@
   }
 
   var root = document.documentElement;
+  var moon = document.querySelector(".moon");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   var systemDark = window.matchMedia("(prefers-color-scheme: dark)");
   var frameInterval = 1000 / 30;
@@ -22,6 +23,7 @@
   var animationFrame = 0;
   var lastFrame = 0;
   var resizeTimer = 0;
+  var moonExclusion = null;
 
   var palettes = {
     dark: [
@@ -41,6 +43,36 @@
       return root.dataset.theme;
     }
     return systemDark.matches ? "dark" : "light";
+  }
+
+  function updateMoonExclusion() {
+    if (!moon || currentTheme() !== "dark") {
+      moonExclusion = null;
+      return;
+    }
+
+    var rect = moon.getBoundingClientRect();
+    if (rect.right <= 0 || rect.left >= width || rect.bottom <= 0 || rect.top >= height) {
+      moonExclusion = null;
+      return;
+    }
+
+    moonExclusion = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+      radiusX: rect.width / 2 + 82,
+      radiusY: rect.height / 2 + 76
+    };
+  }
+
+  function isNearMoon(star) {
+    if (!moonExclusion) {
+      return false;
+    }
+
+    var dx = (star.x - moonExclusion.x) / moonExclusion.radiusX;
+    var dy = (star.y - moonExclusion.y) / moonExclusion.radiusY;
+    return dx * dx + dy * dy < 1;
   }
 
   function rgba(color, alpha) {
@@ -76,6 +108,10 @@
       if (star.y > height + 2) {
         star.y = -2;
         star.x = Math.random() * width;
+      }
+
+      if (isNearMoon(star)) {
+        return;
       }
 
       var pulse = reducedMotion.matches ? 0.82 : 0.78 + Math.sin(time * star.pulse + star.phase) * 0.22;
@@ -132,12 +168,14 @@
     canvas.width = Math.round(width * pixelRatio);
     canvas.height = Math.round(height * pixelRatio);
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    updateMoonExclusion();
     populateStars();
     draw(window.performance.now(), 0);
   }
 
   function setTheme(theme) {
     palette = palettes[theme] || palettes.dark;
+    updateMoonExclusion();
     stars.forEach(function (star) {
       star.color = Math.floor(Math.random() * palette.length);
     });
@@ -163,6 +201,12 @@
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(resize, 120);
   });
+  window.addEventListener("scroll", function () {
+    updateMoonExclusion();
+    if (reducedMotion.matches) {
+      draw(window.performance.now(), 0);
+    }
+  }, { passive: true });
 
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
