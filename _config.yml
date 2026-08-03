@@ -19,6 +19,12 @@ social:
   links:
     - https://github.com/MiyaaL
 
+plan:
+  supabase_url: "https://buawzvkuirytticsxigm.supabase.co"
+  supabase_publishable_key: "sb_publishable_OtL6z18NHoU5zoalRMPJ1A_ZdKLdx24"
+  owner_github_login: MiyaaL
+  owner_github_id: "73994563"
+
 markdown: kramdown
 highlighter: rouge
 kramdown:
@@ -62,5 +68,7 @@ exclude:
   - CONTENT-LICENSE.md
   - README.md
   - scripts
+  - supabase
+  - tests
   - vendor
   - .bundle-cache
