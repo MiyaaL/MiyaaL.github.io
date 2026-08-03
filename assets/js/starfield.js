@@ -43,12 +43,16 @@
     return systemDark.matches ? "dark" : "light";
   }
 
+  function rgba(color, alpha) {
+    return "rgba(" + color.join(",") + "," + alpha + ")";
+  }
+
   function createStar() {
     return {
       x: Math.random() * width,
       y: Math.random() * height,
-      radius: 0.3 + Math.pow(Math.random(), 3) * 0.85,
-      alpha: 0.14 + Math.random() * 0.34,
+      radius: 0.4 + Math.pow(Math.random(), 2.2) * 1.15,
+      alpha: 0.22 + Math.random() * 0.38,
       phase: Math.random() * Math.PI * 2,
       pulse: 0.00025 + Math.random() * 0.0004,
       drift: 0.0005 + Math.random() * 0.001,
@@ -57,7 +61,7 @@
   }
 
   function populateStars() {
-    var count = Math.max(48, Math.min(140, Math.round((width * height) / 14500)));
+    var count = Math.max(64, Math.min(220, Math.round((width * height) / 11000)));
     stars = [];
     for (var index = 0; index < count; index += 1) {
       stars.push(createStar());
@@ -76,9 +80,22 @@
 
       var pulse = reducedMotion.matches ? 0.82 : 0.78 + Math.sin(time * star.pulse + star.phase) * 0.22;
       var color = palette[star.color];
+      var alpha = star.alpha * pulse;
+
+      if (star.radius >= 1.05) {
+        var glowRadius = star.radius * 3;
+        var glow = context.createRadialGradient(star.x, star.y, 0, star.x, star.y, glowRadius);
+        glow.addColorStop(0, rgba(color, alpha * 0.28));
+        glow.addColorStop(1, rgba(color, 0));
+        context.beginPath();
+        context.arc(star.x, star.y, glowRadius, 0, Math.PI * 2);
+        context.fillStyle = glow;
+        context.fill();
+      }
+
       context.beginPath();
       context.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-      context.fillStyle = "rgba(" + color.join(",") + "," + (star.alpha * pulse) + ")";
+      context.fillStyle = rgba(color, alpha);
       context.fill();
     });
   }
