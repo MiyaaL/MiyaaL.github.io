@@ -51,8 +51,8 @@
     return {
       x: Math.random() * width,
       y: Math.random() * height,
-      radius: 0.4 + Math.pow(Math.random(), 2.2) * 1.15,
-      alpha: 0.22 + Math.random() * 0.38,
+      radius: 0.5 + Math.pow(Math.random(), 2.2) * 1.35,
+      alpha: 0.26 + Math.random() * 0.42,
       phase: Math.random() * Math.PI * 2,
       pulse: 0.00025 + Math.random() * 0.0004,
       drift: 0.0005 + Math.random() * 0.001,
@@ -82,7 +82,7 @@
       var color = palette[star.color];
       var alpha = star.alpha * pulse;
 
-      if (star.radius >= 1.05) {
+      if (star.radius >= 1.25) {
         var glowRadius = star.radius * 3;
         var glow = context.createRadialGradient(star.x, star.y, 0, star.x, star.y, glowRadius);
         glow.addColorStop(0, rgba(color, alpha * 0.28));
