@@ -53,29 +53,6 @@
   --starfield-opacity: 0.82;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-    --bg: #0d1117;
-    --surface: #11161d;
-    --text: #e6edf3;
-    --text-soft: #a2acb7;
-    --text-faint: #76808c;
-    --border: #282f38;
-    --border-strong: #3a434e;
-    --accent: #78a9e6;
-    --accent-soft: rgba(120, 169, 230, 0.1);
-    --code-bg: #080b0f;
-    --code-text: #dce4ed;
-    --header-bg: rgba(7, 11, 19, 0.94);
-    --space-background:
-      radial-gradient(circle at 16% 10%, rgba(34, 63, 105, 0.2), transparent 31%),
-      radial-gradient(circle at 84% 72%, rgba(45, 50, 91, 0.16), transparent 34%),
-      linear-gradient(155deg, #090e18 0%, #070b13 48%, #0a0d16 100%);
-    --starfield-opacity: 0.82;
-  }
-}
-
 *,
 *::before,
 *::after {
@@ -124,12 +101,8 @@ body {
   transition: opacity 140ms ease;
 }
 
-:root[data-theme="dark"] .moon {
-  display: block;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .moon {
+@media (min-width: 781px) {
+  :root[data-theme="dark"] .moon {
     display: block;
   }
 }

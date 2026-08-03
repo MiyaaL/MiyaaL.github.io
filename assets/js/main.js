@@ -28,11 +28,7 @@
   function applyThemeMode(mode, persist) {
     var theme = resolvedTheme(mode);
     root.dataset.themeMode = mode;
-    if (mode === "system") {
-      root.removeAttribute("data-theme");
-    } else {
-      root.dataset.theme = mode;
-    }
+    root.dataset.theme = theme;
 
     if (persist) {
       try {

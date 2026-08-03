@@ -14,7 +14,6 @@
   var root = document.documentElement;
   var moon = document.querySelector(".moon");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var systemDark = window.matchMedia("(prefers-color-scheme: dark)");
   var frameInterval = 1000 / 30;
   var width = 0;
   var height = 0;
@@ -39,10 +38,7 @@
   };
 
   function currentTheme() {
-    if (root.dataset.theme === "light" || root.dataset.theme === "dark") {
-      return root.dataset.theme;
-    }
-    return systemDark.matches ? "dark" : "light";
+    return root.dataset.theme === "light" ? "light" : "dark";
   }
 
   function updateMoonExclusion() {

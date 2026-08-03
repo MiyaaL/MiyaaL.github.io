@@ -46,9 +46,7 @@
     });
   }
 
-  var media = window.matchMedia("(prefers-color-scheme: dark)");
-  var initialTheme = document.documentElement.dataset.theme ||
-    (media.matches ? "dark" : "light");
+  var initialTheme = document.documentElement.dataset.theme || "dark";
   render(initialTheme);
 
   window.addEventListener("site-theme-change", function (event) {

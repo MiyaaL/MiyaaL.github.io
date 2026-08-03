@@ -19,15 +19,12 @@
     try {
       var storedMode = localStorage.getItem("theme-mode");
       var mode = ["system", "light", "dark"].indexOf(storedMode) >= 0 ? storedMode : "dark";
+      var theme = mode === "system"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : mode;
       root.dataset.themeMode = mode;
-      if (mode === "light" || mode === "dark") {
-        root.dataset.theme = mode;
-      } else {
-        root.removeAttribute("data-theme");
-      }
-      if (mode === "light" || (mode === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-        themeColor.setAttribute("content", "#f4f6f9");
-      }
+      root.dataset.theme = theme;
+      themeColor.setAttribute("content", theme === "dark" ? "#070b13" : "#f4f6f9");
     } catch (_) {
       root.dataset.themeMode = "dark";
       root.dataset.theme = "dark";
