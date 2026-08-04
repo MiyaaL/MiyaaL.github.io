@@ -132,12 +132,15 @@
       });
     });
 
-    var current = readNumber(lift.current1rm);
-    if (current != null) {
+    var baseline = readNumber(lift.baseline1rm);
+    if (baseline == null) {
+      baseline = readNumber(lift.current1rm);
+    }
+    if (baseline != null) {
       points = points.filter(function (point) {
         return point.date !== cycle.startDate;
       });
-      points.push({ date: cycle.startDate, value: current, detail: "Cycle baseline" });
+      points.push({ date: cycle.startDate, value: baseline, detail: "Cycle baseline" });
     }
     var target = readNumber(lift.target1rm);
     if (target != null) {

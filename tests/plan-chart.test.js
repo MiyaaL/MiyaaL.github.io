@@ -43,6 +43,18 @@ function configuredState() {
   assert.strictEqual(bench.points[bench.points.length - 1].value, 110);
 }());
 
+(function cycleBaselineDoesNotMoveWithAdaptiveCurrentEstimate() {
+  const state = configuredState();
+  state.activeCycle.lifts.bench.baseline1rm = 95;
+  state.activeCycle.lifts.bench.current1rm = 104;
+  const plan = PlanCore.generate(state, [holidays2026]);
+  const model = PlanChart.buildSeries(plan, "2026-08-20");
+  const bench = model.series.find((series) => series.key === "bench");
+
+  assert.strictEqual(bench.points[0].date, state.activeCycle.startDate);
+  assert.strictEqual(bench.points[0].value, 95);
+}());
+
 (function publicSeriesPreservesBodyweightPrivacy() {
   const state = configuredState();
   const generated = PlanCore.generate(state, [holidays2026]);

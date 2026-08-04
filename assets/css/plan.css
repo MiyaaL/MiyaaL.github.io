@@ -266,15 +266,6 @@
   border-bottom: 1px solid var(--border);
 }
 
-.plan-cycle-select-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-soft);
-  font-size: 12px;
-}
-
-.plan-cycle-select-wrap select,
 .plan-form-section input,
 .plan-form-section select,
 .plan-log-input {
@@ -287,7 +278,6 @@
   font: inherit;
 }
 
-.plan-cycle-select-wrap select:focus,
 .plan-form-section input:focus,
 .plan-form-section select:focus,
 .plan-log-input:focus {

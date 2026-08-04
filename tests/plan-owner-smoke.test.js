@@ -42,6 +42,21 @@ const { JSDOM } = require("jsdom");
   state.activeCycle.lifts.pullup.target1rm = 40;
   state.activeCycle.lifts.squat.current1rm = 150;
   state.activeCycle.lifts.squat.target1rm = 165;
+  const archivedState = window.PlanCore.createDefaultState("2026-04-06");
+  archivedState.activeCycle.endDate = "2026-06-28";
+  archivedState.activeCycle.status = "archived";
+  archivedState.activeCycle.bodyweightEntries = [{ date: "2026-04-06", value: 72 }];
+  archivedState.activeCycle.lifts.bench.current1rm = 92.5;
+  archivedState.activeCycle.lifts.bench.target1rm = 100;
+  archivedState.activeCycle.lifts.pullup.current1rm = 20;
+  archivedState.activeCycle.lifts.pullup.target1rm = 27.5;
+  archivedState.activeCycle.lifts.squat.current1rm = 140;
+  archivedState.activeCycle.lifts.squat.target1rm = 152.5;
+  state.archivedCycles = [{
+    cycle: archivedState.activeCycle,
+    logs: {},
+    archivedAt: "2026-06-29T00:00:00.000Z"
+  }];
 
   const memory = window.PlanStore.createMemoryAdapter({
     version: 0,
@@ -55,6 +70,27 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector("[data-plan-owner-actions]").hidden, false);
   assert.strictEqual(window.document.querySelector("[data-plan-auth]").hidden, true);
   assert(window.document.querySelector(".plan-chart-svg"));
+  const cycleSelect = window.document.querySelector("[data-plan-cycle-select]");
+  assert.strictEqual(cycleSelect.closest("[data-plan-chart]") !== null, true);
+  assert.strictEqual(window.document.querySelector("[data-plan-cycle-select-wrap]").hidden, false);
+  assert.strictEqual(cycleSelect.options.length, 2);
+  assert(cycleSelect.options[0].textContent.includes("Current"));
+  assert(cycleSelect.options[1].textContent.includes("Archived"));
+
+  const activeTitle = window.document.querySelector("[data-plan-title]").textContent;
+  const activeSessionId = window.document.querySelector("[data-session-id]").dataset.sessionId;
+  cycleSelect.value = "0";
+  cycleSelect.dispatchEvent(new window.Event("change"));
+  assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, activeTitle);
+  assert.strictEqual(window.document.querySelector("[data-session-id]").dataset.sessionId, activeSessionId);
+  assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"]'));
+  window.document.querySelector("[data-session-id]").click();
+  assert(window.document.querySelector("[data-save-log]"));
+  window.document.querySelector("[data-plan-close-details]").click();
+
+  cycleSelect.value = "-1";
+  cycleSelect.dispatchEvent(new window.Event("change"));
+
   const generated = window.PlanCore.generate(state, [holidays]);
   const chartPlot = window.document.querySelector("[data-plan-chart-plot]");
   Object.defineProperty(chartPlot, "clientWidth", { configurable: true, value: 420 });

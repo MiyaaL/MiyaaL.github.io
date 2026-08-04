@@ -61,7 +61,7 @@
   var previewState = null;
   var isOwner = false;
   var isOffline = false;
-  var viewingArchive = -1;
+  var viewingChartArchive = -1;
   var viewDate = todayInShanghai();
   var selectedSessionId = null;
   var settingsNewCycle = false;
@@ -141,7 +141,7 @@
     privateState = null;
     isOwner = false;
     isOffline = true;
-    viewingArchive = -1;
+    viewingChartArchive = -1;
     showMessage("Supabase 尚未配置；当前仅展示默认周模板预览。", "notice");
     render();
   }
@@ -149,7 +149,7 @@
   async function loadPublicPlan() {
     isOwner = false;
     privateState = null;
-    viewingArchive = -1;
+    viewingChartArchive = -1;
     var result = await store.loadPublic();
     isOffline = result.offline;
     publicSnapshot = result.record ? result.record.snapshot : null;
@@ -176,7 +176,7 @@
       isOffline = false;
       publicSnapshot = null;
       previewState = null;
-      viewingArchive = -1;
+      viewingChartArchive = -1;
       render();
       if (!record) {
         openSettings(false);
@@ -244,14 +244,6 @@
 
   function displayPlan() {
     if (isOwner && privateState) {
-      if (viewingArchive >= 0 && privateState.archivedCycles[viewingArchive]) {
-        var archive = privateState.archivedCycles[viewingArchive];
-        var archivedState = core.createDefaultState(archive.cycle.startDate);
-        archivedState.preferences = deepClone(privateState.preferences);
-        archivedState.activeCycle = deepClone(archive.cycle);
-        archivedState.logs = deepClone(archive.logs || {});
-        return core.generate(archivedState, holidayCalendars);
-      }
       return core.generate(privateState, holidayCalendars);
     }
     if (previewState) {
@@ -268,6 +260,47 @@
     return null;
   }
 
+  function snapshotProgressOverview(plan) {
+    return {
+      cycle: deepClone(plan.cycle),
+      totalWeeks: plan.totalWeeks,
+      sessions: (plan.sessions || []).map(function (session) {
+        return {
+          date: session.date,
+          status: session.status,
+          phase: session.phase ? { label: session.phase.label } : null,
+          workout: session.workout ? {
+            liftKey: session.workout.liftKey,
+            planned1rm: session.workout.planned1rm
+          } : null
+        };
+      })
+    };
+  }
+
+  function planForArchive(archive) {
+    if (archive.overview && archive.overview.cycle) {
+      return deepClone(archive.overview);
+    }
+    var archivedState = core.createDefaultState(archive.cycle.startDate);
+    archivedState.preferences = deepClone(privateState.preferences);
+    archivedState.activeCycle = deepClone(archive.cycle);
+    archivedState.logs = deepClone(archive.logs || {});
+    return core.generate(archivedState, holidayCalendars);
+  }
+
+  function displayTrajectoryPlan(activePlan) {
+    if (!isOwner || !privateState || viewingChartArchive < 0) {
+      return activePlan;
+    }
+    var archive = privateState.archivedCycles[viewingChartArchive];
+    if (!archive || !archive.cycle) {
+      viewingChartArchive = -1;
+      return activePlan;
+    }
+    return planForArchive(archive);
+  }
+
   function render() {
     setLoading(false);
     var plan = displayPlan();
@@ -280,7 +313,7 @@
     dom.view.hidden = false;
     dom.auth.hidden = isOwner;
     dom.auth.textContent = store.configured ? "管理计划" : "同步未配置";
-    dom.ownerActions.hidden = !isOwner || viewingArchive >= 0 || isOffline;
+    dom.ownerActions.hidden = !isOwner || isOffline;
     dom.exportJson.hidden = !isOwner;
     setSyncState();
 
@@ -290,8 +323,8 @@
 
     renderProgress(plan.cycle);
     renderWarnings(plan);
-    renderTrajectory(plan);
     renderCycleSelect();
+    renderTrajectory(displayTrajectoryPlan(plan));
     normalizeViewDate(plan.cycle);
     renderCalendar(plan);
   }
@@ -361,16 +394,29 @@
     var archives = isOwner && privateState ? privateState.archivedCycles : [];
     dom.cycleSelectWrap.hidden = !isOwner || archives.length === 0;
     if (!isOwner || !archives.length) {
+      viewingChartArchive = -1;
       return;
     }
-    var options = ['<option value="-1">当前周期</option>'];
+    if (viewingChartArchive >= archives.length) {
+      viewingChartArchive = -1;
+    }
+    var cycleCount = archives.length + 1;
+    var activeCycle = privateState.activeCycle;
+    var options = ['<option value="-1">' +
+      escapeHtml("Cycle " + String(cycleCount).padStart(2, "0") + " · Current · " +
+        String(activeCycle.startDate).replace(/-/g, ".") + " — " +
+        String(activeCycle.endDate).replace(/-/g, ".")) +
+      "</option>"];
     archives.forEach(function (archive, index) {
+      var ordinal = archives.length - index;
       options.push('<option value="' + index + '">' +
-        escapeHtml(formatChineseDate(archive.cycle.startDate, false) + " · " + archive.cycle.title) +
+        escapeHtml("Cycle " + String(ordinal).padStart(2, "0") + " · Archived · " +
+          String(archive.cycle.startDate).replace(/-/g, ".") + " — " +
+          String(archive.cycle.endDate).replace(/-/g, ".")) +
         "</option>");
     });
     dom.cycleSelect.innerHTML = options.join("");
-    dom.cycleSelect.value = String(viewingArchive);
+    dom.cycleSelect.value = String(viewingChartArchive);
   }
 
   function monthStart(value) {
@@ -508,7 +554,7 @@
   }
 
   function holidayForDate(date) {
-    var overrides = privateState && viewingArchive < 0
+    var overrides = privateState
       ? privateState.activeCycle.holidayOverrides || {}
       : {};
     if (overrides[date]) {
@@ -590,7 +636,7 @@
     html += '<section class="plan-session-section"><h3>辅助动作</h3>' +
       setListHtml(workout.accessories, null) + "</section>";
 
-    if (isOwner && viewingArchive < 0 && !isOffline && !workout.needsSetup) {
+    if (isOwner && !isOffline && !workout.needsSetup) {
       html += trainingLogHtml(session);
     }
     return html;
@@ -902,6 +948,7 @@
 
     if (settingsNewCycle && privateState.activeCycle.status !== "draft") {
       var archivedLogs = {};
+      var archivedOverview = snapshotProgressOverview(core.generate(privateState, holidayCalendars));
       Object.keys(privateState.logs).forEach(function (id) {
         if (id.indexOf(privateState.activeCycle.id + ":") === 0) {
           archivedLogs[id] = privateState.logs[id];
@@ -911,6 +958,7 @@
       privateState.archivedCycles.unshift({
         cycle: deepClone(privateState.activeCycle),
         logs: archivedLogs,
+        overview: archivedOverview,
         archivedAt: new Date().toISOString()
       });
     }
@@ -933,9 +981,15 @@
     cycle.lifts.pullup.target1rm = lifts.pullup.target;
     cycle.lifts.squat.current1rm = lifts.squat.current;
     cycle.lifts.squat.target1rm = lifts.squat.target;
+    ["bench", "pullup", "squat"].forEach(function (key) {
+      var lift = cycle.lifts[key];
+      if (settingsNewCycle || lift.baseline1rm == null || lift.baseline1rm === "") {
+        lift.baseline1rm = lift.current1rm;
+      }
+    });
     privateState.activeCycle = cycle;
     privateState.preferences.trainingTime = form.get("trainingTime") || "19:00";
-    viewingArchive = -1;
+    viewingChartArchive = -1;
     dom.settings.close();
     await persist(settingsNewCycle ? "新周期已创建，旧周期已归档。" : "计划已重新生成。");
   }
@@ -1072,10 +1126,10 @@
     renderHolidayOverrides();
   });
   dom.cycleSelect.addEventListener("change", function () {
-    viewingArchive = Number(dom.cycleSelect.value);
+    viewingChartArchive = Number(dom.cycleSelect.value);
     var plan = displayPlan();
-    viewDate = plan.cycle.startDate;
-    render();
+    renderCycleSelect();
+    renderTrajectory(displayTrajectoryPlan(plan));
   });
   app.querySelector("[data-plan-reload]").addEventListener("click", reloadAfterConflict);
   window.addEventListener("resize", function () {
@@ -1083,7 +1137,7 @@
     chartResizeTimer = window.setTimeout(function () {
       var plan = displayPlan();
       if (plan) {
-        renderTrajectory(plan);
+        renderTrajectory(displayTrajectoryPlan(plan));
       }
     }, 120);
   });

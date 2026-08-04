@@ -149,9 +149,9 @@
         experience: "advanced",
         bodyweightEntries: [],
         lifts: {
-          bench: { label: LIFT_LABELS.bench, current1rm: null, target1rm: null },
-          pullup: { label: LIFT_LABELS.pullup, current1rm: null, target1rm: null },
-          squat: { label: LIFT_LABELS.squat, current1rm: null, target1rm: null }
+          bench: { label: LIFT_LABELS.bench, baseline1rm: null, current1rm: null, target1rm: null },
+          pullup: { label: LIFT_LABELS.pullup, baseline1rm: null, current1rm: null, target1rm: null },
+          squat: { label: LIFT_LABELS.squat, baseline1rm: null, current1rm: null, target1rm: null }
         },
         template: deepClone(DEFAULT_TEMPLATE),
         holidayOverrides: {},
@@ -178,6 +178,11 @@
         fallback.activeCycle.lifts[key],
         state.activeCycle.lifts[key] || {}
       );
+      if (state.activeCycle.lifts[key].baseline1rm == null ||
+          state.activeCycle.lifts[key].baseline1rm === "" ||
+          !Number.isFinite(Number(state.activeCycle.lifts[key].baseline1rm))) {
+        state.activeCycle.lifts[key].baseline1rm = state.activeCycle.lifts[key].current1rm;
+      }
     });
     state.activeCycle.template = Array.isArray(state.activeCycle.template) && state.activeCycle.template.length
       ? state.activeCycle.template

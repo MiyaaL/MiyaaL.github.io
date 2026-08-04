@@ -28,6 +28,44 @@
   letter-spacing: -0.02em;
 }
 
+.plan-chart-tools {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plan-chart-cycle-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plan-chart-cycle-select select {
+  min-width: 260px;
+  padding: 3px 20px 5px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.plan-chart-cycle-select select:focus {
+  border-color: var(--accent);
+}
+
 .plan-chart-legend {
   display: flex;
   flex-wrap: wrap;
@@ -253,6 +291,16 @@
     align-items: start;
     flex-direction: column;
     gap: 18px;
+  }
+
+  .plan-chart-tools {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .plan-chart-cycle-select,
+  .plan-chart-cycle-select select {
+    width: 100%;
   }
 
   .plan-chart-legend {

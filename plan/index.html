@@ -61,10 +61,6 @@ plan: true
         <div class="plan-warning-list" data-plan-warnings hidden></div>
 
         <div class="plan-controls">
-          <label class="plan-cycle-select-wrap" data-plan-cycle-select-wrap hidden>
-            <span>查看周期</span>
-            <select data-plan-cycle-select></select>
-          </label>
           <div class="plan-export-actions">
             <button class="plan-text-button" type="button" data-plan-export-ics>导出 ICS</button>
             <button class="plan-text-button" type="button" data-plan-export-json hidden>备份 JSON</button>
@@ -78,7 +74,13 @@ plan: true
             <p class="eyebrow">CYCLE TRAJECTORY</p>
             <h2 id="plan-chart-title">Progress Overview</h2>
           </div>
-          <div class="plan-chart-legend" data-plan-chart-legend aria-label="Chart series"></div>
+          <div class="plan-chart-tools">
+            <label class="plan-chart-cycle-select" data-plan-cycle-select-wrap hidden>
+              <span>Cycle</span>
+              <select data-plan-cycle-select aria-label="Select progress cycle"></select>
+            </label>
+            <div class="plan-chart-legend" data-plan-chart-legend aria-label="Chart series"></div>
+          </div>
         </div>
         <div class="plan-chart-plot" data-plan-chart-plot></div>
         <p class="plan-chart-empty" data-plan-chart-empty hidden>
