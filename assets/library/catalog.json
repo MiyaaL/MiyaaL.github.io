@@ -1,25 +1,4 @@
 {
   "schemaVersion": 3,
-  "documents": [
-    {
-      "id": "pdf-f8e51cc0bd8cdcad",
-      "title": "Mathematics for Machine Learning",
-      "filename": "mml-book.pdf",
-      "path": "https://github.com/MiyaaL/MiyaaL.github.io/releases/download/library-assets-v1/mathematics-for-machine-learning-f8e51cc0.pdf",
-      "tags": [
-        "Machine Learning"
-      ],
-      "bytes": 19544796,
-      "sha256": "f8e51cc0bd8cdcad342d85ce4fef2595cea62fbbe44d579ef01e54a5ddfeb673",
-      "addedAt": "2026-08-04T07:46:43.049Z",
-      "source": "release",
-      "release": {
-        "tag": "library-assets-v1",
-        "releaseId": 364927245,
-        "assetId": 501435061,
-        "assetName": "mathematics-for-machine-learning-f8e51cc0.pdf",
-        "downloadUrl": "https://github.com/MiyaaL/MiyaaL.github.io/releases/download/library-assets-v1/mathematics-for-machine-learning-f8e51cc0.pdf"
-      }
-    }
-  ]
+  "documents": []
 }
