@@ -567,11 +567,14 @@
     state.openingSequence += 1;
     state.activeDocument = null;
     updateManagementControls();
-    await releaseDocument();
-    elements.reader.hidden = true;
-    elements.workspace.classList.remove("is-reading");
-    updateReaderUrl();
-    renderDocuments();
+    try {
+      await releaseDocument();
+    } finally {
+      elements.reader.hidden = true;
+      elements.workspace.classList.remove("is-reading");
+      updateReaderUrl();
+      renderDocuments();
+    }
   }
 
   function goToPage(value) {
@@ -865,11 +868,11 @@
       })) {
         state.selectedTag = "";
       }
-      if (state.activeDocument && state.activeDocument.id === documentRecord.id) {
-        await closeReader();
-      }
       renderTags();
       renderDocuments();
+      if (state.activeDocument && state.activeDocument.id === documentRecord.id) {
+        await closeReader().catch(function () {});
+      }
       closeDeleteDialog(true);
       if (documentRecord.source === "external") {
         setMessage("Library entry deleted. The remote PDF was not changed. GitHub Pages may take a minute to publish the catalog update.");
