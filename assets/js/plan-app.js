@@ -392,8 +392,8 @@
 
   function renderCycleSelect() {
     var archives = isOwner && privateState ? privateState.archivedCycles : [];
-    dom.cycleSelectWrap.hidden = !isOwner || archives.length === 0;
-    if (!isOwner || !archives.length) {
+    dom.cycleSelectWrap.hidden = !isOwner || !privateState;
+    if (!isOwner || !privateState) {
       viewingChartArchive = -1;
       return;
     }

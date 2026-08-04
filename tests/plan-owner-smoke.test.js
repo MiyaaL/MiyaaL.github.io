@@ -52,11 +52,11 @@ const { JSDOM } = require("jsdom");
   archivedState.activeCycle.lifts.pullup.target1rm = 27.5;
   archivedState.activeCycle.lifts.squat.current1rm = 140;
   archivedState.activeCycle.lifts.squat.target1rm = 152.5;
-  state.archivedCycles = [{
+  const archivedCycle = {
     cycle: archivedState.activeCycle,
     logs: {},
     archivedAt: "2026-06-29T00:00:00.000Z"
-  }];
+  };
 
   const memory = window.PlanStore.createMemoryAdapter({
     version: 0,
@@ -73,10 +73,22 @@ const { JSDOM } = require("jsdom");
   const cycleSelect = window.document.querySelector("[data-plan-cycle-select]");
   assert.strictEqual(cycleSelect.closest("[data-plan-chart]") !== null, true);
   assert.strictEqual(window.document.querySelector("[data-plan-cycle-select-wrap]").hidden, false);
+  assert.strictEqual(cycleSelect.options.length, 1);
+  assert(cycleSelect.options[0].textContent.includes("Cycle 01 · Current"));
+
+  const stateWithArchive = JSON.parse(JSON.stringify(state));
+  stateWithArchive.archivedCycles = [archivedCycle];
+  const planWithArchive = window.PlanCore.generate(stateWithArchive, [holidays]);
+  const snapshotWithArchive = window.PlanCore.createPublicSnapshot(stateWithArchive, planWithArchive);
+  await memory.save(0, stateWithArchive, snapshotWithArchive);
+  await memory.signOut();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await memory.signIn();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
   assert.strictEqual(cycleSelect.options.length, 2);
   assert(cycleSelect.options[0].textContent.includes("Current"));
   assert(cycleSelect.options[1].textContent.includes("Archived"));
-
   const activeTitle = window.document.querySelector("[data-plan-title]").textContent;
   const activeSessionId = window.document.querySelector("[data-session-id]").dataset.sessionId;
   cycleSelect.value = "0";
@@ -114,7 +126,7 @@ const { JSDOM } = require("jsdom");
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   const stored = await memory.loadPrivate();
-  assert.strictEqual(stored.version, 1);
+  assert.strictEqual(stored.version, 2);
   assert.strictEqual(Object.keys(stored.state.logs).length, 1);
   const savedLog = stored.state.logs[Object.keys(stored.state.logs)[0]];
   assert.strictEqual(savedLog.accessories.length, 3);
