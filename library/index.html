@@ -1,0 +1,142 @@
+---
+layout: default
+title: Library
+description: "A searchable research library with in-browser PDF reading and synchronized progress."
+permalink: /library/
+library: true
+---
+<section class="library-hero">
+  <div class="container library-hero-inner">
+    <div>
+      <p class="eyebrow">RESEARCH ARCHIVE</p>
+      <h1>Library</h1>
+      <p class="library-intro">A versioned collection of papers, reports, and technical references with resumable reading.</p>
+    </div>
+    <div class="library-hero-actions">
+      <span class="library-sync-state" data-library-sync-state>Loading</span>
+      <button class="library-button library-button-primary" type="button" data-library-auth>Manage Library</button>
+    </div>
+  </div>
+</section>
+
+<section class="library-section">
+  <div
+    class="container library-app"
+    data-library-app
+    data-catalog-url="{{ '/assets/library/catalog.json' | relative_url }}"
+    data-pdfjs-url="{{ '/assets/pdfjs/build/pdf.min.mjs' | relative_url }}"
+    data-pdf-worker-url="{{ '/assets/pdfjs/build/pdf.worker.min.mjs' | relative_url }}"
+    data-pdf-assets-url="{{ '/assets/pdfjs/' | relative_url }}"
+    data-supabase-url="{{ site.plan.supabase_url | default: '' | escape }}"
+    data-supabase-key="{{ site.plan.supabase_publishable_key | default: '' | escape }}"
+    data-repository="{{ site.repository | escape }}"
+    data-branch="main"
+  >
+    <div class="library-message" data-library-message role="status" aria-live="polite"></div>
+
+    <header class="library-toolbar">
+      <label class="library-search">
+        <span class="sr-only">Search library</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m16.5 16.5 4 4"></path>
+        </svg>
+        <input type="search" data-library-search placeholder="Search title, filename, or tag..." autocomplete="off">
+      </label>
+      <button class="library-text-button" type="button" data-library-upload hidden>Upload PDF</button>
+    </header>
+
+    <div class="library-tags" data-library-tags aria-label="Filter by tag"></div>
+    <p class="library-count" data-library-count></p>
+
+    <div class="library-workspace">
+      <section class="library-results" aria-label="Library documents">
+        <div class="library-empty" data-library-empty hidden>
+          <p class="eyebrow">NO DOCUMENTS</p>
+          <h2>The archive is empty.</h2>
+          <p>Upload the first PDF after signing in, or add an entry to the repository catalog.</p>
+        </div>
+        <div class="library-document-list" data-library-list></div>
+      </section>
+
+      <section class="library-reader" data-library-reader aria-labelledby="library-reader-title" hidden>
+        <header class="library-reader-header">
+          <div>
+            <p class="eyebrow">DOCUMENT READER</p>
+            <h2 id="library-reader-title" data-library-reader-title></h2>
+            <div class="library-reader-tags" data-library-reader-tags></div>
+          </div>
+          <div class="library-reader-actions">
+            <a class="library-text-button" data-library-open-native target="_blank" rel="noopener">Open PDF</a>
+            <button class="library-icon-button" type="button" data-library-close-reader aria-label="Close reader">×</button>
+          </div>
+        </header>
+
+        <div class="library-reader-toolbar" aria-label="PDF navigation">
+          <button type="button" data-library-previous-page aria-label="Previous page">←</button>
+          <label>
+            <span>Page</span>
+            <input type="number" min="1" value="1" data-library-page>
+            <span>/ <span data-library-page-count>—</span></span>
+          </label>
+          <button type="button" data-library-next-page aria-label="Next page">→</button>
+          <span class="library-reader-divider" aria-hidden="true"></span>
+          <button type="button" data-library-zoom-out aria-label="Zoom out">−</button>
+          <span data-library-zoom>100%</span>
+          <button type="button" data-library-zoom-in aria-label="Zoom in">+</button>
+        </div>
+
+        <div class="library-reader-viewport" data-library-reader-viewport>
+          <div class="library-reader-loading" data-library-reader-loading>
+            <span aria-hidden="true"></span>
+            <p>Loading document...</p>
+          </div>
+          <canvas data-library-canvas aria-label="Rendered PDF page"></canvas>
+          <p class="library-reader-error" data-library-reader-error hidden></p>
+        </div>
+      </section>
+    </div>
+
+    <dialog class="library-upload-dialog" data-library-upload-dialog>
+      <form method="dialog" class="library-upload-form" data-library-upload-form>
+        <header>
+          <div>
+            <p class="eyebrow">GITHUB ARCHIVE</p>
+            <h2>Upload PDF</h2>
+          </div>
+          <button class="library-icon-button" type="button" data-library-close-upload aria-label="Close upload dialog">×</button>
+        </header>
+
+        <p class="library-upload-note">The PDF and its catalog entry will be committed to the public GitHub repository.</p>
+
+        <label>
+          <span>PDF file</span>
+          <input type="file" accept="application/pdf,.pdf" name="pdf" required data-library-file>
+          <small>PDF only · maximum 50 MB</small>
+        </label>
+
+        <label>
+          <span>Display title</span>
+          <input type="text" name="title" maxlength="160" required placeholder="Paper or report title">
+        </label>
+
+        <label>
+          <span>Tags</span>
+          <input type="text" name="tags" maxlength="240" placeholder="Machine Learning, Quant, AI Infra">
+          <small>Separate tags with commas.</small>
+        </label>
+
+        <label class="library-upload-consent">
+          <input type="checkbox" name="consent" required>
+          <span>I confirm that this document may be stored publicly and that I have the right to archive it.</span>
+        </label>
+
+        <p class="library-form-error" data-library-upload-error role="alert"></p>
+        <div class="library-upload-actions">
+          <button class="library-button" type="button" data-library-cancel-upload>Cancel</button>
+          <button class="library-button library-button-primary" type="submit" data-library-submit-upload>Commit to GitHub</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+</section>

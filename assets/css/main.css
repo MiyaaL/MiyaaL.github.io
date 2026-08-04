@@ -1189,6 +1189,7 @@ html[data-theme-mode="dark"] .theme-dark {
 
   .header-inner {
     min-height: 60px;
+    gap: 8px;
   }
 
   .site-nav {
@@ -1199,10 +1200,13 @@ html[data-theme-mode="dark"] .theme-dark {
     padding-inline: 8px;
   }
 
-  .site-nav .nav-icon-link,
   .theme-toggle {
     width: 34px;
     height: 34px;
+  }
+
+  .site-nav .nav-icon-link {
+    display: none;
   }
 
   .hero-grid {
