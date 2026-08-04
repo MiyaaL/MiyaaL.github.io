@@ -1,0 +1,198 @@
+name: Migrate Library PDF to Release Asset
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/migrate-library-release.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: library-release-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.repository == 'MiyaaL/MiyaaL.github.io'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLEAN_SHA: fcc0bf7af1965376521c89a61ba2269f5b28ea72
+      LEGACY_COMMIT: 39de8fa9a54cf134efdac63e5800ffb0697332f9
+      TAG: library-assets-v1
+      DOCUMENT_ID: pdf-f8e51cc0bd8cdcad
+      PDF_PATH: assets/library/pdfs/mathematics-for-machine-learning-f8e51cc0.pdf
+      ASSET_NAME: mathematics-for-machine-learning-f8e51cc0.pdf
+      CATALOG_PATH: assets/library/catalog.json
+      WORKFLOW_PATH: .github/workflows/migrate-library-release.yml
+      PDF_SHA256: f8e51cc0bd8cdcad342d85ce4fef2595cea62fbbe44d579ef01e54a5ddfeb673
+      PDF_BYTES: "19544796"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Move the legacy PDF to a clean Release tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$*"
+            exit 1
+          }
+
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] ||
+            fail "Checked-out HEAD differs from the triggering commit."
+          [[ "$(git ls-remote origin refs/heads/main | cut -f1)" == "$GITHUB_SHA" ]] ||
+            fail "main advanced after this workflow was triggered."
+          git merge-base --is-ancestor "$LEGACY_COMMIT" HEAD ||
+            fail "The expected legacy commit is not an ancestor of main."
+          git cat-file -e "${CLEAN_SHA}^{commit}" ||
+            fail "The clean anchor commit is unavailable."
+          if git cat-file -e "${CLEAN_SHA}:${PDF_PATH}" 2>/dev/null; then
+            fail "The clean anchor unexpectedly contains the PDF."
+          fi
+
+          [[ -f "$PDF_PATH" ]] || fail "The legacy PDF is missing."
+          [[ "$(stat -c %s "$PDF_PATH")" == "$PDF_BYTES" ]] ||
+            fail "The legacy PDF size differs."
+          [[ "$(sha256sum "$PDF_PATH" | cut -d' ' -f1)" == "$PDF_SHA256" ]] ||
+            fail "The legacy PDF digest differs."
+
+          jq -e \
+            --arg id "$DOCUMENT_ID" \
+            --arg path "/$PDF_PATH" \
+            --arg sha "$PDF_SHA256" \
+            --argjson bytes "$PDF_BYTES" '
+              .schemaVersion == 1 and
+              ([.documents[] | select(.id == $id)] | length) == 1 and
+              (
+                [.documents[] | select(.id == $id)][0] |
+                ((.source // "repository") == "repository") and
+                .path == $path and .sha256 == $sha and .bytes == $bytes
+              )
+            ' "$CATALOG_PATH" >/dev/null ||
+            fail "The legacy catalog entry differs from the expected document."
+
+          tag_sha="$(git ls-remote origin "refs/tags/$TAG" | cut -f1)"
+          if [[ -z "$tag_sha" ]]; then
+            git push origin "$CLEAN_SHA:refs/tags/$TAG"
+          elif [[ "$tag_sha" != "$CLEAN_SHA" ]]; then
+            fail "The Release tag does not point to the clean anchor."
+          fi
+
+          git fetch --force --no-tags origin "refs/tags/$TAG:refs/migration/$TAG"
+          [[ "$(git rev-parse "refs/migration/$TAG^{}")" == "$CLEAN_SHA" ]] ||
+            fail "The fetched Release tag does not resolve to the clean anchor."
+          git update-ref -d "refs/migration/$TAG"
+
+          release_json="$RUNNER_TEMP/release.json"
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+              >"$release_json" 2>/dev/null; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" \
+              -f target_commitish="$CLEAN_SHA" \
+              -f name="Library Assets" \
+              -f body="Mutable PDF archive used by the MiyaaL Library." \
+              -F draft=false \
+              -F prerelease=false \
+              -f make_latest=false >"$release_json"
+          fi
+
+          jq -e --arg tag "$TAG" '
+            .tag_name == $tag and .draft == false and .prerelease == false and
+            (.immutable != true) and (.id | type == "number")
+          ' "$release_json" >/dev/null || fail "The Library Release is invalid."
+          release_id="$(jq -r '.id' "$release_json")"
+
+          load_assets() {
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" |
+              jq -s 'add // []' >"$RUNNER_TEMP/release-assets.json"
+          }
+
+          load_assets
+          asset_count="$(
+            jq --arg name "$ASSET_NAME" \
+              '[.[] | select(.name == $name)] | length' \
+              "$RUNNER_TEMP/release-assets.json"
+          )"
+          case "$asset_count" in
+            0)
+              gh release upload "$TAG" "$PDF_PATH" --repo "$GITHUB_REPOSITORY"
+              load_assets
+              ;;
+            1) ;;
+            *) fail "Multiple assets use the expected name." ;;
+          esac
+
+          asset="$(
+            jq -c --arg name "$ASSET_NAME" \
+              '[.[] | select(.name == $name)][0]' \
+              "$RUNNER_TEMP/release-assets.json"
+          )"
+          [[ "$asset" != "null" ]] || fail "The uploaded asset is missing."
+          asset_id="$(jq -r '.id' <<<"$asset")"
+          asset_size="$(jq -r '.size' <<<"$asset")"
+          asset_state="$(jq -r '.state' <<<"$asset")"
+          asset_url="$(jq -r '.browser_download_url' <<<"$asset")"
+          asset_digest="$(jq -r '.digest // empty' <<<"$asset")"
+          expected_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET_NAME"
+
+          [[ "$asset_state" == "uploaded" ]] || fail "The asset is incomplete."
+          [[ "$asset_size" == "$PDF_BYTES" ]] || fail "The asset size differs."
+          [[ "$asset_url" == "$expected_url" ]] || fail "The asset URL differs."
+          if [[ -n "$asset_digest" ]]; then
+            [[ "$asset_digest" == "sha256:$PDF_SHA256" ]] ||
+              fail "The asset digest differs."
+          else
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$ASSET_NAME" --output "$RUNNER_TEMP/release-asset.pdf"
+            [[ "$(sha256sum "$RUNNER_TEMP/release-asset.pdf" | cut -d' ' -f1)" == "$PDF_SHA256" ]] ||
+              fail "The downloaded asset digest differs."
+          fi
+
+          migrated_catalog="$RUNNER_TEMP/catalog.json"
+          jq \
+            --arg id "$DOCUMENT_ID" \
+            --arg tag "$TAG" \
+            --arg url "$asset_url" \
+            --arg name "$ASSET_NAME" \
+            --argjson releaseId "$release_id" \
+            --argjson assetId "$asset_id" '
+              .schemaVersion = 3 |
+              .documents |= map(
+                if .id == $id then
+                  . + {
+                    source: "release",
+                    path: $url,
+                    release: {
+                      tag: $tag,
+                      releaseId: $releaseId,
+                      assetId: $assetId,
+                      assetName: $name,
+                      downloadUrl: $url
+                    }
+                  }
+                else . end
+              )
+            ' "$CATALOG_PATH" >"$migrated_catalog"
+          mv "$migrated_catalog" "$CATALOG_PATH"
+
+          git rm -- "$PDF_PATH" "$WORKFLOW_PATH"
+          git add -- "$CATALOG_PATH"
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "library: migrate archived PDF to Release asset"
+
+          [[ "$(git ls-remote origin refs/heads/main | cut -f1)" == "$GITHUB_SHA" ]] ||
+            fail "main advanced while the asset was prepared."
+          git push origin HEAD:refs/heads/main
