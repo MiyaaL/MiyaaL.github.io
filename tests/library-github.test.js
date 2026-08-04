@@ -58,6 +58,7 @@ function response(payload, status = 200) {
   });
 
   assert.strictEqual(result.document.title, "Scaling Laws & GPU");
+  assert.strictEqual(result.document.source, "repository");
   assert.deepStrictEqual(result.document.tags, ["Machine Learning", "AI Infra"]);
   assert(result.document.path.startsWith("/assets/library/pdfs/scaling-laws-gpu-"));
   assert.strictEqual(result.catalog.documents.length, 1);
@@ -71,12 +72,51 @@ function response(payload, status = 200) {
   const refUpdate = JSON.parse(calls[7].options.body);
   assert.deepStrictEqual(refUpdate, { sha: "new-commit", force: false });
 
+  assert.strictEqual(
+    LibraryGitHub.validateExternalUrl("https://example.org/papers/ml.pdf#page=3"),
+    "https://example.org/papers/ml.pdf"
+  );
+  assert.throws(() => LibraryGitHub.validateExternalUrl("http://example.org/ml.pdf"), /external_url_https_required/);
+  assert.throws(() => LibraryGitHub.validateExternalUrl("https://user:secret@example.org/ml.pdf"), /external_url_https_required/);
+
+  const linkCalls = [];
+  const linkReplies = [
+    response({ object: { sha: "link-head" } }),
+    response({ tree: { sha: "link-base-tree" } }),
+    response({ content: Buffer.from('{"schemaVersion":1,"documents":[]}').toString("base64") }),
+    response({ sha: "link-catalog-blob" }, 201),
+    response({ sha: "link-tree" }, 201),
+    response({ sha: "link-commit" }, 201),
+    response({ object: { sha: "link-commit" } })
+  ];
+  const linkFetch = async (url, options = {}) => {
+    linkCalls.push({ url, options });
+    return linkReplies.shift();
+  };
+  const linked = await LibraryGitHub.commitExternalDocument({
+    token: "test-token",
+    repository: "MiyaaL/MiyaaL.github.io",
+    branch: "main",
+    url: "https://example.org/papers/ml.pdf#introduction",
+    title: "External ML Paper",
+    tags: "Machine Learning, AI Infra",
+    fetch: linkFetch,
+    crypto
+  });
+  assert.strictEqual(linked.document.source, "external");
+  assert.strictEqual(linked.document.path, "https://example.org/papers/ml.pdf");
+  assert.strictEqual(linked.document.filename, "ml.pdf");
+  assert.strictEqual(linked.catalog.schemaVersion, 2);
+  assert.strictEqual(linkCalls.length, 7);
+  const linkedTree = JSON.parse(linkCalls[4].options.body);
+  assert.deepStrictEqual(linkedTree.tree.map((entry) => entry.path), ["assets/library/catalog.json"]);
+
   assert.throws(
     () => LibraryGitHub.validatePdf({ name: "notes.txt", type: "text/plain" }, buffer),
     /pdf_required/
   );
 
-  console.log("PASS: Library GitHub atomic PDF and catalog commit tests");
+  console.log("PASS: Library GitHub archive and external-link commit tests");
 }()).catch((error) => {
   console.error(error);
   process.exitCode = 1;

@@ -30,16 +30,22 @@
     zoomIn: root.querySelector("[data-library-zoom-in]"),
     zoom: root.querySelector("[data-library-zoom]"),
     viewport: root.querySelector("[data-library-reader-viewport]"),
+    pdfViewer: root.querySelector("[data-library-pdf-viewer]"),
     loading: root.querySelector("[data-library-reader-loading]"),
-    canvas: root.querySelector("[data-library-canvas]"),
     readerError: root.querySelector("[data-library-reader-error]"),
     uploadDialog: root.querySelector("[data-library-upload-dialog]"),
     uploadForm: root.querySelector("[data-library-upload-form]"),
+    sourcePicker: root.querySelector("[data-library-source-picker]"),
+    sourceNote: root.querySelector("[data-library-source-note]"),
+    fileField: root.querySelector("[data-library-file-field]"),
+    urlField: root.querySelector("[data-library-url-field]"),
+    consentText: root.querySelector("[data-library-consent-text]"),
     closeUpload: root.querySelector("[data-library-close-upload]"),
     cancelUpload: root.querySelector("[data-library-cancel-upload]"),
     submitUpload: root.querySelector("[data-library-submit-upload]"),
     uploadError: root.querySelector("[data-library-upload-error]"),
-    file: root.querySelector("[data-library-file]")
+    file: root.querySelector("[data-library-file]"),
+    url: root.querySelector("[data-library-url]")
   };
 
   var store = window.LibraryStore.create({
@@ -57,11 +63,15 @@
     owner: false,
     activeDocument: null,
     pdfjs: null,
+    viewerModule: null,
+    loadingTask: null,
     pdf: null,
+    viewer: null,
+    linkService: null,
+    viewerAbort: null,
     page: 1,
     zoom: 1,
-    renderTask: null,
-    renderSequence: 0,
+    openingSequence: 0,
     saveTimer: null
   };
 
@@ -74,6 +84,12 @@
     var messages = {
       duplicate_pdf: "This PDF is already present in the archive.",
       pdf_already_archived: "This PDF is already present in the archive.",
+      duplicate_external_document: "This external PDF link is already present in the archive.",
+      external_document_exists: "This external PDF link is already present in the archive.",
+      external_url_required: "Add a public PDF URL.",
+      external_url_invalid: "Add a valid public PDF URL.",
+      external_url_https_required: "External documents require a public HTTPS URL without embedded credentials.",
+      external_pdf_unavailable: "The external PDF could not be read here. Confirm that it is a direct public PDF URL and that the source permits cross-origin reading.",
       pdf_required: "Choose a PDF file.",
       invalid_pdf_signature: "The selected file does not contain a valid PDF signature.",
       pdf_too_large: "The PDF exceeds the 50 MB upload limit.",
@@ -81,14 +97,17 @@
       not_site_owner: "This GitHub account does not have permission to manage the library.",
       not_configured: "Library synchronization is not configured.",
       supabase_not_configured: "Library synchronization is not configured.",
-      github_409: "The repository changed during upload. Refresh the page and try again.",
-      github_app_not_configured: "PDF upload is not configured yet."
+      github_409: "The repository changed while the document was being added. Refresh the page and try again.",
+      github_app_not_configured: "Library changes are not configured yet."
     };
     return messages[code] || (error && error.message) || "The operation could not be completed.";
   }
 
   function formatBytes(bytes) {
     var value = Number(bytes) || 0;
+    if (!value) {
+      return "";
+    }
     if (value < 1024 * 1024) {
       return Math.max(1, Math.round(value / 1024)) + " KB";
     }
@@ -173,7 +192,7 @@
       var meta = textElement("span", "library-document-meta", [
         formatDate(documentRecord.addedAt),
         documentRecord.filename,
-        formatBytes(documentRecord.bytes)
+        documentRecord.source === "external" ? "External source" : formatBytes(documentRecord.bytes)
       ].filter(Boolean).join(" · "));
       var tags = textElement("span", "library-document-tags", (documentRecord.tags || []).map(function (tag) {
         return "#" + tag;
@@ -221,7 +240,6 @@
     var local = store.loadLocalProgress();
     var remote = await store.loadRemoteProgress();
     state.progress = mergeProgress(local, remote);
-
     await Promise.all(Object.keys(local).map(function (documentId) {
       var localRecord = local[documentId];
       var remoteRecord = remote[documentId];
@@ -302,81 +320,158 @@
     history.replaceState(null, "", url.pathname + url.search + url.hash);
   }
 
-  async function renderPage() {
-    if (!state.pdf) {
-      return;
-    }
-    var sequence = ++state.renderSequence;
-    if (state.renderTask) {
-      state.renderTask.cancel();
-    }
-
-    updateReaderControls();
-    elements.loading.hidden = false;
-    elements.readerError.hidden = true;
-    elements.canvas.hidden = true;
-
-    try {
-      var page = await state.pdf.getPage(state.page);
-      if (sequence !== state.renderSequence) {
-        return;
-      }
-      var viewport = page.getViewport({ scale: state.zoom });
-      var ratio = Math.min(window.devicePixelRatio || 1, 2);
-      var context = elements.canvas.getContext("2d", { alpha: false });
-      elements.canvas.width = Math.floor(viewport.width * ratio);
-      elements.canvas.height = Math.floor(viewport.height * ratio);
-      elements.canvas.style.width = Math.floor(viewport.width) + "px";
-      elements.canvas.style.height = Math.floor(viewport.height) + "px";
-
-      state.renderTask = page.render({
-        canvasContext: context,
-        viewport: viewport,
-        transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0]
-      });
-      await state.renderTask.promise;
-      if (sequence !== state.renderSequence) {
-        return;
-      }
-      elements.canvas.hidden = false;
-      elements.viewport.scrollTo({ top: 0, left: 0 });
-      persistProgress();
-      updateReaderUrl();
-    } catch (error) {
-      if (error && error.name === "RenderingCancelledException") {
-        return;
-      }
-      elements.readerError.textContent = "This page could not be rendered. " + friendlyError(error);
-      elements.readerError.hidden = false;
-    } finally {
-      if (sequence === state.renderSequence) {
-        elements.loading.hidden = true;
-      }
-    }
-  }
-
-  async function loadPdfJs() {
+  async function loadPdfModules() {
     if (!state.pdfjs) {
       state.pdfjs = await import(root.dataset.pdfjsUrl);
       state.pdfjs.GlobalWorkerOptions.workerSrc = root.dataset.pdfWorkerUrl;
+      globalThis.pdfjsLib = state.pdfjs;
     }
-    return state.pdfjs;
+    if (!state.viewerModule) {
+      state.viewerModule = await import(root.dataset.pdfViewerUrl);
+    }
+    return { pdfjs: state.pdfjs, viewer: state.viewerModule };
+  }
+
+  function proxyUrl(documentRecord) {
+    if (!root.dataset.supabaseUrl || !root.dataset.supabaseKey) {
+      return "";
+    }
+    var url = new URL("/functions/v1/library-pdf-proxy", root.dataset.supabaseUrl);
+    url.searchParams.set("id", documentRecord.id);
+    return url.href;
+  }
+
+  function pdfOptions(url, useProxy) {
+    var assetRoot = root.dataset.pdfAssetsUrl;
+    var options = {
+      url: url,
+      disableAutoFetch: true,
+      cMapUrl: assetRoot + "cmaps/",
+      cMapPacked: true,
+      iccUrl: assetRoot + "iccs/",
+      standardFontDataUrl: assetRoot + "standard_fonts/",
+      wasmUrl: assetRoot + "wasm/"
+    };
+    if (useProxy) {
+      options.httpHeaders = {
+        apikey: root.dataset.supabaseKey,
+        Authorization: "Bearer " + root.dataset.supabaseKey
+      };
+    }
+    return options;
+  }
+
+  async function loadPdfAt(url, useProxy) {
+    state.loadingTask = state.pdfjs.getDocument(pdfOptions(url, useProxy));
+    try {
+      return await state.loadingTask.promise;
+    } catch (error) {
+      await state.loadingTask.destroy().catch(function () {});
+      state.loadingTask = null;
+      throw error;
+    }
+  }
+
+  async function releaseDocument() {
+    clearTimeout(state.saveTimer);
+    if (state.viewer) {
+      state.viewer.setDocument(null);
+    }
+    if (state.linkService) {
+      state.linkService.setDocument(null);
+    }
+    if (state.viewerAbort) {
+      state.viewerAbort.abort();
+    }
+    if (state.loadingTask) {
+      await state.loadingTask.destroy().catch(function () {});
+    } else if (state.pdf) {
+      await state.pdf.destroy().catch(function () {});
+    }
+    state.loadingTask = null;
+    state.pdf = null;
+    state.viewer = null;
+    state.linkService = null;
+    state.viewerAbort = null;
+    elements.pdfViewer.replaceChildren();
+  }
+
+  function initializeContinuousViewer(sequence, sourceUrl) {
+    var viewerModule = state.viewerModule;
+    var eventBus = new viewerModule.EventBus();
+    var linkService = new viewerModule.PDFLinkService({
+      eventBus: eventBus,
+      externalLinkTarget: viewerModule.LinkTarget.BLANK
+    });
+    var abortController = new AbortController();
+    var viewer = new viewerModule.PDFViewer({
+      container: elements.viewport,
+      viewer: elements.pdfViewer,
+      eventBus: eventBus,
+      linkService: linkService,
+      imageResourcesPath: root.dataset.pdfAssetsUrl + "web/images/",
+      abortSignal: abortController.signal
+    });
+    linkService.setViewer(viewer);
+    state.viewer = viewer;
+    state.linkService = linkService;
+    state.viewerAbort = abortController;
+
+    eventBus.on("pagesinit", function () {
+      if (sequence !== state.openingSequence || !state.pdf) {
+        return;
+      }
+      viewer.scrollMode = viewerModule.ScrollMode.VERTICAL;
+      viewer.currentScale = state.zoom;
+      state.page = Math.min(state.page, state.pdf.numPages);
+      viewer.currentPageNumber = state.page;
+      viewer.scrollPageIntoView({ pageNumber: state.page });
+      updateReaderControls();
+      persistProgress();
+      updateReaderUrl();
+      elements.viewport.focus({ preventScroll: true });
+    });
+    eventBus.on("pagechanging", function (event) {
+      if (sequence !== state.openingSequence) {
+        return;
+      }
+      state.page = event.pageNumber;
+      updateReaderControls();
+      persistProgress();
+      updateReaderUrl();
+    });
+    eventBus.on("scalechanging", function (event) {
+      if (sequence !== state.openingSequence) {
+        return;
+      }
+      state.zoom = event.scale;
+      updateReaderControls();
+      persistProgress();
+    });
+    eventBus.on("pagerendered", function () {
+      if (sequence === state.openingSequence) {
+        elements.loading.hidden = true;
+      }
+    });
+
+    viewer.setDocument(state.pdf);
+    linkService.setDocument(state.pdf, sourceUrl);
   }
 
   async function openDocument(documentRecord) {
-    state.activeDocument = documentRecord;
-    state.renderSequence += 1;
-    if (state.renderTask) {
-      state.renderTask.cancel();
-    }
-    if (state.pdf) {
-      await state.pdf.destroy().catch(function () {});
-      state.pdf = null;
+    var sequence = ++state.openingSequence;
+    await releaseDocument();
+    if (sequence !== state.openingSequence) {
+      return;
     }
 
+    state.activeDocument = documentRecord;
     var saved = state.progress[documentRecord.id];
-    var requestedPage = Number(new URL(location.href).searchParams.get("page"));
-    state.page = Math.max(1, (saved && saved.page) || requestedPage || 1);
+    var pageUrl = new URL(location.href);
+    var requestedPage = pageUrl.searchParams.get("doc") === documentRecord.id
+      ? Number(pageUrl.searchParams.get("page"))
+      : 0;
+    state.page = Math.max(1, requestedPage || (saved && saved.page) || 1);
     state.zoom = Math.min(2.5, Math.max(0.5, (saved && saved.zoom) || 1));
     elements.reader.hidden = false;
     elements.workspace.classList.add("is-reading");
@@ -385,43 +480,51 @@
     elements.openNative.href = documentRecord.path;
     elements.loading.hidden = false;
     elements.readerError.hidden = true;
-    elements.canvas.hidden = true;
+    elements.pdfViewer.replaceChildren();
     renderDocuments();
     updateReaderControls();
 
     try {
-      var pdfjs = await loadPdfJs();
-      var assetRoot = root.dataset.pdfAssetsUrl;
-      var loadingTask = pdfjs.getDocument({
-        url: documentRecord.path,
-        cMapUrl: assetRoot + "cmaps/",
-        cMapPacked: true,
-        iccUrl: assetRoot + "iccs/",
-        standardFontDataUrl: assetRoot + "standard_fonts/",
-        wasmUrl: assetRoot + "wasm/"
-      });
-      state.pdf = await loadingTask.promise;
+      await loadPdfModules();
+      if (sequence !== state.openingSequence) {
+        return;
+      }
+      try {
+        state.pdf = await loadPdfAt(documentRecord.path, false);
+      } catch (directError) {
+        var fallback = documentRecord.source === "external" ? proxyUrl(documentRecord) : "";
+        if (!fallback) {
+          if (documentRecord.source === "external") {
+            throw new Error("external_pdf_unavailable");
+          }
+          throw directError;
+        }
+        try {
+          state.pdf = await loadPdfAt(fallback, true);
+        } catch (_) {
+          throw new Error("external_pdf_unavailable");
+        }
+      }
+      if (sequence !== state.openingSequence) {
+        return;
+      }
       state.page = Math.min(state.page, state.pdf.numPages);
-      await renderPage();
+      initializeContinuousViewer(sequence, documentRecord.path);
       elements.reader.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
+      if (sequence !== state.openingSequence) {
+        return;
+      }
       elements.loading.hidden = true;
-      elements.readerError.textContent = "The PDF is not available yet or could not be loaded. " + friendlyError(error);
+      elements.readerError.textContent = friendlyError(error);
       elements.readerError.hidden = false;
     }
   }
 
   async function closeReader() {
+    state.openingSequence += 1;
     state.activeDocument = null;
-    state.renderSequence += 1;
-    clearTimeout(state.saveTimer);
-    if (state.renderTask) {
-      state.renderTask.cancel();
-    }
-    if (state.pdf) {
-      await state.pdf.destroy().catch(function () {});
-    }
-    state.pdf = null;
+    await releaseDocument();
     elements.reader.hidden = true;
     elements.workspace.classList.remove("is-reading");
     updateReaderUrl();
@@ -429,20 +532,43 @@
   }
 
   function goToPage(value) {
-    if (!state.pdf) {
+    if (!state.pdf || !state.viewer) {
       return;
     }
-    state.page = Math.min(state.pdf.numPages, Math.max(1, Number(value) || 1));
-    renderPage();
+    var page = Math.min(state.pdf.numPages, Math.max(1, Number(value) || 1));
+    state.viewer.currentPageNumber = page;
   }
 
   function setZoom(value) {
-    state.zoom = Math.min(2.5, Math.max(0.5, Math.round(value * 10) / 10));
-    renderPage();
+    if (!state.viewer) {
+      return;
+    }
+    var zoom = Math.min(2.5, Math.max(0.5, Math.round(value * 10) / 10));
+    state.viewer.currentScale = zoom;
+  }
+
+  function selectedSource() {
+    var selected = elements.uploadForm.elements.source;
+    return selected && selected.value === "external" ? "external" : "repository";
+  }
+
+  function updateSourceFields() {
+    var external = selectedSource() === "external";
+    elements.fileField.hidden = external;
+    elements.urlField.hidden = !external;
+    elements.file.required = !external;
+    elements.url.required = external;
+    elements.sourceNote.textContent = external
+      ? "Only the catalog entry is committed to GitHub. Reading remains inside this site while the PDF stays at its source."
+      : "The PDF and its catalog entry will be committed to the public GitHub repository.";
+    elements.consentText.textContent = external
+      ? "I confirm that this public link may be indexed here and that I am permitted to access the document."
+      : "I confirm that this document may be stored publicly and that I have the right to archive it.";
   }
 
   function openUploadDialog() {
     elements.uploadError.textContent = "";
+    updateSourceFields();
     if (typeof elements.uploadDialog.showModal === "function") {
       elements.uploadDialog.showModal();
     } else {
@@ -458,40 +584,53 @@
     }
   }
 
-  async function uploadDocument(event) {
+  async function addDocument(event) {
     event.preventDefault();
     elements.uploadError.textContent = "";
     var data = new FormData(elements.uploadForm);
-    var file = data.get("pdf");
+    var source = selectedSource();
     var title = String(data.get("title") || "").trim();
     var tags = String(data.get("tags") || "");
 
     elements.submitUpload.disabled = true;
-    elements.submitUpload.textContent = "Committing...";
+    elements.submitUpload.textContent = "Adding...";
     try {
-      var buffer = await file.arrayBuffer();
-      window.LibraryGitHub.validatePdf(file, buffer);
       var credentials = await store.getUploadToken();
-      var result = await window.LibraryGitHub.commitDocument({
+      var common = {
         token: credentials.token,
         repository: root.dataset.repository,
         branch: root.dataset.branch,
-        file: file,
-        buffer: buffer,
         title: title,
         tags: tags
-      });
+      };
+      var result;
+      if (source === "external") {
+        result = await window.LibraryGitHub.commitExternalDocument(Object.assign(common, {
+          url: String(data.get("url") || "")
+        }));
+      } else {
+        var file = data.get("pdf");
+        var buffer = await file.arrayBuffer();
+        window.LibraryGitHub.validatePdf(file, buffer);
+        result = await window.LibraryGitHub.commitDocument(Object.assign(common, {
+          file: file,
+          buffer: buffer
+        }));
+      }
       state.documents = result.catalog.documents;
       renderTags();
       renderDocuments();
       elements.uploadForm.reset();
+      updateSourceFields();
       closeUploadDialog();
-      setMessage("PDF committed to GitHub. GitHub Pages may take a minute to publish the new file.");
+      setMessage(source === "external"
+        ? "External PDF link added. Its reading progress will sync like an archived document."
+        : "PDF committed to GitHub. GitHub Pages may take a minute to publish the new file.");
     } catch (error) {
       elements.uploadError.textContent = friendlyError(error);
     } finally {
       elements.submitUpload.disabled = false;
-      elements.submitUpload.textContent = "Commit to GitHub";
+      elements.submitUpload.textContent = "Add Document";
     }
   }
 
@@ -537,11 +676,22 @@
   elements.upload.addEventListener("click", openUploadDialog);
   elements.closeUpload.addEventListener("click", closeUploadDialog);
   elements.cancelUpload.addEventListener("click", closeUploadDialog);
-  elements.uploadForm.addEventListener("submit", uploadDocument);
+  elements.uploadForm.addEventListener("submit", addDocument);
+  elements.sourcePicker.addEventListener("change", updateSourceFields);
   elements.file.addEventListener("change", function () {
     var title = elements.uploadForm.elements.title;
     if (elements.file.files[0] && !title.value) {
       title.value = elements.file.files[0].name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " ");
+    }
+  });
+  elements.url.addEventListener("change", function () {
+    var title = elements.uploadForm.elements.title;
+    if (!title.value) {
+      try {
+        title.value = window.LibraryGitHub.externalFilename(elements.url.value)
+          .replace(/\.pdf$/i, "")
+          .replace(/[-_]+/g, " ");
+      } catch (_) {}
     }
   });
   elements.closeReader.addEventListener("click", closeReader);
@@ -566,7 +716,7 @@
   store.onAuthChange(function () {
     setTimeout(refreshAuth, 0);
   });
-
+  updateSourceFields();
   refreshAuth().then(loadCatalog).catch(function (error) {
     setMessage(friendlyError(error));
     elements.syncState.textContent = "Local progress";

@@ -93,11 +93,47 @@
     }
   }
 
+  function validateExternalUrl(value) {
+    var raw = String(value || "").trim();
+    if (!raw) {
+      throw new Error("external_url_required");
+    }
+    var url;
+    try {
+      url = new URL(raw);
+    } catch (_) {
+      throw new Error("external_url_invalid");
+    }
+    if (url.protocol !== "https:" || url.username || url.password) {
+      throw new Error("external_url_https_required");
+    }
+    url.hash = "";
+    return url.href;
+  }
+
+  function externalFilename(value) {
+    var url = new URL(value);
+    var path = url.pathname.split("/").filter(Boolean).pop() || url.hostname;
+    try {
+      path = decodeURIComponent(path);
+    } catch (_) {
+      path = url.hostname;
+    }
+    return path.slice(0, 240);
+  }
+
   function normalizeCatalog(value) {
     var catalog = value && typeof value === "object" ? value : {};
+    var documents = (Array.isArray(catalog.documents) ? catalog.documents : []).map(function (document) {
+      if (!document || typeof document !== "object") {
+        return null;
+      }
+      var source = document.source === "external" ? "external" : "repository";
+      return Object.assign({}, document, { source: source });
+    }).filter(Boolean);
     return {
-      schemaVersion: 1,
-      documents: Array.isArray(catalog.documents) ? catalog.documents.slice() : []
+      schemaVersion: 2,
+      documents: documents
     };
   }
 
@@ -172,6 +208,7 @@
 
     var document = {
       id: documentId,
+      source: "repository",
       title: title,
       filename: String(file.name || "document.pdf").slice(0, 240),
       path: "/" + pdfPath,
@@ -227,15 +264,110 @@
     };
   }
 
+  async function commitExternalDocument(options) {
+    var settings = options || {};
+    var fetchApi = settings.fetch || (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null);
+    if (!fetchApi) {
+      throw new Error("fetch_unavailable");
+    }
+
+    var repository = validateRepository(settings.repository);
+    var branch = String(settings.branch || "main");
+    var token = String(settings.token || "");
+    var title = String(settings.title || "").trim().slice(0, 160);
+    var externalUrl = validateExternalUrl(settings.url);
+    if (!token) {
+      throw new Error("github_token_required");
+    }
+    if (!title) {
+      throw new Error("title_required");
+    }
+
+    var urlBytes = new TextEncoder().encode(externalUrl);
+    var digest = await sha256Hex(urlBytes.buffer, settings.crypto);
+    var documentId = "url-" + digest.slice(0, 16);
+    var baseUrl = "https://api.github.com/repos/" + repository;
+    var headers = apiHeaders(token);
+    var reference = await request(fetchApi, baseUrl + "/git/ref/heads/" + encodeURIComponent(branch), {
+      headers: headers
+    });
+    var headSha = reference.object.sha;
+    var headCommit = await request(fetchApi, baseUrl + "/git/commits/" + headSha, {
+      headers: headers
+    });
+    var catalogResponse = await request(fetchApi, baseUrl + "/contents/" + CATALOG_PATH + "?ref=" + encodeURIComponent(branch), {
+      headers: headers
+    });
+    var catalog = normalizeCatalog(JSON.parse(decodeBase64(catalogResponse.content)));
+    if (catalog.documents.some(function (document) {
+      return document.id === documentId || document.source === "external" && document.path === externalUrl;
+    })) {
+      var duplicate = new Error("external_document_exists");
+      duplicate.code = "duplicate_external_document";
+      throw duplicate;
+    }
+
+    var document = {
+      id: documentId,
+      source: "external",
+      title: title,
+      filename: externalFilename(externalUrl),
+      path: externalUrl,
+      tags: parseTags(settings.tags),
+      addedAt: new Date().toISOString()
+    };
+    catalog.documents.unshift(document);
+    var catalogJson = JSON.stringify(catalog, null, 2) + "\n";
+    var catalogBlob = await request(fetchApi, baseUrl + "/git/blobs", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers),
+      body: JSON.stringify({ content: catalogJson, encoding: "utf-8" })
+    });
+    var tree = await request(fetchApi, baseUrl + "/git/trees", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers),
+      body: JSON.stringify({
+        base_tree: headCommit.tree.sha,
+        tree: [
+          { path: CATALOG_PATH, mode: "100644", type: "blob", sha: catalogBlob.sha }
+        ]
+      })
+    });
+    var commit = await request(fetchApi, baseUrl + "/git/commits", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers),
+      body: JSON.stringify({
+        message: "library: link " + title,
+        tree: tree.sha,
+        parents: [headSha]
+      })
+    });
+    await request(fetchApi, baseUrl + "/git/refs/heads/" + encodeURIComponent(branch), {
+      method: "PATCH",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers),
+      body: JSON.stringify({ sha: commit.sha, force: false })
+    });
+
+    return {
+      document: document,
+      catalog: catalog,
+      commitSha: commit.sha,
+      commitUrl: "https://github.com/" + repository + "/commit/" + commit.sha
+    };
+  }
+
   return {
     API_VERSION: API_VERSION,
     CATALOG_PATH: CATALOG_PATH,
     MAX_FILE_SIZE: MAX_FILE_SIZE,
     commitDocument: commitDocument,
+    commitExternalDocument: commitExternalDocument,
+    externalFilename: externalFilename,
     normalizeCatalog: normalizeCatalog,
     parseTags: parseTags,
     sha256Hex: sha256Hex,
     slugify: slugify,
+    validateExternalUrl: validateExternalUrl,
     validatePdf: validatePdf
   };
 }));

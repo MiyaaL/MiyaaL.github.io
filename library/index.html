@@ -25,6 +25,7 @@ library: true
     data-library-app
     data-catalog-url="{{ '/assets/library/catalog.json' | relative_url }}"
     data-pdfjs-url="{{ '/assets/pdfjs/build/pdf.min.mjs' | relative_url }}"
+    data-pdf-viewer-url="{{ '/assets/pdfjs/web/pdf_viewer.mjs' | relative_url }}"
     data-pdf-worker-url="{{ '/assets/pdfjs/build/pdf.worker.min.mjs' | relative_url }}"
     data-pdf-assets-url="{{ '/assets/pdfjs/' | relative_url }}"
     data-supabase-url="{{ site.plan.supabase_url | default: '' | escape }}"
@@ -43,7 +44,7 @@ library: true
         </svg>
         <input type="search" data-library-search placeholder="Search title, filename, or tag..." autocomplete="off">
       </label>
-      <button class="library-text-button" type="button" data-library-upload hidden>Upload PDF</button>
+      <button class="library-text-button" type="button" data-library-upload hidden>Add Document</button>
     </header>
 
     <div class="library-tags" data-library-tags aria-label="Filter by tag"></div>
@@ -73,6 +74,8 @@ library: true
         </header>
 
         <div class="library-reader-toolbar" aria-label="PDF navigation">
+          <span class="library-reader-mode">Continuous</span>
+          <span class="library-reader-divider" aria-hidden="true"></span>
           <button type="button" data-library-previous-page aria-label="Previous page">←</button>
           <label>
             <span>Page</span>
@@ -86,13 +89,15 @@ library: true
           <button type="button" data-library-zoom-in aria-label="Zoom in">+</button>
         </div>
 
-        <div class="library-reader-viewport" data-library-reader-viewport>
-          <div class="library-reader-loading" data-library-reader-loading>
-            <span aria-hidden="true"></span>
-            <p>Loading document...</p>
+        <div class="library-reader-stage">
+          <div class="library-reader-viewport" data-library-reader-viewport tabindex="0" aria-label="Continuous PDF reader">
+            <div class="library-pdf-viewer pdfViewer" data-library-pdf-viewer></div>
+            <div class="library-reader-loading" data-library-reader-loading>
+              <span aria-hidden="true"></span>
+              <p>Loading document...</p>
+            </div>
+            <p class="library-reader-error" data-library-reader-error hidden></p>
           </div>
-          <canvas data-library-canvas aria-label="Rendered PDF page"></canvas>
-          <p class="library-reader-error" data-library-reader-error hidden></p>
         </div>
       </section>
     </div>
@@ -101,18 +106,38 @@ library: true
       <form method="dialog" class="library-upload-form" data-library-upload-form>
         <header>
           <div>
-            <p class="eyebrow">GITHUB ARCHIVE</p>
-            <h2>Upload PDF</h2>
+            <p class="eyebrow">DOCUMENT SOURCE</p>
+            <h2>Add Document</h2>
           </div>
           <button class="library-icon-button" type="button" data-library-close-upload aria-label="Close upload dialog">×</button>
         </header>
 
-        <p class="library-upload-note">The PDF and its catalog entry will be committed to the public GitHub repository.</p>
+        <fieldset class="library-source-picker" data-library-source-picker>
+          <legend>Source</legend>
+          <label>
+            <input type="radio" name="source" value="repository" checked>
+            <span>GitHub archive</span>
+            <small>Store the PDF and catalog entry in this repository.</small>
+          </label>
+          <label>
+            <input type="radio" name="source" value="external">
+            <span>External link</span>
+            <small>Store only a stable public HTTPS URL in the catalog.</small>
+          </label>
+        </fieldset>
 
-        <label>
+        <p class="library-upload-note" data-library-source-note>The PDF and its catalog entry will be committed to the public GitHub repository.</p>
+
+        <label data-library-file-field>
           <span>PDF file</span>
           <input type="file" accept="application/pdf,.pdf" name="pdf" required data-library-file>
           <small>PDF only · maximum 50 MB</small>
+        </label>
+
+        <label data-library-url-field hidden>
+          <span>Public PDF URL</span>
+          <input type="url" name="url" inputmode="url" placeholder="https://example.org/paper.pdf" data-library-url>
+          <small>Use a stable, direct HTTPS link. The PDF remains on the source server.</small>
         </label>
 
         <label>
@@ -128,13 +153,13 @@ library: true
 
         <label class="library-upload-consent">
           <input type="checkbox" name="consent" required>
-          <span>I confirm that this document may be stored publicly and that I have the right to archive it.</span>
+          <span data-library-consent-text>I confirm that this document may be stored publicly and that I have the right to archive it.</span>
         </label>
 
         <p class="library-form-error" data-library-upload-error role="alert"></p>
         <div class="library-upload-actions">
           <button class="library-button" type="button" data-library-cancel-upload>Cancel</button>
-          <button class="library-button library-button-primary" type="submit" data-library-submit-upload>Commit to GitHub</button>
+          <button class="library-button library-button-primary" type="submit" data-library-submit-upload>Add Document</button>
         </div>
       </form>
     </dialog>

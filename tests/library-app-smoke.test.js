@@ -50,6 +50,13 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector("[data-library-upload]").hidden, true);
   assert.strictEqual(window.document.querySelector("[data-library-sync-state]").textContent, "Local only");
   assert(window.document.querySelector('a[href="/library/"]').getAttribute("aria-current") === "page");
+  assert(window.document.querySelector("[data-library-pdf-viewer]").classList.contains("pdfViewer"));
+  assert.strictEqual(window.document.querySelector("[data-library-canvas]"), null);
+  assert.strictEqual(window.document.querySelectorAll('[name="source"]').length, 2);
+  assert.strictEqual(window.document.querySelector('[name="source"]:checked').value, "repository");
+  assert.strictEqual(window.document.querySelector("[data-library-url-field]").hidden, true);
+  assert(window.document.querySelector('link[href*="pdf_viewer.css"]'));
+  assert.strictEqual(window.LibraryGitHub.normalizeCatalog(catalog).documents[0].source, "repository");
 
   const search = window.document.querySelector("[data-library-search]");
   search.value = "quant";
@@ -64,7 +71,7 @@ const { JSDOM } = require("jsdom");
   aiInfraTag.click();
   assert.strictEqual(window.document.querySelectorAll(".library-document").length, 1);
 
-  console.log("PASS: generated Library page navigation, catalog, tag, and name filtering smoke test");
+  console.log("PASS: generated Library navigation, continuous viewer, source selector, and filtering smoke test");
   window.close();
 }()).catch((error) => {
   console.error(error);
