@@ -29,6 +29,7 @@ const { JSDOM } = require("jsdom");
   [
     "/site/assets/js/plan-core.js",
     "/site/assets/js/plan-store.js",
+    "/site/assets/js/plan-chart.js",
     "/site/assets/js/plan-app.js"
   ].forEach((path) => window.eval(fs.readFileSync(path, "utf8")));
 
@@ -37,6 +38,7 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector("[data-plan-sync-state]").textContent, "同步未配置");
   assert.strictEqual(window.document.querySelector("[data-plan-view]").hidden, false);
   assert.strictEqual(window.document.querySelectorAll(".plan-day").length, 42);
+  assert.strictEqual(window.document.querySelector("[data-plan-chart-empty]").hidden, false);
   assert(window.document.querySelector("[data-session-id]"));
 
   window.document.querySelector("[data-session-id]").click();

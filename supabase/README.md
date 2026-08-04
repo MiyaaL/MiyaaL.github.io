@@ -63,6 +63,7 @@ Publishable Key 设计为浏览器公开使用；真正的访问控制由迁移�
 
 ```bash
 docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-core.test.js
+docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-chart.test.js
 docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-store.test.js
 docker compose run --rm site ruby scripts/check_blog_format.rb
 docker compose run --rm site bundle exec jekyll build --trace

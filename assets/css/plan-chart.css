@@ -1,0 +1,281 @@
+.plan-chart-shell {
+  --plan-chart-bodyweight: #3f806c;
+  --plan-chart-bench: #2e6ca8;
+  --plan-chart-pullup: #785aa6;
+  --plan-chart-squat: #9a652e;
+  padding: 46px 0 50px;
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-theme="dark"] .plan-chart-shell {
+  --plan-chart-bodyweight: #79bca4;
+  --plan-chart-bench: #7fafe8;
+  --plan-chart-pullup: #b99ae2;
+  --plan-chart-squat: #d5a56f;
+}
+
+.plan-chart-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.plan-chart-heading h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.plan-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px 18px;
+}
+
+.plan-chart-legend-item {
+  display: inline-grid;
+  grid-template-columns: 8px auto;
+  align-items: center;
+  column-gap: 7px;
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.plan-chart-legend-item i {
+  width: 8px;
+  height: 2px;
+  background: var(--plan-chart-series);
+}
+
+.plan-chart-legend-item span {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.plan-chart-legend-item small {
+  grid-column: 2;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.plan-chart-legend-item i.is-bodyweight {
+  --plan-chart-series: var(--plan-chart-bodyweight);
+}
+
+.plan-chart-legend-item i.is-bench {
+  --plan-chart-series: var(--plan-chart-bench);
+}
+
+.plan-chart-legend-item i.is-pullup {
+  --plan-chart-series: var(--plan-chart-pullup);
+}
+
+.plan-chart-legend-item i.is-squat {
+  --plan-chart-series: var(--plan-chart-squat);
+}
+
+.plan-chart-plot {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  margin-top: 24px;
+}
+
+.plan-chart-svg {
+  display: block;
+  width: 100%;
+  height: 300px;
+  overflow: visible;
+}
+
+.plan-chart-grid-line,
+.plan-chart-today-line,
+.plan-chart-line,
+.plan-chart-point,
+.plan-chart-today-ring {
+  vector-effect: non-scaling-stroke;
+}
+
+.plan-chart-grid-line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.plan-chart-axis-label,
+.plan-chart-unit,
+.plan-chart-today-label {
+  fill: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.plan-chart-unit {
+  letter-spacing: 0.08em;
+}
+
+.plan-chart-today-line {
+  stroke: var(--text-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.72;
+}
+
+.plan-chart-today-label {
+  fill: var(--text-soft);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.plan-chart-line {
+  fill: none;
+  stroke: var(--plan-chart-series);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plan-chart-line.is-bodyweight {
+  stroke-dasharray: 4 3;
+}
+
+.plan-chart-line.is-bodyweight,
+.plan-chart-point.is-bodyweight,
+.plan-chart-today-ring.is-bodyweight {
+  --plan-chart-series: var(--plan-chart-bodyweight);
+}
+
+.plan-chart-line.is-bench,
+.plan-chart-point.is-bench,
+.plan-chart-today-ring.is-bench {
+  --plan-chart-series: var(--plan-chart-bench);
+}
+
+.plan-chart-line.is-pullup,
+.plan-chart-point.is-pullup,
+.plan-chart-today-ring.is-pullup {
+  --plan-chart-series: var(--plan-chart-pullup);
+}
+
+.plan-chart-line.is-squat,
+.plan-chart-point.is-squat,
+.plan-chart-today-ring.is-squat {
+  --plan-chart-series: var(--plan-chart-squat);
+}
+
+.plan-chart-point {
+  fill: var(--plan-chart-series);
+  stroke: var(--bg);
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+
+.plan-chart-point-hit {
+  fill: transparent;
+  outline: 0;
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.plan-chart-point-hit:focus + .plan-chart-point {
+  stroke: var(--text);
+  stroke-width: 2.4;
+}
+
+.plan-chart-today-ring {
+  fill: var(--bg);
+  stroke: var(--plan-chart-series);
+  stroke-width: 1.4;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.plan-chart-tooltip {
+  position: absolute;
+  z-index: 3;
+  min-width: 174px;
+  max-width: 230px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.14);
+  color: var(--text);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 12px));
+}
+
+.plan-chart-tooltip.is-below {
+  transform: translate(-50%, 12px);
+}
+
+.plan-chart-tooltip strong,
+.plan-chart-tooltip span,
+.plan-chart-tooltip small {
+  display: block;
+}
+
+.plan-chart-tooltip strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.plan-chart-tooltip span {
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.plan-chart-tooltip small {
+  margin-top: 2px;
+  color: var(--text-soft);
+  font-size: 10px;
+}
+
+.plan-chart-empty {
+  margin: 24px 0 0;
+  padding: 52px 0;
+  border-block: 1px solid var(--border);
+  color: var(--text-soft);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 780px) {
+  .plan-chart-shell {
+    padding-block: 40px 44px;
+  }
+
+  .plan-chart-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .plan-chart-legend {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .plan-chart-plot {
+    min-height: 260px;
+    margin-top: 20px;
+  }
+
+  .plan-chart-svg {
+    height: 260px;
+  }
+
+  .plan-chart-legend-item small {
+    display: none;
+  }
+
+  .plan-chart-tooltip {
+    min-width: 154px;
+    max-width: 190px;
+  }
+}

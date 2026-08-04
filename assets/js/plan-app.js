@@ -7,6 +7,7 @@
   }
 
   var core = window.PlanCore;
+  var chart = window.PlanChart || null;
   var dom = {
     loading: app.querySelector("[data-plan-loading]"),
     empty: app.querySelector("[data-plan-empty]"),
@@ -21,6 +22,7 @@
     newCycle: app.querySelector("[data-plan-new-cycle]"),
     signOut: app.querySelector("[data-plan-sign-out]"),
     progress: app.querySelector("[data-plan-progress]"),
+    chart: app.querySelector("[data-plan-chart]"),
     warnings: app.querySelector("[data-plan-warnings]"),
     cycleSelectWrap: app.querySelector("[data-plan-cycle-select-wrap]"),
     cycleSelect: app.querySelector("[data-plan-cycle-select]"),
@@ -67,6 +69,7 @@
   var settingsHolidayOverrides = {};
   var pendingConflictState = null;
   var mobileQuery = window.matchMedia("(max-width: 780px)");
+  var chartResizeTimer = null;
 
   function escapeHtml(value) {
     return String(value == null ? "" : value)
@@ -287,6 +290,7 @@
 
     renderProgress(plan.cycle);
     renderWarnings(plan);
+    renderTrajectory(plan);
     renderCycleSelect();
     normalizeViewDate(plan.cycle);
     renderCalendar(plan);
@@ -327,6 +331,18 @@
         '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
         percentage.toFixed(1) + '%"></span></div></div>';
     }).join("");
+  }
+
+  function renderTrajectory(plan) {
+    if (!dom.chart) {
+      return;
+    }
+    if (!chart) {
+      dom.chart.hidden = true;
+      return;
+    }
+    dom.chart.hidden = false;
+    chart.render(dom.chart, plan, { today: todayInShanghai() });
   }
 
   function renderWarnings(plan) {
@@ -1062,6 +1078,15 @@
     render();
   });
   app.querySelector("[data-plan-reload]").addEventListener("click", reloadAfterConflict);
+  window.addEventListener("resize", function () {
+    window.clearTimeout(chartResizeTimer);
+    chartResizeTimer = window.setTimeout(function () {
+      var plan = displayPlan();
+      if (plan) {
+        renderTrajectory(plan);
+      }
+    }, 120);
+  });
   app.querySelector("[data-plan-force-save]").addEventListener("click", forceSave);
   mobileQuery.addEventListener("change", function () {
     renderCalendar(displayPlan());

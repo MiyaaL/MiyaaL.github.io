@@ -30,6 +30,7 @@ const { JSDOM } = require("jsdom");
 
   window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
   window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
+  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
 
   const state = window.PlanCore.createDefaultState("2026-08-03");
   state.activeCycle.endDate = "2026-10-25";
@@ -53,6 +54,23 @@ const { JSDOM } = require("jsdom");
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.strictEqual(window.document.querySelector("[data-plan-owner-actions]").hidden, false);
   assert.strictEqual(window.document.querySelector("[data-plan-auth]").hidden, true);
+  assert(window.document.querySelector(".plan-chart-svg"));
+  const generated = window.PlanCore.generate(state, [holidays]);
+  const chartPlot = window.document.querySelector("[data-plan-chart-plot]");
+  Object.defineProperty(chartPlot, "clientWidth", { configurable: true, value: 420 });
+  Object.defineProperty(chartPlot, "clientHeight", { configurable: true, value: 260 });
+  window.PlanChart.render(
+    window.document.querySelector("[data-plan-chart]"),
+    generated,
+    { today: "2026-08-20" }
+  );
+  assert.strictEqual(window.document.querySelector(".plan-chart-svg").getAttribute("viewBox"), "0 0 420 260");
+  assert(window.document.querySelector(".plan-chart-today-line"));
+  assert.strictEqual(window.document.querySelectorAll(".plan-chart-point-hit.is-today").length, 4);
+  const chartPoint = window.document.querySelector("[data-chart-point]");
+  chartPoint.dispatchEvent(new window.MouseEvent("mouseenter"));
+  assert.strictEqual(window.document.querySelector("[data-chart-tooltip]").hidden, false);
+  assert(window.document.querySelector("[data-chart-tooltip-value]").textContent.includes("kg"));
 
   window.document.querySelector("[data-session-id]").click();
   assert(window.document.querySelector("[data-save-log]"));
