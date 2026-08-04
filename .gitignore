@@ -6,3 +6,6 @@ _site/
 .bundle-cache/
 vendor/
 .DS_Store
+*.pem
+supabase-deploy.env
+supabase/.temp/
