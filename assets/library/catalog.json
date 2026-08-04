@@ -1,4 +1,16 @@
 {
   "schemaVersion": 3,
-  "documents": []
+  "documents": [
+    {
+      "id": "url-d6e284e56513b8f2",
+      "source": "external",
+      "title": "Mathematics for Machine Learning",
+      "filename": "mml-book.pdf",
+      "path": "https://mml-book.github.io/book/mml-book.pdf",
+      "tags": [
+        "Machine Learning"
+      ],
+      "addedAt": "2026-08-04T16:19:29.774Z"
+    }
+  ]
 }
