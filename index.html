@@ -1,7 +1,7 @@
 ---
 layout: default
 title: AI Infra
-description: "关注 LLM、VLA 基础设施、性能建模与优化分析。"
+description: "Research on LLM and VLA infrastructure, performance modeling, and systems optimization."
 permalink: /
 ---
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
@@ -9,22 +9,22 @@ permalink: /
 <section class="hero">
   <div class="container hero-grid">
     <div class="hero-copy">
-      <p class="eyebrow">PROFILE / 个人简介</p>
+      <p class="eyebrow">RESEARCH PROFILE</p>
       <h1>MiyaaL</h1>
       <p class="hero-role">AI Infra</p>
-      <p class="hero-intro">关注 LLM、VLA 基础设施、性能建模与优化分析。</p>
+      <p class="hero-intro">Research on LLM and VLA infrastructure, performance modeling, and systems optimization.</p>
       <div class="hero-actions">
-        <a href="{{ '/blog/' | relative_url }}">浏览文章 <span aria-hidden="true">→</span></a>
+        <a href="{{ '/blog/' | relative_url }}">Explore Writing <span aria-hidden="true">→</span></a>
         <a href="https://github.com/MiyaaL" target="_blank" rel="me noopener">GitHub <span aria-hidden="true">↗</span></a>
       </div>
     </div>
 
-    <aside class="expertise" aria-label="关注主题">
-      <p class="eyebrow">TOPICS / 关注主题</p>
+    <aside class="expertise" aria-label="Research areas">
+      <p class="eyebrow">RESEARCH AREAS</p>
       <dl>
-        <div><dt>推理框架</dt><dd><a href="https://github.com/X-Square-Robot/wall-x" target="_blank" rel="noopener">Wall-X ↗</a></dd></div>
-        <div><dt>算子优化</dt><dd>待开放</dd></div>
-        <div><dt>AI 芯片</dt><dd>待开放</dd></div>
+        <div><dt>Inference Systems</dt><dd><a href="https://github.com/X-Square-Robot/wall-x" target="_blank" rel="noopener">Wall-X ↗</a></dd></div>
+        <div><dt>Kernel Optimization</dt><dd>Forthcoming</dd></div>
+        <div><dt>AI Accelerators</dt><dd>Forthcoming</dd></div>
       </dl>
     </aside>
   </div>
@@ -34,10 +34,10 @@ permalink: /
   <div class="container">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">WRITING / 最新文章</p>
-        <h2>最新文章</h2>
+        <p class="eyebrow">SELECTED WRITING</p>
+        <h2>Recent Articles</h2>
       </div>
-      <a href="{{ '/blog/' | relative_url }}">查看全部 <span aria-hidden="true">→</span></a>
+      <a href="{{ '/blog/' | relative_url }}">View All <span aria-hidden="true">→</span></a>
     </div>
 
     {% if published_posts.size > 0 %}
@@ -48,7 +48,7 @@ permalink: /
       </div>
     {% else %}
       <div class="empty-state">
-        <p>文章正在准备中。</p>
+        <p>Articles are in preparation.</p>
       </div>
     {% endif %}
   </div>

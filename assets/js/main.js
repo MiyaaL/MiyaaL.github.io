@@ -7,9 +7,9 @@
   var colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
   var modes = ["system", "light", "dark"];
   var modeLabels = {
-    system: "跟随系统",
-    light: "浅色",
-    dark: "深色"
+    system: "System",
+    light: "Light",
+    dark: "Dark"
   };
 
   function readThemeMode() {
@@ -39,8 +39,8 @@
     }
 
     if (themeToggle) {
-      themeToggle.title = "主题：" + modeLabels[mode] + "（点击切换）";
-      themeToggle.setAttribute("aria-label", "当前主题：" + modeLabels[mode] + "；点击切换");
+      themeToggle.title = "Theme: " + modeLabels[mode] + " (click to change)";
+      themeToggle.setAttribute("aria-label", "Current theme: " + modeLabels[mode] + "; click to change");
     }
 
     if (themeColor) {
