@@ -28,33 +28,12 @@
     }, []).slice(0, 12);
   }
 
-  function slugify(value) {
-    var slug = String(value || "")
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 72);
-    return slug || "document";
-  }
-
   function validateRepository(value) {
     var repository = String(value || "");
     if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
       throw new Error("invalid_repository");
     }
     return repository;
-  }
-
-  function bytesToBase64(buffer) {
-    var bytes = new Uint8Array(buffer);
-    var parts = [];
-    var chunkSize = 0x8000;
-    for (var index = 0; index < bytes.length; index += chunkSize) {
-      parts.push(String.fromCharCode.apply(null, bytes.subarray(index, index + chunkSize)));
-    }
-    return btoa(parts.join(""));
   }
 
   function decodeBase64(value) {
@@ -128,11 +107,13 @@
       if (!document || typeof document !== "object") {
         return null;
       }
-      var source = document.source === "external" ? "external" : "repository";
+      var source = document.source === "external" || document.source === "release"
+        ? document.source
+        : "repository";
       return Object.assign({}, document, { source: source });
     }).filter(Boolean);
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       documents: documents
     };
   }
@@ -159,109 +140,6 @@
       throw error;
     }
     return payload;
-  }
-
-  async function commitDocument(options) {
-    var settings = options || {};
-    var fetchApi = settings.fetch || (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null);
-    if (!fetchApi) {
-      throw new Error("fetch_unavailable");
-    }
-
-    var repository = validateRepository(settings.repository);
-    var branch = String(settings.branch || "main");
-    var token = String(settings.token || "");
-    var title = String(settings.title || "").trim().slice(0, 160);
-    if (!token) {
-      throw new Error("github_token_required");
-    }
-    if (!title) {
-      throw new Error("title_required");
-    }
-
-    var file = settings.file;
-    var buffer = settings.buffer || await file.arrayBuffer();
-    validatePdf(file, buffer);
-    var digest = settings.sha256 || await sha256Hex(buffer, settings.crypto);
-    var documentId = "pdf-" + digest.slice(0, 16);
-    var pdfPath = "assets/library/pdfs/" + slugify(title) + "-" + digest.slice(0, 8) + ".pdf";
-    var baseUrl = "https://api.github.com/repos/" + repository;
-    var headers = apiHeaders(token);
-
-    var reference = await request(fetchApi, baseUrl + "/git/ref/heads/" + encodeURIComponent(branch), {
-      headers: headers
-    });
-    var headSha = reference.object.sha;
-    var headCommit = await request(fetchApi, baseUrl + "/git/commits/" + headSha, {
-      headers: headers
-    });
-
-    var catalogResponse = await request(fetchApi, baseUrl + "/contents/" + CATALOG_PATH + "?ref=" + encodeURIComponent(branch), {
-      headers: headers
-    });
-    var catalog = normalizeCatalog(JSON.parse(decodeBase64(catalogResponse.content)));
-    if (catalog.documents.some(function (document) { return document.id === documentId || document.sha256 === digest; })) {
-      var duplicate = new Error("pdf_already_archived");
-      duplicate.code = "duplicate_pdf";
-      throw duplicate;
-    }
-
-    var document = {
-      id: documentId,
-      source: "repository",
-      title: title,
-      filename: String(file.name || "document.pdf").slice(0, 240),
-      path: "/" + pdfPath,
-      tags: parseTags(settings.tags),
-      bytes: buffer.byteLength,
-      sha256: digest,
-      addedAt: new Date().toISOString()
-    };
-    catalog.documents.unshift(document);
-    var catalogJson = JSON.stringify(catalog, null, 2) + "\n";
-
-    var pdfBlob = await request(fetchApi, baseUrl + "/git/blobs", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, headers),
-      body: JSON.stringify({ content: bytesToBase64(buffer), encoding: "base64" })
-    });
-    var catalogBlob = await request(fetchApi, baseUrl + "/git/blobs", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, headers),
-      body: JSON.stringify({ content: catalogJson, encoding: "utf-8" })
-    });
-    var tree = await request(fetchApi, baseUrl + "/git/trees", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, headers),
-      body: JSON.stringify({
-        base_tree: headCommit.tree.sha,
-        tree: [
-          { path: pdfPath, mode: "100644", type: "blob", sha: pdfBlob.sha },
-          { path: CATALOG_PATH, mode: "100644", type: "blob", sha: catalogBlob.sha }
-        ]
-      })
-    });
-    var commit = await request(fetchApi, baseUrl + "/git/commits", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, headers),
-      body: JSON.stringify({
-        message: "library: archive " + title,
-        tree: tree.sha,
-        parents: [headSha]
-      })
-    });
-    await request(fetchApi, baseUrl + "/git/refs/heads/" + encodeURIComponent(branch), {
-      method: "PATCH",
-      headers: Object.assign({ "Content-Type": "application/json" }, headers),
-      body: JSON.stringify({ sha: commit.sha, force: false })
-    });
-
-    return {
-      document: document,
-      catalog: catalog,
-      commitSha: commit.sha,
-      commitUrl: "https://github.com/" + repository + "/commit/" + commit.sha
-    };
   }
 
   async function commitExternalDocument(options) {
@@ -295,7 +173,7 @@
     var headCommit = await request(fetchApi, baseUrl + "/git/commits/" + headSha, {
       headers: headers
     });
-    var catalogResponse = await request(fetchApi, baseUrl + "/contents/" + CATALOG_PATH + "?ref=" + encodeURIComponent(branch), {
+    var catalogResponse = await request(fetchApi, baseUrl + "/contents/" + CATALOG_PATH + "?ref=" + encodeURIComponent(headSha), {
       headers: headers
     });
     var catalog = normalizeCatalog(JSON.parse(decodeBase64(catalogResponse.content)));
@@ -360,13 +238,11 @@
     API_VERSION: API_VERSION,
     CATALOG_PATH: CATALOG_PATH,
     MAX_FILE_SIZE: MAX_FILE_SIZE,
-    commitDocument: commitDocument,
     commitExternalDocument: commitExternalDocument,
     externalFilename: externalFilename,
     normalizeCatalog: normalizeCatalog,
     parseTags: parseTags,
     sha256Hex: sha256Hex,
-    slugify: slugify,
     validateExternalUrl: validateExternalUrl,
     validatePdf: validatePdf
   };

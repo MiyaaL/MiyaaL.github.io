@@ -68,6 +68,7 @@ library: true
             <div class="library-reader-tags" data-library-reader-tags></div>
           </div>
           <div class="library-reader-actions">
+            <button class="library-text-button library-delete-trigger" type="button" data-library-delete hidden>Delete</button>
             <a class="library-text-button" data-library-open-native target="_blank" rel="noopener">Open PDF</a>
             <button class="library-icon-button" type="button" data-library-close-reader aria-label="Close reader">×</button>
           </div>
@@ -115,9 +116,9 @@ library: true
         <fieldset class="library-source-picker" data-library-source-picker>
           <legend>Source</legend>
           <label>
-            <input type="radio" name="source" value="repository" checked>
-            <span>GitHub archive</span>
-            <small>Store the PDF and catalog entry in this repository.</small>
+            <input type="radio" name="source" value="release" checked>
+            <span>GitHub Release</span>
+            <small>Store a deletable asset without adding the PDF to Git history.</small>
           </label>
           <label>
             <input type="radio" name="source" value="external">
@@ -126,7 +127,7 @@ library: true
           </label>
         </fieldset>
 
-        <p class="library-upload-note" data-library-source-note>The PDF and its catalog entry will be committed to the public GitHub repository.</p>
+        <p class="library-upload-note" data-library-source-note>The PDF will be stored as a deletable GitHub Release asset. Only its catalog entry enters Git history.</p>
 
         <label data-library-file-field>
           <span>PDF file</span>
@@ -160,6 +161,26 @@ library: true
         <div class="library-upload-actions">
           <button class="library-button" type="button" data-library-cancel-upload>Cancel</button>
           <button class="library-button library-button-primary" type="submit" data-library-submit-upload>Add Document</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="library-upload-dialog library-delete-dialog" data-library-delete-dialog>
+      <form method="dialog" class="library-upload-form" data-library-delete-form>
+        <header>
+          <div>
+            <p class="eyebrow">REMOVE DOCUMENT</p>
+            <h2>Delete from Library?</h2>
+          </div>
+          <button class="library-icon-button" type="button" data-library-close-delete aria-label="Close delete dialog">×</button>
+        </header>
+
+        <p class="library-delete-title" data-library-delete-title></p>
+        <p class="library-upload-note" data-library-delete-note></p>
+        <p class="library-form-error" data-library-delete-error role="alert"></p>
+
+        <div class="library-upload-actions">
+          <button class="library-button" type="button" data-library-cancel-delete>Cancel</button>
+          <button class="library-button library-button-danger" type="submit" data-library-confirm-delete>Delete Document</button>
         </div>
       </form>
     </dialog>

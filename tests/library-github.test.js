@@ -21,57 +21,24 @@ function response(payload, status = 200) {
     LibraryGitHub.parseTags("Machine Learning, AI Infra, machine learning, Quant"),
     ["Machine Learning", "AI Infra", "Quant"]
   );
-  assert.strictEqual(LibraryGitHub.slugify("Scaling Laws & GPU"), "scaling-laws-gpu");
+  assert.strictEqual(LibraryGitHub.commitDocument, undefined);
+  assert.strictEqual(LibraryGitHub.deleteDocument, undefined);
+
+  const normalized = LibraryGitHub.normalizeCatalog({
+    schemaVersion: 1,
+    documents: [
+      { id: "pdf-legacy", path: "/assets/library/pdfs/legacy.pdf" },
+      { id: "pdf-release", source: "release", path: "https://github.com/release.pdf" },
+      { id: "url-external", source: "external", path: "https://example.org/paper.pdf" }
+    ]
+  });
+  assert.strictEqual(normalized.schemaVersion, 3);
+  assert.deepStrictEqual(
+    normalized.documents.map((document) => document.source),
+    ["repository", "release", "external"]
+  );
 
   const buffer = new TextEncoder().encode("%PDF-1.4\n%%EOF").buffer;
-  const file = {
-    name: "scaling.pdf",
-    type: "application/pdf",
-    arrayBuffer: async () => buffer
-  };
-  const calls = [];
-  const replies = [
-    response({ object: { sha: "head-sha" } }),
-    response({ tree: { sha: "base-tree" } }),
-    response({ content: Buffer.from('{"schemaVersion":1,"documents":[]}').toString("base64") }),
-    response({ sha: "pdf-blob" }, 201),
-    response({ sha: "catalog-blob" }, 201),
-    response({ sha: "new-tree" }, 201),
-    response({ sha: "new-commit" }, 201),
-    response({ object: { sha: "new-commit" } })
-  ];
-  const mockFetch = async (url, options = {}) => {
-    calls.push({ url, options });
-    return replies.shift();
-  };
-
-  const result = await LibraryGitHub.commitDocument({
-    token: "test-token",
-    repository: "MiyaaL/MiyaaL.github.io",
-    branch: "main",
-    file,
-    buffer,
-    title: "Scaling Laws & GPU",
-    tags: "Machine Learning, AI Infra",
-    fetch: mockFetch,
-    crypto
-  });
-
-  assert.strictEqual(result.document.title, "Scaling Laws & GPU");
-  assert.strictEqual(result.document.source, "repository");
-  assert.deepStrictEqual(result.document.tags, ["Machine Learning", "AI Infra"]);
-  assert(result.document.path.startsWith("/assets/library/pdfs/scaling-laws-gpu-"));
-  assert.strictEqual(result.catalog.documents.length, 1);
-  assert.strictEqual(result.commitSha, "new-commit");
-
-  const treeRequest = JSON.parse(calls[5].options.body);
-  assert.deepStrictEqual(
-    treeRequest.tree.map((entry) => entry.path),
-    [result.document.path.slice(1), "assets/library/catalog.json"]
-  );
-  const refUpdate = JSON.parse(calls[7].options.body);
-  assert.deepStrictEqual(refUpdate, { sha: "new-commit", force: false });
-
   assert.strictEqual(
     LibraryGitHub.validateExternalUrl("https://example.org/papers/ml.pdf#page=3"),
     "https://example.org/papers/ml.pdf"
@@ -106,8 +73,9 @@ function response(payload, status = 200) {
   assert.strictEqual(linked.document.source, "external");
   assert.strictEqual(linked.document.path, "https://example.org/papers/ml.pdf");
   assert.strictEqual(linked.document.filename, "ml.pdf");
-  assert.strictEqual(linked.catalog.schemaVersion, 2);
+  assert.strictEqual(linked.catalog.schemaVersion, 3);
   assert.strictEqual(linkCalls.length, 7);
+  assert(linkCalls[2].url.endsWith("?ref=link-head"));
   const linkedTree = JSON.parse(linkCalls[4].options.body);
   assert.deepStrictEqual(linkedTree.tree.map((entry) => entry.path), ["assets/library/catalog.json"]);
 
@@ -116,7 +84,7 @@ function response(payload, status = 200) {
     /pdf_required/
   );
 
-  console.log("PASS: Library GitHub archive and external-link commit tests");
+  console.log("PASS: Library schema-v3 and external-link catalog commit tests");
 }()).catch((error) => {
   console.error(error);
   process.exitCode = 1;

@@ -1,6 +1,6 @@
 # Library 后端配置
 
-Library 使用与 Plan 相同的 Supabase GitHub OAuth 身份。公开 PDF 与 `assets/library/catalog.json` 存放在 GitHub 仓库；页码和缩放进度存放在 Supabase。
+Library 使用与 Plan 相同的 Supabase GitHub OAuth 身份。目录元数据保存在 `assets/library/catalog.json`，上传的 PDF 存为同仓库的 GitHub Release Asset，不进入 Git 提交历史；页码和缩放进度存放在 Supabase。
 
 ## 数据库
 
@@ -33,20 +33,25 @@ supabase secrets set \
 ```bash
 supabase functions deploy library-github-token \
   --project-ref buawzvkuirytticsxigm
+
+supabase functions deploy library-documents \
+  --project-ref buawzvkuirytticsxigm
 ```
 
-Edge Function 会再次核对 GitHub 数字账号 ID，只向本站和本地预览签发约一小时有效、仅能修改该仓库 Contents 的 installation token。浏览器将 PDF 与目录写入同一个 Git commit。PDF 会公开发布，网页上传上限为 50 MB。
+两个 Edge Function 都会再次核对 GitHub 数字账号 ID。`library-documents` 在服务端使用 installation token，把 PDF 写入可变的 `library-assets-v1` Release，并只把目录元数据提交到 Git；PDF 会公开发布，网页上传上限为 50 MB。`library-github-token` 仅供浏览器提交外链目录项，不再用于上传 PDF。
 
-## 外链 PDF 与连续阅读
+## PDF 存储、删除与连续阅读
 
-Library 默认使用 PDF.js 的连续滚动查看器。当前可见页码与缩放比例继续写入本地缓存；站点所有者登录后会同步到 Supabase，因此仓库文件与外链文件都能跨设备恢复阅读页。
+Library 默认使用 PDF.js 的连续滚动查看器。当前可见页码与缩放比例继续写入本地缓存；站点所有者登录后会同步到 Supabase，因此 Release 文件与外链文件都能跨设备恢复阅读页。
 
 “Add Document” 提供两种来源：
 
-- `GitHub archive`：PDF 与目录一起提交，适合需要长期固化的小文件。Git 历史会永久保留 PDF 对象，即使以后删除工作树文件也不会自动缩小仓库。
+- `GitHub Release`：PDF 作为同仓库 Release Asset 保存，Git 历史只记录目录。删除时先永久删除 Asset，再提交目录变更；操作失败可再次安全重试。
 - `External link`：只提交稳定的公开 HTTPS URL、标题和标签，适合体积较大或已有权威托管地址的资料。链接不得包含账号、密码、临时签名或其他秘密。
 
-阅读器会优先从外部源站直连。源站未开放浏览器 CORS 时，会回退到 `library-pdf-proxy`。代理只接受 `assets/library/catalog.json` 中已登记、`source: external` 的文档 ID，并转发 HTTP Range 请求；它不接受任意 URL，也不支持私有地址。
+删除外链文档只移除本站目录记录，不会删除远端原文件。删除操作仅对已验证的站点所有者显示；服务端会从最新 Git 目录按文档 ID 重新解析目标，不信任浏览器传入的路径或 Asset ID。
+
+阅读器会优先从源站直连。源站未开放浏览器 CORS 时，会回退到 `library-pdf-proxy`。代理只接受 `assets/library/catalog.json` 中已登记、`source: external` 或 `source: release` 的文档 ID，并转发 HTTP Range 请求；Release URL 还必须属于本仓库固定的 `library-assets-v1` tag。代理不接受任意 URL，也不支持私有地址。
 
 部署代理时关闭 Supabase 网关的 JWT 校验，因为 PDF.js 的 Range 请求由公开阅读页面发出；函数内部仍会校验 Origin、目录 ID、HTTPS 协议和明显的私网地址：
 
@@ -57,3 +62,18 @@ supabase functions deploy library-pdf-proxy \
 ```
 
 代理流量会消耗 Supabase Edge Function 的带宽和执行配额。对大量或私有 PDF，更稳定的长期方案是使用自己控制、配置了 CORS 与 Range 支持的对象存储，再以 `External link` 登记其公开 URL。
+
+## 旧 Git PDF 的一次性迁移
+
+旧目录中没有 `source` 的记录会被视为 `repository`。网页会拒绝对这类文件执行普通删除，因为删除工作树文件不会清除历史对象。迁移时必须：
+
+1. 把 PDF 上传到 `library-assets-v1` Release，并保留原 `document.id` 与阅读进度。
+2. 把目录项改为 `source: release`，写入 GitHub 返回的 Release 与 Asset 元数据，同时从当前树移除 `assets/library/pdfs/...`。
+3. 在镜像克隆中使用 `git-filter-repo` 从全部目标 refs 移除 `assets/library/pdfs/`，审查后再 force-push。本站固定校验 Release tag 指向从未包含 PDF 的干净提交 `fcc0bf7af1965376521c89a61ba2269f5b28ea72`。
+4. 用全新克隆验证：
+
+   ```bash
+   git rev-list --objects --all | rg 'assets/library/pdfs/'
+   ```
+
+   命令应无输出。旧 clone、fork 和第三方缓存不能由本站自动擦除；这里只保证 GitHub 仓库的可达 Git 历史不再保存 PDF 对象。

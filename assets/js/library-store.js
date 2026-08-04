@@ -192,6 +192,43 @@
       return normalized;
     }
 
+    async function invokeDocumentOperation(body) {
+      if (!client) {
+        throw normalizeError({ message: "supabase_not_configured", code: "not_configured" });
+      }
+      var response = await client.functions.invoke("library-documents", { body: body });
+      if (response.error) {
+        var context = response.error.context;
+        var detail = context && typeof context.json === "function"
+          ? await context.json().catch(function () { return null; })
+          : null;
+        throw normalizeError(detail || response.error);
+      }
+      if (!response.data || !response.data.catalog) {
+        throw normalizeError({ message: "library_operation_failed", code: "operation_failed" });
+      }
+      return response.data;
+    }
+
+    async function archiveDocument(options) {
+      var settings = options || {};
+      var form = new FormData();
+      form.append("action", "archive");
+      form.append("pdf", settings.file);
+      form.append("title", String(settings.title || ""));
+      form.append("tags", String(settings.tags || ""));
+      return invokeDocumentOperation(form);
+    }
+
+    async function deleteDocument(options) {
+      var settings = options || {};
+      return invokeDocumentOperation({
+        action: "delete",
+        documentId: String(settings.documentId || ""),
+        revision: settings.revision || null
+      });
+    }
+
     async function getUploadToken() {
       if (!client) {
         throw normalizeError({ message: "supabase_not_configured", code: "not_configured" });
@@ -235,6 +272,8 @@
       saveLocalProgress: saveLocalProgress,
       loadRemoteProgress: loadRemoteProgress,
       saveRemoteProgress: saveRemoteProgress,
+      archiveDocument: archiveDocument,
+      deleteDocument: deleteDocument,
       getUploadToken: getUploadToken,
       onAuthChange: onAuthChange
     };
@@ -291,6 +330,24 @@
         var normalized = normalizeProgress(record);
         progress[normalized.documentId] = normalized;
         return normalized;
+      },
+      archiveDocument: async function () {
+        if (!signedIn || !owner) {
+          throw normalizeError({ message: "not_site_owner" });
+        }
+        return seed.archiveResult || {
+          document: null,
+          catalog: { schemaVersion: 3, documents: [] }
+        };
+      },
+      deleteDocument: async function (options) {
+        if (!signedIn || !owner) {
+          throw normalizeError({ message: "not_site_owner" });
+        }
+        return seed.deleteResult || {
+          document: { id: String(options && options.documentId || "") },
+          catalog: { schemaVersion: 3, documents: [] }
+        };
       },
       getUploadToken: async function () {
         if (!signedIn || !owner) {

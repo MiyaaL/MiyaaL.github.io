@@ -135,6 +135,23 @@
   color: var(--accent);
 }
 
+.library-delete-trigger:hover,
+.library-delete-trigger:focus-visible {
+  color: #d65c5c;
+}
+
+.library-button-danger {
+  border-color: color-mix(in srgb, #d65c5c 65%, var(--border));
+  color: #d65c5c;
+}
+
+.library-button-danger:hover,
+.library-button-danger:focus-visible {
+  border-color: #d65c5c;
+  background: color-mix(in srgb, #d65c5c 10%, transparent);
+  color: #e07171;
+}
+
 .library-button:disabled {
   cursor: wait;
   opacity: 0.55;
@@ -492,6 +509,10 @@
   backdrop-filter: blur(4px);
 }
 
+.library-delete-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+
 .library-upload-form {
   padding: 26px;
 }
@@ -516,6 +537,15 @@
   background: var(--accent-soft);
   color: var(--text-soft);
   font-size: 13px;
+}
+
+.library-delete-title {
+  margin: 2px 0 14px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .library-upload-form > label:not(.library-upload-consent) {

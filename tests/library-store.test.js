@@ -30,9 +30,22 @@ const LibraryStore = require("../assets/js/library-store.js");
   const remote = await adapter.loadRemoteProgress();
   assert.strictEqual(remote["pdf-one"].page, 8);
 
+  const deletionRequest = {
+    documentId: "pdf-one",
+    revision: {
+      source: "external",
+      path: "https://example.org/paper.pdf",
+      sha256: null,
+      assetId: null
+    }
+  };
+  const deleted = await adapter.deleteDocument(deletionRequest);
+  assert.strictEqual(deleted.document.id, "pdf-one");
+
   await adapter.signOut();
   await assert.rejects(adapter.loadRemoteProgress(), (error) => error.code === "not_site_owner");
   await assert.rejects(adapter.getUploadToken(), (error) => error.code === "not_site_owner");
+  await assert.rejects(adapter.deleteDocument(deletionRequest), (error) => error.code === "not_site_owner");
 
   const normalized = LibraryStore.normalizeProgress({
     documentId: "pdf-two",
