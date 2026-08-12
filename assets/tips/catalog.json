@@ -1,4 +1,18 @@
 {
   "schemaVersion": 1,
-  "documents": []
+  "documents": [
+    {
+      "id": "tip-link-5fb221e242af7412",
+      "source": "external",
+      "format": "link",
+      "category": "machine-learning",
+      "title": "DDPM/DDIM区别",
+      "description": "一文带你看懂DDPM和DDIM（含原理简易推导，pytorch代码）",
+      "path": "https://zhuanlan.zhihu.com/p/666552214",
+      "tags": [
+        "Diffusion"
+      ],
+      "addedAt": "2026-08-12T12:26:03.254Z"
+    }
+  ]
 }
