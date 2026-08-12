@@ -10,10 +10,28 @@ MiyaaL 的个人主页与技术博客，使用 GitHub Pages 原生支持的 Jeky
 - 首页自动展示最近 6 篇文章
 - Blog 归档支持标签筛选与本地关键词搜索
 - Plan 支持周期趋势图、推拉蹲 + 推训练日历、节假日调度、训练记录和跨设备同步
+- Tips 按数学、机器学习算法、Infra / 芯片整理 Markdown、HTML 与网页知识卡片
 - Markdown 与 HTML 文章、Rouge 代码高亮和一键复制
 - 按文章启用 LaTeX 公式与 Mermaid 图表
 - RSS、Sitemap、SEO 元数据和响应式布局
 - 站点静态部署；Plan 的可选同步后端使用 Supabase Auth、Postgres 与 RLS
+
+## Tips
+
+Tips 是与 Blog 分离的轻量知识目录。访客可以搜索、按三类主题浏览，并直接阅读上传的
+Markdown/HTML；网页链接会在新标签页打开。站点所有者通过与 Plan、Library 相同的
+Supabase GitHub OAuth 登录后，可以在页面内发布内容。发布操作会同步提交
+`assets/tips/catalog.json`，无需在本地手工编辑目录。
+
+为避免 Git 仓库随文档数量膨胀，上传文件不会进入主分支或 Git 历史：
+
+- Markdown/HTML 以 GitHub Release Asset 保存，单文件限制为 2 MB。
+- Release 按文件 SHA-256 的首字节分到 `tips-assets-00`～`tips-assets-ff`，避免大量文件都堆在一个 Release。
+- 主分支只保存标题、分类、摘要、标签、哈希和 Release URL；网页来源也只保存 URL 元数据。
+- 文档内的图片和附件应使用稳定的外部对象存储链接，不要使用 base64 内嵌。
+
+因此常规 clone 的体积只会随轻量目录缓慢增长；正文资产不会反复写入 Git 历史。
+认证、内容代理和首次部署见 [supabase/TIPS.md](supabase/TIPS.md)。
 
 ## 本地预览
 
@@ -157,6 +175,7 @@ git push
 │   └── posts/        # 文章图片
 ├── blog/             # Blog 归档页
 ├── plan/             # 交互式训练计划
+├── tips/             # 数学、机器学习算法与 Infra/芯片知识说明
 ├── supabase/         # Plan 同步数据库迁移与配置说明
 ├── _config.yml       # 站点配置
 └── index.html        # 首页

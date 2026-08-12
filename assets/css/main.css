@@ -1197,7 +1197,8 @@ html[data-theme-mode="dark"] .theme-dark {
   }
 
   .site-nav > a {
-    padding-inline: 8px;
+    padding-inline: 5px;
+    font-size: 12px;
   }
 
   .theme-toggle {
