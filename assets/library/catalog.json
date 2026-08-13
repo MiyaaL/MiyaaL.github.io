@@ -2,6 +2,17 @@
   "schemaVersion": 3,
   "documents": [
     {
+      "id": "url-117328b504db85de",
+      "source": "external",
+      "title": "Tutorial on Diffusion Models for Imaging and Vision",
+      "filename": "2403.18103",
+      "path": "https://arxiv.org/pdf/2403.18103",
+      "tags": [
+        "Machine Learning; Diffusion Models"
+      ],
+      "addedAt": "2026-08-13T06:38:38.393Z"
+    },
+    {
       "id": "url-d6e284e56513b8f2",
       "source": "external",
       "title": "Mathematics for Machine Learning",
