@@ -705,6 +705,17 @@
   margin: 0;
 }
 
+.plan-bodyweight-dialog {
+  width: min(500px, calc(100vw - 36px));
+}
+
+.plan-bodyweight-note {
+  margin: 18px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .plan-form-section {
   padding: 24px 30px;
   border-bottom: 1px solid var(--border);

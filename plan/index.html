@@ -50,6 +50,7 @@ plan: true
             <p class="plan-cycle-meta" data-plan-cycle-meta></p>
           </div>
           <div class="plan-owner-actions" data-plan-owner-actions hidden>
+            <button class="plan-text-button" type="button" data-plan-update-bodyweight>更新体重</button>
             <button class="plan-text-button" type="button" data-plan-edit>编辑计划</button>
             <button class="plan-text-button" type="button" data-plan-new-cycle>开始新周期</button>
             <button class="plan-text-button" type="button" data-plan-sign-out>退出</button>
@@ -179,6 +180,32 @@ plan: true
         <footer class="plan-dialog-actions">
           <button class="plan-button" type="button" data-plan-cancel-settings>取消</button>
           <button class="plan-button plan-button-primary" type="submit">生成并保存</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog class="plan-dialog plan-bodyweight-dialog" data-plan-bodyweight-dialog>
+      <form method="dialog" data-plan-bodyweight-form>
+        <header class="plan-dialog-header">
+          <div>
+            <p class="eyebrow">BODYWEIGHT / 体重记录</p>
+            <h2>更新体重</h2>
+          </div>
+          <button class="plan-icon-button" type="button" data-plan-close-bodyweight aria-label="关闭体重记录">×</button>
+        </header>
+
+        <div class="plan-form-section">
+          <div class="plan-form-grid">
+            <label>记录日期<input type="date" name="date" required></label>
+            <label>体重（kg）<input type="number" name="bodyweight" min="30" max="300" step="0.1" required></label>
+          </div>
+          <p class="plan-bodyweight-note">同一天重新保存会覆盖原记录；新日期会追加到当前周期的体重趋势。</p>
+        </div>
+
+        <p class="plan-form-error" data-plan-bodyweight-error role="alert"></p>
+        <footer class="plan-dialog-actions">
+          <button class="plan-button" type="button" data-plan-cancel-bodyweight>取消</button>
+          <button class="plan-button plan-button-primary" type="submit">保存体重</button>
         </footer>
       </form>
     </dialog>

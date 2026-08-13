@@ -218,6 +218,23 @@
     }, 0) / recent.length;
   }
 
+  function recordBodyweight(inputState, entry) {
+    var state = normalizeState(inputState);
+    var date = String(entry && entry.date || "");
+    var value = asNumber(entry && entry.value, null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || value == null || value < 30 || value > 300) {
+      throw new Error("invalid_bodyweight_entry");
+    }
+    state.activeCycle.bodyweightEntries = state.activeCycle.bodyweightEntries.filter(function (existing) {
+      return existing.date !== date;
+    });
+    state.activeCycle.bodyweightEntries.push({ date: date, value: value });
+    state.activeCycle.bodyweightEntries.sort(function (left, right) {
+      return String(left.date).localeCompare(String(right.date));
+    });
+    return state;
+  }
+
   function compileHolidayCalendar(calendars, overrides) {
     var result = { off: {}, work: {}, periods: [] };
     (calendars || []).forEach(function (calendar) {
@@ -826,10 +843,7 @@
     state.logs[session.id] = nextLog;
 
     if (nextLog.bodyweight && nextLog.bodyweight > 0) {
-      state.activeCycle.bodyweightEntries = state.activeCycle.bodyweightEntries.filter(function (entry) {
-        return entry.date !== session.date;
-      });
-      state.activeCycle.bodyweightEntries.push({
+      state = recordBodyweight(state, {
         date: session.date,
         value: nextLog.bodyweight
       });
@@ -1020,6 +1034,7 @@
     normalizeState: normalizeState,
     generate: generate,
     recordSession: recordSession,
+    recordBodyweight: recordBodyweight,
     estimateOneRepMax: estimateOneRepMax,
     suggestAdjustment: suggestAdjustment,
     createPublicSnapshot: createPublicSnapshot,

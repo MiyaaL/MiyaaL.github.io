@@ -105,6 +105,24 @@ function configuredState(start, end) {
   assert(publicBench.workout.workSets.some((set) => Object.prototype.hasOwnProperty.call(set, "loadKg")));
 }());
 
+(function bodyweightRecordsAppendOverwriteAndRemainPrivate() {
+  const state = configuredState("2026-08-03", "2026-08-30");
+  let updated = PlanCore.recordBodyweight(state, { date: "2026-08-20", value: 69.8 });
+  updated = PlanCore.recordBodyweight(updated, { date: "2026-08-20", value: 69.5 });
+  assert.deepStrictEqual(updated.activeCycle.bodyweightEntries, [
+    { date: "2026-08-03", value: 70 },
+    { date: "2026-08-20", value: 69.5 }
+  ]);
+  assert.strictEqual(state.activeCycle.bodyweightEntries.length, 1, "recording must not mutate the input state");
+  assert.strictEqual(PlanCore.latestBodyweight(updated.activeCycle), 69.5);
+  const snapshot = PlanCore.createPublicSnapshot(updated, PlanCore.generate(updated, [holidays2026]));
+  assert(!JSON.stringify(snapshot).includes("bodyweightEntries"));
+  assert.throws(
+    () => PlanCore.recordBodyweight(updated, { date: "2026-08-21", value: 0 }),
+    /invalid_bodyweight_entry/
+  );
+}());
+
 (function manualMoveAndRecordKeepStableSessionId() {
   const state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);

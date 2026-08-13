@@ -131,10 +131,32 @@ const { JSDOM } = require("jsdom");
   const savedLog = stored.state.logs[Object.keys(stored.state.logs)[0]];
   assert.strictEqual(savedLog.accessories.length, 3);
 
+  const updateBodyweight = window.document.querySelector("[data-plan-update-bodyweight]");
+  assert(updateBodyweight, "owner view should expose a dedicated bodyweight update entry");
+  updateBodyweight.click();
+  const bodyweightDialog = window.document.querySelector("[data-plan-bodyweight-dialog]");
+  assert.strictEqual(bodyweightDialog.open, true);
+  bodyweightDialog.querySelector('[name="date"]').value = "2026-08-20";
+  bodyweightDialog.querySelector('[name="bodyweight"]').value = "69.5";
+  bodyweightDialog.querySelector("form").dispatchEvent(
+    new window.Event("submit", { bubbles: true, cancelable: true })
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const bodyweightState = await memory.loadPrivate();
+  assert.strictEqual(bodyweightState.version, 3);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(bodyweightState.state.activeCycle.bodyweightEntries.slice(-1)[0])),
+    { date: "2026-08-20", value: 69.5 }
+  );
+  const publicAfterBodyweight = await memory.loadPublic();
+  assert(!JSON.stringify(publicAfterBodyweight.record.snapshot).includes("bodyweightEntries"));
+  assert.strictEqual(bodyweightDialog.open, false);
+
   window.document.querySelector("[data-plan-edit]").click();
   assert.strictEqual(window.document.querySelector("[data-plan-settings]").open, true);
 
-  console.log("PASS: owner login, training log save, version increment, and settings smoke test");
+  console.log("PASS: owner login, training log save, bodyweight update, version increment, and settings smoke test");
   window.close();
 }()).catch((error) => {
   console.error(error);

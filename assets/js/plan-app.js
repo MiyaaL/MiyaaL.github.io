@@ -18,6 +18,7 @@
     title: app.querySelector("[data-plan-title]"),
     cycleMeta: app.querySelector("[data-plan-cycle-meta]"),
     ownerActions: app.querySelector("[data-plan-owner-actions]"),
+    updateBodyweight: app.querySelector("[data-plan-update-bodyweight]"),
     edit: app.querySelector("[data-plan-edit]"),
     newCycle: app.querySelector("[data-plan-new-cycle]"),
     signOut: app.querySelector("[data-plan-sign-out]"),
@@ -42,6 +43,9 @@
     settingsForm: app.querySelector("[data-plan-settings-form]"),
     settingsTitle: app.querySelector("[data-plan-settings-title]"),
     formError: app.querySelector("[data-plan-form-error]"),
+    bodyweightDialog: app.querySelector("[data-plan-bodyweight-dialog]"),
+    bodyweightForm: app.querySelector("[data-plan-bodyweight-form]"),
+    bodyweightError: app.querySelector("[data-plan-bodyweight-error]"),
     templateEditor: app.querySelector("[data-plan-template-editor]"),
     holidayDate: app.querySelector("[data-plan-holiday-date]"),
     holidayType: app.querySelector("[data-plan-holiday-type]"),
@@ -775,6 +779,59 @@
     dom.settingsForm.elements[name].value = value == null ? "" : value;
   }
 
+  function latestBodyweightEntry(cycle) {
+    return (cycle.bodyweightEntries || []).filter(function (entry) {
+      return Number(entry.value) > 0;
+    }).sort(function (left, right) {
+      return String(left.date).localeCompare(String(right.date));
+    }).slice(-1)[0] || null;
+  }
+
+  function openBodyweightDialog() {
+    if (!isOwner || isOffline || !privateState) {
+      showMessage("请先以本人账号在线登录。", "error");
+      return;
+    }
+    var cycle = privateState.activeCycle;
+    var date = todayInShanghai();
+    if (date < cycle.startDate) {
+      date = cycle.startDate;
+    } else if (date > cycle.endDate) {
+      date = cycle.endDate;
+    }
+    var dateInput = dom.bodyweightForm.elements.date;
+    var weightInput = dom.bodyweightForm.elements.bodyweight;
+    var latest = latestBodyweightEntry(cycle);
+    dateInput.min = cycle.startDate;
+    dateInput.max = cycle.endDate;
+    dateInput.value = date;
+    weightInput.value = latest ? latest.value : "";
+    dom.bodyweightError.textContent = "";
+    dom.bodyweightDialog.showModal();
+  }
+
+  async function saveBodyweight(event) {
+    event.preventDefault();
+    var form = new FormData(dom.bodyweightForm);
+    var date = String(form.get("date") || "");
+    var bodyweight = Number(form.get("bodyweight"));
+    var cycle = privateState && privateState.activeCycle;
+    if (!cycle || !date || date < cycle.startDate || date > cycle.endDate) {
+      dom.bodyweightError.textContent = "记录日期必须位于当前周期内。";
+      return;
+    }
+    if (!bodyweight || bodyweight < 30 || bodyweight > 300) {
+      dom.bodyweightError.textContent = "请输入 30–300 kg 之间的有效体重。";
+      return;
+    }
+    privateState = core.recordBodyweight(privateState, {
+      date: date,
+      value: bodyweight
+    });
+    dom.bodyweightDialog.close();
+    await persist("体重记录已更新。");
+  }
+
   function openSettings(newCycle) {
     if (!isOwner || isOffline) {
       showMessage("请先以本人账号在线登录。", "error");
@@ -1064,6 +1121,7 @@
       showMessage("GitHub 登录失败：" + error.message, "error");
     });
   });
+  dom.updateBodyweight.addEventListener("click", openBodyweightDialog);
   dom.edit.addEventListener("click", function () { openSettings(false); });
   dom.newCycle.addEventListener("click", function () { openSettings(true); });
   dom.signOut.addEventListener("click", function () {
@@ -1101,7 +1159,14 @@
     button.addEventListener("click", closeDetails);
   });
   dom.settingsForm.addEventListener("submit", saveSettings);
+  dom.bodyweightForm.addEventListener("submit", saveBodyweight);
   app.querySelector("[data-plan-close-settings]").addEventListener("click", function () { dom.settings.close(); });
+  app.querySelector("[data-plan-close-bodyweight]").addEventListener("click", function () {
+    dom.bodyweightDialog.close();
+  });
+  app.querySelector("[data-plan-cancel-bodyweight]").addEventListener("click", function () {
+    dom.bodyweightDialog.close();
+  });
   dom.templateEditor.addEventListener("dragover", handleTemplateDrag);
   app.querySelector("[data-plan-cancel-settings]").addEventListener("click", function () { dom.settings.close(); });
   app.querySelector("[data-plan-add-template]").addEventListener("click", function () {
