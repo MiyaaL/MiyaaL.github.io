@@ -40,6 +40,9 @@ const { JSDOM } = require("jsdom");
   [
     "/site/assets/js/library-store.js",
     "/site/assets/js/library-github.js",
+    "/site/assets/js/library-annotations.js",
+    "/site/assets/js/library-pdf-editor.js",
+    "/site/assets/js/library-immersive.js",
     "/site/assets/js/library-app.js"
   ].forEach((path) => window.eval(fs.readFileSync(path, "utf8")));
 
@@ -58,6 +61,9 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector("[data-library-sync-state]").textContent, "Local only");
   assert(window.document.querySelector('a[href="/library/"]').getAttribute("aria-current") === "page");
   assert(window.document.querySelector("[data-library-pdf-viewer]").classList.contains("pdfViewer"));
+  assert(window.document.querySelector("[data-library-fullscreen]"));
+  assert.strictEqual(window.document.querySelectorAll("[data-library-annotation-mode]").length, 4);
+  assert.strictEqual(window.document.querySelector("[data-library-annotation-tools]").hidden, true);
   assert.strictEqual(window.document.querySelector("[data-library-canvas]"), null);
   assert.strictEqual(window.document.querySelectorAll('[name="source"]').length, 2);
   assert.strictEqual(window.document.querySelector('[name="source"]:checked').value, "release");

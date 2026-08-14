@@ -70,6 +70,7 @@ library: true
           <div class="library-reader-actions">
             <button class="library-text-button library-delete-trigger" type="button" data-library-delete hidden>Delete</button>
             <a class="library-text-button" data-library-open-native target="_blank" rel="noopener">Open PDF</a>
+            <button class="library-text-button" type="button" data-library-fullscreen aria-pressed="false">Full Screen</button>
             <button class="library-icon-button" type="button" data-library-close-reader aria-label="Close reader">×</button>
           </div>
         </header>
@@ -88,6 +89,22 @@ library: true
           <button type="button" data-library-zoom-out aria-label="Zoom out">−</button>
           <span data-library-zoom>100%</span>
           <button type="button" data-library-zoom-in aria-label="Zoom in">+</button>
+        </div>
+
+        <div class="library-annotation-toolbar" data-library-annotation-tools aria-label="PDF annotation tools" hidden>
+          <div class="library-annotation-modes" role="group" aria-label="Annotation mode">
+            <button type="button" data-library-annotation-mode="read" aria-pressed="true">Read</button>
+            <button type="button" data-library-annotation-mode="highlight" aria-pressed="false">Highlight</button>
+            <button type="button" data-library-annotation-mode="ink" aria-pressed="false">Draw</button>
+            <button type="button" data-library-annotation-mode="freetext" aria-pressed="false">Text</button>
+          </div>
+          <span class="library-reader-divider" aria-hidden="true"></span>
+          <button type="button" data-library-annotation-undo disabled>Undo</button>
+          <button type="button" data-library-annotation-redo disabled>Redo</button>
+          <button type="button" data-library-annotation-erase disabled>Erase</button>
+          <span class="library-annotation-spacer" aria-hidden="true"></span>
+          <span class="library-annotation-state" data-library-annotation-state role="status" aria-live="polite">Loading notes</span>
+          <button type="button" data-library-export-annotations disabled>Export PDF</button>
         </div>
 
         <div class="library-reader-stage">

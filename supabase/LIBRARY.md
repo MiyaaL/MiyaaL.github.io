@@ -1,10 +1,15 @@
 # Library 后端配置
 
-Library 使用与 Plan 相同的 Supabase GitHub OAuth 身份。目录元数据保存在 `assets/library/catalog.json`，上传的 PDF 存为同仓库的 GitHub Release Asset，不进入 Git 提交历史；页码和缩放进度存放在 Supabase。
+Library 使用与 Plan 相同的 Supabase GitHub OAuth 身份。目录元数据保存在 `assets/library/catalog.json`，上传的 PDF 存为同仓库的 GitHub Release Asset，不进入 Git 提交历史；页码、缩放进度和 PDF 批注侧车数据存放在 Supabase。
 
 ## 数据库
 
-在 SQL Editor 执行 `supabase/migrations/002_library.sql`。迁移会创建仅站点所有者可读写的 `library_reading_progress`，以及读取、保存进度的数据库函数。
+首次部署时按顺序在 SQL Editor 执行：
+
+1. `supabase/migrations/002_library.sql`
+2. `supabase/migrations/003_library_annotations.sql`
+
+迁移会创建仅站点所有者可读写的 `library_reading_progress` 和 `library_annotation_documents`，以及对应的读取、保存函数。批注保存函数使用版本号做乐观并发检查；两台设备同时编辑同一份 PDF 时不会静默覆盖远端数据。
 
 Authentication → URL Configuration 还需要加入：
 
@@ -43,6 +48,10 @@ supabase functions deploy library-documents \
 ## PDF 存储、删除与连续阅读
 
 Library 默认使用 PDF.js 的连续滚动查看器。当前可见页码与缩放比例继续写入本地缓存；站点所有者登录后会同步到 Supabase，因此 Release 文件与外链文件都能跨设备恢复阅读页。
+
+阅读器支持沉浸全屏，以及 Highlight、Draw、Text 三种 PDF.js 批注。批注先写入浏览器 IndexedDB，再同步为 Supabase 中的 JSON 侧车数据；原始 PDF 不会因每次书写而复制或改变。每份文档的批注上限为 5000 条、序列化后 4 MB。同步记录绑定文档 ID 与内容修订标识：Release 文档优先使用 SHA-256 或 Asset ID，外链文档使用目录信息生成稳定修订值。
+
+“Export PDF”只在用户明确点击时调用 PDF.js 生成带批注的新 PDF 并下载到当前设备。导出文件不会自动上传到 GitHub Release，也不会进入 Git 历史；需要长期留档时再把确认后的版本作为单独文档上传。没有登录为站点所有者时，网页不加载或展示私有批注。
 
 “Add Document” 提供两种来源：
 

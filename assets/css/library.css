@@ -402,6 +402,64 @@
   text-align: center;
 }
 
+.library-annotation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 7px 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  scrollbar-width: thin;
+}
+
+.library-annotation-toolbar[hidden] {
+  display: none;
+}
+
+.library-annotation-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.library-annotation-toolbar button {
+  min-width: 42px;
+  height: 30px;
+  padding-inline: 9px;
+  border: 1px solid transparent;
+  color: var(--text-soft);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.library-annotation-toolbar button:hover,
+.library-annotation-toolbar button:focus-visible,
+.library-annotation-toolbar button[aria-pressed="true"] {
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
+
+.library-annotation-toolbar button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.library-annotation-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.library-annotation-spacer {
+  flex: 1 0 20px;
+}
+
+.library-annotation-state {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 .library-reader-divider {
   width: 1px;
   height: 19px;
@@ -444,6 +502,43 @@
 .library-pdf-viewer .page {
   background: #fff;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+body.library-immersive-active {
+  overflow: hidden;
+}
+
+.library-reader.is-immersive,
+.library-reader:fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  width: 100%;
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  flex-direction: column;
+  border: 0;
+  background: var(--bg);
+}
+
+.library-reader.is-immersive .library-reader-header,
+.library-reader.is-immersive .library-reader-toolbar,
+.library-reader.is-immersive .library-annotation-toolbar,
+.library-reader:fullscreen .library-reader-header,
+.library-reader:fullscreen .library-reader-toolbar,
+.library-reader:fullscreen .library-annotation-toolbar {
+  flex: 0 0 auto;
+}
+
+.library-reader.is-immersive .library-reader-stage,
+.library-reader:fullscreen .library-reader-stage {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .library-reader-loading {
@@ -653,6 +748,8 @@
   .library-reader-toolbar {
     gap: 4px;
     padding-inline: 7px;
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .library-reader-divider {
@@ -661,6 +758,10 @@
 
   .library-reader-stage {
     min-height: 420px;
+  }
+
+  .library-annotation-toolbar {
+    padding-inline: 7px;
   }
 
   .library-upload-form {

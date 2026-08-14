@@ -30,6 +30,28 @@ const LibraryStore = require("../assets/js/library-store.js");
   const remote = await adapter.loadRemoteProgress();
   assert.strictEqual(remote["pdf-one"].page, 8);
 
+  const annotationRef = {
+    documentId: "pdf-one",
+    documentRevision: "sha256:abc"
+  };
+  const emptyAnnotations = await adapter.loadRemoteAnnotations(annotationRef);
+  assert.strictEqual(emptyAnnotations.version, 0);
+  const savedAnnotations = await adapter.saveRemoteAnnotations({
+    ...annotationRef,
+    annotations: [{ annotationType: 9, pageIndex: 0 }],
+    expectedVersion: 0
+  });
+  assert.strictEqual(savedAnnotations.version, 1);
+  assert.strictEqual((await adapter.loadRemoteAnnotations(annotationRef)).annotations.length, 1);
+  await assert.rejects(
+    adapter.saveRemoteAnnotations({
+      ...annotationRef,
+      annotations: [],
+      expectedVersion: 0
+    }),
+    (error) => error.code === "library_annotation_conflict"
+  );
+
   const deletionRequest = {
     documentId: "pdf-one",
     revision: {

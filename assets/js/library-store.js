@@ -26,8 +26,22 @@
 
     if (normalized.message.indexOf("not_site_owner") >= 0) {
       normalized.code = "not_site_owner";
+    } else if (normalized.message.indexOf("library_annotation_conflict") >= 0) {
+      normalized.code = "library_annotation_conflict";
     }
     return normalized;
+  }
+
+  function normalizeAnnotationRecord(value, documentRef) {
+    var source = value || {};
+    var documentValue = documentRef || source;
+    return {
+      documentId: String(documentValue.documentId || documentValue.document_id || ""),
+      documentRevision: String(documentValue.documentRevision || documentValue.document_revision || ""),
+      annotations: Array.isArray(source.annotations) ? source.annotations : [],
+      version: Math.max(0, Number(source.version) || 0),
+      updatedAt: source.updatedAt || source.updated_at || new Date(0).toISOString()
+    };
   }
 
   function normalizeProgress(value) {
@@ -192,6 +206,36 @@
       return normalized;
     }
 
+    async function loadRemoteAnnotations(documentRef) {
+      if (!client) {
+        return normalizeAnnotationRecord({}, documentRef);
+      }
+      var response = await client.rpc("load_library_annotations", {
+        p_document_id: String(documentRef.documentId || ""),
+        p_document_revision: String(documentRef.documentRevision || "")
+      });
+      if (response.error) {
+        throw normalizeError(response.error);
+      }
+      return normalizeAnnotationRecord((response.data || [])[0] || {}, documentRef);
+    }
+
+    async function saveRemoteAnnotations(record) {
+      if (!client) {
+        return normalizeAnnotationRecord(record, record);
+      }
+      var response = await client.rpc("save_library_annotations", {
+        p_document_id: String(record.documentId || ""),
+        p_document_revision: String(record.documentRevision || ""),
+        p_annotations: Array.isArray(record.annotations) ? record.annotations : [],
+        p_expected_version: Math.max(0, Number(record.expectedVersion) || 0)
+      });
+      if (response.error) {
+        throw normalizeError(response.error);
+      }
+      return normalizeAnnotationRecord((response.data || [])[0] || {}, record);
+    }
+
     async function invokeDocumentOperation(body) {
       if (!client) {
         throw normalizeError({ message: "supabase_not_configured", code: "not_configured" });
@@ -272,6 +316,8 @@
       saveLocalProgress: saveLocalProgress,
       loadRemoteProgress: loadRemoteProgress,
       saveRemoteProgress: saveRemoteProgress,
+      loadRemoteAnnotations: loadRemoteAnnotations,
+      saveRemoteAnnotations: saveRemoteAnnotations,
       archiveDocument: archiveDocument,
       deleteDocument: deleteDocument,
       getUploadToken: getUploadToken,
@@ -284,6 +330,7 @@
     var signedIn = seed.signedIn !== false;
     var owner = seed.owner !== false;
     var progress = Object.assign({}, seed.progress || {});
+    var annotations = Object.assign({}, seed.annotations || {});
     var listeners = [];
 
     function notify(event) {
@@ -331,6 +378,30 @@
         progress[normalized.documentId] = normalized;
         return normalized;
       },
+      loadRemoteAnnotations: async function (documentRef) {
+        if (!signedIn || !owner) {
+          throw normalizeError({ message: "not_site_owner" });
+        }
+        var key = String(documentRef.documentId) + "::" + String(documentRef.documentRevision);
+        return normalizeAnnotationRecord(annotations[key] || {}, documentRef);
+      },
+      saveRemoteAnnotations: async function (record) {
+        if (!signedIn || !owner) {
+          throw normalizeError({ message: "not_site_owner" });
+        }
+        var key = String(record.documentId) + "::" + String(record.documentRevision);
+        var previous = normalizeAnnotationRecord(annotations[key] || {}, record);
+        if (previous.version !== Math.max(0, Number(record.expectedVersion) || 0)) {
+          throw normalizeError({ message: "library_annotation_conflict" });
+        }
+        var saved = normalizeAnnotationRecord({
+          annotations: record.annotations,
+          version: previous.version + 1,
+          updatedAt: new Date().toISOString()
+        }, record);
+        annotations[key] = saved;
+        return saved;
+      },
       archiveDocument: async function () {
         if (!signedIn || !owner) {
           throw normalizeError({ message: "not_site_owner" });
@@ -368,6 +439,7 @@
     CACHE_KEY: CACHE_KEY,
     create: create,
     createMemoryAdapter: createMemoryAdapter,
+    normalizeAnnotationRecord: normalizeAnnotationRecord,
     normalizeProgress: normalizeProgress
   };
 }));

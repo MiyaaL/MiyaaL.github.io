@@ -2,7 +2,12 @@
   "use strict";
 
   var root = document.querySelector("[data-library-app]");
-  if (!root || !window.LibraryStore || !window.LibraryGitHub) {
+  if (!root ||
+      !window.LibraryStore ||
+      !window.LibraryGitHub ||
+      !window.LibraryAnnotations ||
+      !window.LibraryPdfEditor ||
+      !window.LibraryImmersive) {
     return;
   }
 
@@ -22,6 +27,7 @@
     readerTitle: root.querySelector("[data-library-reader-title]"),
     readerTags: root.querySelector("[data-library-reader-tags]"),
     openNative: root.querySelector("[data-library-open-native]"),
+    fullscreen: root.querySelector("[data-library-fullscreen]"),
     closeReader: root.querySelector("[data-library-close-reader]"),
     previousPage: root.querySelector("[data-library-previous-page]"),
     nextPage: root.querySelector("[data-library-next-page]"),
@@ -34,6 +40,13 @@
     pdfViewer: root.querySelector("[data-library-pdf-viewer]"),
     loading: root.querySelector("[data-library-reader-loading]"),
     readerError: root.querySelector("[data-library-reader-error]"),
+    annotationTools: root.querySelector("[data-library-annotation-tools]"),
+    annotationModes: Array.from(root.querySelectorAll("[data-library-annotation-mode]")),
+    annotationUndo: root.querySelector("[data-library-annotation-undo]"),
+    annotationRedo: root.querySelector("[data-library-annotation-redo]"),
+    annotationErase: root.querySelector("[data-library-annotation-erase]"),
+    annotationState: root.querySelector("[data-library-annotation-state]"),
+    exportAnnotations: root.querySelector("[data-library-export-annotations]"),
     uploadDialog: root.querySelector("[data-library-upload-dialog]"),
     uploadForm: root.querySelector("[data-library-upload-form]"),
     sourcePicker: root.querySelector("[data-library-source-picker]"),
@@ -62,6 +75,7 @@
     publishableKey: root.dataset.supabaseKey,
     redirectTo: location.origin + "/library/"
   });
+  var annotationStore = window.LibraryAnnotations.create({ remote: store });
 
   var state = {
     documents: [],
@@ -78,6 +92,11 @@
     viewer: null,
     linkService: null,
     viewerAbort: null,
+    pdfEditor: null,
+    annotationRef: null,
+    annotationUiState: null,
+    annotationStatus: "",
+    exportingAnnotations: false,
     page: 1,
     zoom: 1,
     openingSequence: 0,
@@ -85,6 +104,16 @@
     pendingDeletion: null,
     deleting: false
   };
+
+  var immersive = window.LibraryImmersive.create(elements.reader, {
+    onChange: function (active) {
+      elements.fullscreen.textContent = active ? "Exit Full Screen" : "Full Screen";
+      elements.fullscreen.setAttribute("aria-pressed", String(active));
+      if (state.viewer) {
+        requestAnimationFrame(function () { state.viewer.update(); });
+      }
+    }
+  });
 
   function setMessage(message) {
     elements.message.textContent = message || "";
@@ -128,6 +157,13 @@
       invalid_pdf_signature: "The selected file does not contain a valid PDF signature.",
       pdf_too_large: "The PDF exceeds the 50 MB upload limit.",
       title_required: "Add a display title.",
+      invalid_library_annotation_document: "This document revision cannot be used for synchronized notes.",
+      invalid_library_annotations: "The saved notes are invalid and were not synchronized.",
+      library_annotations_too_many: "This document has too many annotations to synchronize safely.",
+      library_annotations_too_large: "These annotations exceed the 4 MB synchronization limit. Export the PDF before continuing.",
+      library_annotation_conflict: "Notes changed on another device. This device kept its local copy; reload before editing further.",
+      library_annotation_sync_failed: "Notes were saved on this device but could not be synchronized.",
+      library_annotation_export_failed: "The annotated PDF could not be exported.",
       not_site_owner: "This GitHub account does not have permission to manage the library.",
       not_configured: "Library synchronization is not configured.",
       supabase_not_configured: "Library synchronization is not configured.",
@@ -287,15 +323,139 @@
     renderDocuments();
   }
 
+  function stableHash(value) {
+    var hash = 2166136261;
+    var text = String(value || "");
+    for (var index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function annotationReference(documentRecord) {
+    var revision;
+    if (/^[a-f0-9]{64}$/i.test(documentRecord.sha256 || "")) {
+      revision = "sha256:" + documentRecord.sha256.toLowerCase();
+    } else if (documentRecord.release && Number.isSafeInteger(documentRecord.release.assetId)) {
+      revision = "release:" + documentRecord.release.assetId;
+    } else {
+      revision = (documentRecord.source || "repository") + ":" + stableHash([
+        documentRecord.id,
+        documentRecord.path,
+        documentRecord.addedAt
+      ].join("|"));
+    }
+    return {
+      documentId: documentRecord.id,
+      documentRevision: revision
+    };
+  }
+
+  function sameAnnotationReference(left, right) {
+    return Boolean(left && right &&
+      left.documentId === right.documentId &&
+      left.documentRevision === right.documentRevision);
+  }
+
+  function annotationStatusText(record) {
+    if (!record) {
+      return "Notes unavailable";
+    }
+    if (record.status === "synced") {
+      return "Notes synced";
+    }
+    if (record.status === "conflict") {
+      return "Sync conflict · local copy kept";
+    }
+    if (record.status === "local-only") {
+      return "Notes on this device";
+    }
+    if (record.error) {
+      return "Saved locally · sync unavailable";
+    }
+    return "Saved locally";
+  }
+
+  function updateAnnotationControls(editorState) {
+    if (editorState) {
+      state.annotationUiState = editorState;
+    }
+    var current = state.annotationUiState || {};
+    var enabled = Boolean(state.owner && state.pdfEditor && current.ready);
+    elements.annotationModes.forEach(function (button) {
+      var selected = button.dataset.libraryAnnotationMode === (current.mode || "read");
+      button.disabled = !enabled;
+      button.setAttribute("aria-pressed", String(selected));
+    });
+    elements.annotationUndo.disabled = !enabled || !current.canUndo;
+    elements.annotationRedo.disabled = !enabled || !current.canRedo;
+    elements.annotationErase.disabled = !enabled || !current.hasSelection;
+    elements.exportAnnotations.disabled = !enabled || !current.hasAnnotations || state.exportingAnnotations;
+    elements.annotationState.textContent = state.annotationStatus || (enabled ? "Notes ready" : "Loading notes");
+  }
+
+  async function saveAnnotations(documentRef, annotations) {
+    if (!documentRef) {
+      return null;
+    }
+    if (sameAnnotationReference(documentRef, state.annotationRef)) {
+      state.annotationStatus = "Saving locally";
+      updateAnnotationControls();
+    }
+    try {
+      var record = await annotationStore.save(documentRef, annotations, state.owner);
+      if (sameAnnotationReference(documentRef, state.annotationRef)) {
+        state.annotationStatus = annotationStatusText(record);
+        updateAnnotationControls();
+        if (record.status === "conflict") {
+          setMessage(friendlyError(new Error("library_annotation_conflict")));
+        }
+      }
+      return record;
+    } catch (error) {
+      if (sameAnnotationReference(documentRef, state.annotationRef)) {
+        state.annotationStatus = "Notes not saved";
+        updateAnnotationControls();
+        setMessage(friendlyError(error));
+      }
+      throw error;
+    }
+  }
+
+  async function loadAnnotations(documentRecord) {
+    var documentRef = annotationReference(documentRecord);
+    state.annotationRef = documentRef;
+    state.annotationStatus = "Loading notes";
+    state.annotationUiState = null;
+    updateAnnotationControls();
+    if (!state.owner) {
+      return { annotations: [], status: "local-only" };
+    }
+    var record = await annotationStore.load(documentRef, true);
+    state.annotationStatus = annotationStatusText(record);
+    if (record.status === "conflict") {
+      setMessage(friendlyError(new Error("library_annotation_conflict")));
+    }
+    updateAnnotationControls();
+    return record;
+  }
+
   function updateManagementControls() {
     elements.upload.hidden = !state.owner;
     elements.deleteTrigger.hidden = !(state.owner && state.activeDocument);
+    elements.annotationTools.hidden = !(state.owner && state.activeDocument);
+    updateAnnotationControls();
   }
 
   async function refreshAuth() {
     try {
+      var wasOwner = state.owner;
       state.session = await store.getSession();
       state.owner = state.session ? await store.isOwner() : false;
+      if (wasOwner && !state.owner && state.activeDocument) {
+        await closeReader();
+      }
       updateManagementControls();
       elements.auth.textContent = state.session ? "Sign Out" : "Manage Library";
       elements.syncState.textContent = state.owner
@@ -305,7 +465,11 @@
         await syncProgress();
       }
     } catch (error) {
+      var lostOwnerAccess = wasOwner && state.activeDocument;
       state.owner = false;
+      if (lostOwnerAccess) {
+        await closeReader();
+      }
       updateManagementControls();
       elements.syncState.textContent = "Local progress";
       setMessage(friendlyError(error));
@@ -414,6 +578,15 @@
 
   async function releaseDocument() {
     clearTimeout(state.saveTimer);
+    if (state.pdfEditor) {
+      try {
+        await state.pdfEditor.flush();
+      } catch (_) {
+        // The annotation module has already kept the latest successful local snapshot.
+      }
+      state.pdfEditor.destroy();
+      state.pdfEditor = null;
+    }
     if (state.viewer) {
       state.viewer.setDocument(null);
     }
@@ -433,10 +606,14 @@
     state.viewer = null;
     state.linkService = null;
     state.viewerAbort = null;
+    state.annotationRef = null;
+    state.annotationUiState = null;
+    state.annotationStatus = "";
     elements.pdfViewer.replaceChildren();
+    updateAnnotationControls();
   }
 
-  function initializeContinuousViewer(sequence, sourceUrl) {
+  function initializeContinuousViewer(sequence, sourceUrl, annotationRecord, annotationRef) {
     var viewerModule = state.viewerModule;
     var eventBus = new viewerModule.EventBus();
     var linkService = new viewerModule.PDFLinkService({
@@ -449,6 +626,7 @@
       viewer: elements.pdfViewer,
       eventBus: eventBus,
       linkService: linkService,
+      annotationEditorMode: state.pdfjs.AnnotationEditorType.NONE,
       imageResourcesPath: root.dataset.pdfAssetsUrl + "web/images/",
       abortSignal: abortController.signal
     });
@@ -456,6 +634,22 @@
     state.viewer = viewer;
     state.linkService = linkService;
     state.viewerAbort = abortController;
+    state.pdfEditor = window.LibraryPdfEditor.create({
+      pdf: state.pdf,
+      viewer: viewer,
+      eventBus: eventBus,
+      pdfjs: state.pdfjs,
+      annotations: annotationRecord.annotations,
+      onChange: function (annotations) {
+        return saveAnnotations(annotationRef, annotations);
+      },
+      onState: function (editorState) {
+        if (sequence === state.openingSequence) {
+          updateAnnotationControls(editorState);
+        }
+      }
+    });
+    updateAnnotationControls();
 
     eventBus.on("pagesinit", function () {
       if (sequence !== state.openingSequence || !state.pdf) {
@@ -551,7 +745,12 @@
         return;
       }
       state.page = Math.min(state.page, state.pdf.numPages);
-      initializeContinuousViewer(sequence, documentRecord.path);
+      var annotationRecord = await loadAnnotations(documentRecord);
+      if (sequence !== state.openingSequence) {
+        return;
+      }
+      var annotationRef = state.annotationRef;
+      initializeContinuousViewer(sequence, documentRecord.path, annotationRecord, annotationRef);
       elements.reader.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       if (sequence !== state.openingSequence) {
@@ -565,13 +764,14 @@
 
   async function closeReader() {
     state.openingSequence += 1;
-    state.activeDocument = null;
-    updateManagementControls();
+    await immersive.exit();
     try {
       await releaseDocument();
     } finally {
+      state.activeDocument = null;
       elements.reader.hidden = true;
       elements.workspace.classList.remove("is-reading");
+      updateManagementControls();
       updateReaderUrl();
       renderDocuments();
     }
@@ -591,6 +791,29 @@
     }
     var zoom = Math.min(2.5, Math.max(0.5, Math.round(value * 10) / 10));
     state.viewer.currentScale = zoom;
+  }
+
+  async function exportAnnotatedPdf() {
+    if (!state.owner || !state.activeDocument || !state.pdfEditor || state.exportingAnnotations) {
+      return;
+    }
+    state.exportingAnnotations = true;
+    var previousStatus = state.annotationStatus;
+    state.annotationStatus = "Preparing PDF";
+    updateAnnotationControls();
+    try {
+      var result = await state.pdfEditor.exportPdf(
+        state.activeDocument.filename || state.activeDocument.title
+      );
+      setMessage("Annotated PDF exported as " + result.filename + ". The archived original was not changed.");
+      state.annotationStatus = previousStatus;
+    } catch (_) {
+      setMessage(friendlyError(new Error("library_annotation_export_failed")));
+      state.annotationStatus = "Export failed";
+    } finally {
+      state.exportingAnnotations = false;
+      updateAnnotationControls();
+    }
   }
 
   function selectedSource() {
@@ -705,11 +928,17 @@
   elements.auth.addEventListener("click", async function () {
     try {
       if (state.session) {
+        if (state.pdfEditor) {
+          await state.pdfEditor.flush();
+        }
         await store.signOut();
         state.session = null;
         state.owner = false;
         updateManagementControls();
         closeDeleteDialog(true);
+        if (state.activeDocument) {
+          await closeReader();
+        }
         elements.auth.textContent = "Manage Library";
         elements.syncState.textContent = "Local progress";
       } else {
@@ -753,13 +982,34 @@
     }
   });
   elements.closeReader.addEventListener("click", closeReader);
+  elements.fullscreen.addEventListener("click", function () {
+    immersive.toggle();
+  });
+  elements.annotationModes.forEach(function (button) {
+    button.addEventListener("click", function () {
+      if (state.pdfEditor) {
+        state.pdfEditor.setMode(button.dataset.libraryAnnotationMode);
+      }
+    });
+  });
+  elements.annotationUndo.addEventListener("click", function () {
+    state.pdfEditor?.undo();
+  });
+  elements.annotationRedo.addEventListener("click", function () {
+    state.pdfEditor?.redo();
+  });
+  elements.annotationErase.addEventListener("click", function () {
+    state.pdfEditor?.eraseSelected();
+  });
+  elements.exportAnnotations.addEventListener("click", exportAnnotatedPdf);
   elements.previousPage.addEventListener("click", function () { goToPage(state.page - 1); });
   elements.nextPage.addEventListener("click", function () { goToPage(state.page + 1); });
   elements.page.addEventListener("change", function () { goToPage(elements.page.value); });
   elements.zoomOut.addEventListener("click", function () { setZoom(state.zoom - 0.1); });
   elements.zoomIn.addEventListener("click", function () { setZoom(state.zoom + 0.1); });
   document.addEventListener("keydown", function (event) {
-    if (!state.activeDocument ||
+    if (event.defaultPrevented ||
+        !state.activeDocument ||
         elements.deleteDialog.hasAttribute("open") ||
         /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) {
       return;
@@ -769,7 +1019,21 @@
     } else if (event.key === "ArrowRight") {
       goToPage(state.page + 1);
     } else if (event.key === "Escape") {
-      closeReader();
+      if (immersive.isActive()) {
+        immersive.exit();
+      } else {
+        closeReader();
+      }
+    }
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden" && state.pdfEditor) {
+      state.pdfEditor.flush().catch(function () {});
+    }
+  });
+  window.addEventListener("pagehide", function () {
+    if (state.pdfEditor) {
+      state.pdfEditor.flush().catch(function () {});
     }
   });
 
