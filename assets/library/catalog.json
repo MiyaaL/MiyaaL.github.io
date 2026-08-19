@@ -2,6 +2,17 @@
   "schemaVersion": 3,
   "documents": [
     {
+      "id": "url-19471f2608b0bb04",
+      "source": "external",
+      "title": "lecture notes of 6.s184：An Introduction to Flow Matching and Diffusion Models",
+      "filename": "lecture_notes.pdf",
+      "path": "https://diffusion.csail.mit.edu/2026/docs/lecture_notes.pdf",
+      "tags": [
+        "Diffusion Models"
+      ],
+      "addedAt": "2026-08-19T09:54:33.860Z"
+    },
+    {
       "id": "url-117328b504db85de",
       "source": "external",
       "title": "Tutorial on Diffusion Models for Imaging and Vision",
