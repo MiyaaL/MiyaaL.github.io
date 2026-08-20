@@ -41,6 +41,7 @@ const { JSDOM } = require("jsdom");
     "/site/assets/js/library-store.js",
     "/site/assets/js/library-github.js",
     "/site/assets/js/library-annotations.js",
+    "/site/assets/js/library-pdf-policy.js",
     "/site/assets/js/library-pdf-editor.js",
     "/site/assets/js/library-immersive.js",
     "/site/assets/js/library-app.js"
@@ -69,6 +70,23 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector('[name="source"]:checked').value, "release");
   assert.strictEqual(window.document.querySelector("[data-library-url-field]").hidden, true);
   assert(window.document.querySelector('link[href*="pdf_viewer.css"]'));
+  assert.deepStrictEqual(
+    Array.from(window.document.querySelectorAll('link[rel="modulepreload"]'))
+      .map((link) => new URL(link.href).pathname)
+      .filter((pathname) => pathname.startsWith("/assets/pdfjs/"))
+      .sort(),
+    [
+      "/assets/pdfjs/build/pdf.min.mjs",
+      "/assets/pdfjs/build/pdf.worker.min.mjs",
+      "/assets/pdfjs/web/pdf_viewer.mjs"
+    ]
+  );
+  const libraryScripts = Array.from(window.document.scripts).map((script) => script.src);
+  const policyScriptIndex = libraryScripts.findIndex((source) => source.includes("library-pdf-policy.js"));
+  const appScriptIndex = libraryScripts.findIndex((source) => source.includes("library-app.js"));
+  assert(policyScriptIndex >= 0);
+  assert(appScriptIndex >= 0);
+  assert(policyScriptIndex < appScriptIndex);
   assert.strictEqual(window.LibraryGitHub.normalizeCatalog(catalog).documents[0].source, "repository");
 
   const search = window.document.querySelector("[data-library-search]");

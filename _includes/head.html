@@ -12,6 +12,9 @@
 <link rel="stylesheet" href="{{ '/assets/css/plan-chart.css' | relative_url }}?v={{ site.time | date: '%s' }}">
 {% endif %}
 {% if page.library %}
+<link rel="modulepreload" href="{{ '/assets/pdfjs/build/pdf.min.mjs' | relative_url }}">
+<link rel="modulepreload" href="{{ '/assets/pdfjs/web/pdf_viewer.mjs' | relative_url }}">
+<link rel="modulepreload" href="{{ '/assets/pdfjs/build/pdf.worker.min.mjs' | relative_url }}">
 <link rel="stylesheet" href="{{ '/assets/pdfjs/web/pdf_viewer.css' | relative_url }}">
 <link rel="stylesheet" href="{{ '/assets/css/library.css' | relative_url }}?v={{ site.time | date: '%s' }}">
 {% endif %}

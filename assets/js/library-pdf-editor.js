@@ -31,7 +31,9 @@
     var onChange = settings.onChange || function () {};
     var onState = settings.onState || function () {};
     var annotations = Array.isArray(settings.annotations) ? cloneJson(settings.annotations) : [];
-    var uiManager = null;
+    var uiManager = viewer && viewer._layerProperties
+      ? viewer._layerProperties.annotationEditorUIManager
+      : null;
     var currentMode = "read";
     var editingState = {
       canUndo: false,
@@ -39,6 +41,8 @@
       hasSelection: false
     };
     var hydratedPages = new Set();
+    var hydratingPages = new Map();
+    var queuedHydrationPages = new Set();
     var pendingByPage = new Map();
     var abortController = new AbortController();
     var destroyed = false;
@@ -135,48 +139,76 @@
       return changePromise;
     }
 
-    async function hydratePage(pageNumber) {
+    function annotationLayer(pageIndex) {
+      var pageView = viewer.getPageView(pageIndex);
+      return pageView && pageView.annotationEditorLayer &&
+        pageView.annotationEditorLayer.annotationEditorLayer;
+    }
+
+    function hydratePage(pageNumber) {
       var pageIndex = Number(pageNumber) - 1;
       if (destroyed || hydratedPages.has(pageIndex)) {
-        return;
+        return Promise.resolve();
       }
-      var pageView = viewer.getPageView(pageIndex);
-      var layer = pageView && pageView.annotationEditorLayer && pageView.annotationEditorLayer.annotationEditorLayer;
-      if (!layer) {
-        return;
-      }
-      var pageAnnotations = pendingByPage.get(pageIndex) || [];
-      if (!pageAnnotations.length) {
-        hydratedPages.add(pageIndex);
-        return;
+      var activeHydration = hydratingPages.get(pageIndex);
+      if (activeHydration) {
+        queuedHydrationPages.add(pageIndex);
+        return activeHydration;
       }
 
-      suppressChanges += 1;
-      try {
-        var remaining = [];
-        for (var index = 0; index < pageAnnotations.length; index += 1) {
-          try {
-            var editor = await layer.deserialize(cloneJson(pageAnnotations[index]));
-            if (editor) {
-              layer.addOrRebuild(editor);
-            } else {
-              remaining.push(pageAnnotations[index]);
-            }
-          } catch (_) {
-            remaining.push(pageAnnotations[index]);
+      var hydration = (async function () {
+        do {
+          queuedHydrationPages.delete(pageIndex);
+          if (destroyed || hydratedPages.has(pageIndex)) {
+            return;
           }
+          var layer = annotationLayer(pageIndex);
+          if (!layer) {
+            return;
+          }
+          var pageAnnotations = pendingByPage.get(pageIndex) || [];
+          if (!pageAnnotations.length) {
+            hydratedPages.add(pageIndex);
+            return;
+          }
+
+          suppressChanges += 1;
+          try {
+            var remaining = [];
+            for (var index = 0; index < pageAnnotations.length; index += 1) {
+              try {
+                var editor = await layer.deserialize(cloneJson(pageAnnotations[index]));
+                if (destroyed || annotationLayer(pageIndex) !== layer) {
+                  remaining.push(pageAnnotations[index]);
+                  queuedHydrationPages.add(pageIndex);
+                } else if (editor) {
+                  layer.addOrRebuild(editor);
+                } else {
+                  remaining.push(pageAnnotations[index]);
+                }
+              } catch (_) {
+                remaining.push(pageAnnotations[index]);
+              }
+            }
+            if (remaining.length) {
+              pendingByPage.set(pageIndex, remaining);
+            } else {
+              pendingByPage.delete(pageIndex);
+              hydratedPages.add(pageIndex);
+            }
+            lastFingerprint = JSON.stringify(snapshot());
+          } finally {
+            suppressChanges -= 1;
+          }
+          emitState();
+        } while (queuedHydrationPages.has(pageIndex));
+      }()).finally(function () {
+        if (hydratingPages.get(pageIndex) === hydration) {
+          hydratingPages.delete(pageIndex);
         }
-        if (remaining.length) {
-          pendingByPage.set(pageIndex, remaining);
-        } else {
-          pendingByPage.delete(pageIndex);
-          hydratedPages.add(pageIndex);
-        }
-        lastFingerprint = JSON.stringify(snapshot());
-      } finally {
-        suppressChanges -= 1;
-      }
-      emitState();
+      });
+      hydratingPages.set(pageIndex, hydration);
+      return hydration;
     }
 
     function setMode(modeName) {
@@ -288,6 +320,11 @@
       editingState.hasSelection = details.hasSelectedEditor === true;
       emitState();
     }, { signal: abortController.signal });
+
+    pendingByPage.forEach(function (_, pageIndex) {
+      hydratePage(pageIndex + 1).catch(function () {});
+    });
+    emitState();
 
     var changeTimer = setInterval(function () {
       checkForChanges(false).catch(function () {});

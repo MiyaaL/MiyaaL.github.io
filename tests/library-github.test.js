@@ -29,7 +29,12 @@ function response(payload, status = 200) {
     documents: [
       { id: "pdf-legacy", path: "/assets/library/pdfs/legacy.pdf" },
       { id: "pdf-release", source: "release", path: "https://github.com/release.pdf" },
-      { id: "url-external", source: "external", path: "https://example.org/paper.pdf" }
+      {
+        id: "url-external",
+        source: "external",
+        proxyRequired: true,
+        path: "https://example.org/paper.pdf"
+      }
     ]
   });
   assert.strictEqual(normalized.schemaVersion, 3);
@@ -37,6 +42,7 @@ function response(payload, status = 200) {
     normalized.documents.map((document) => document.source),
     ["repository", "release", "external"]
   );
+  assert.strictEqual(normalized.documents[2].proxyRequired, true);
 
   const buffer = new TextEncoder().encode("%PDF-1.4\n%%EOF").buffer;
   assert.strictEqual(

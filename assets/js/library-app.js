@@ -6,6 +6,7 @@
       !window.LibraryStore ||
       !window.LibraryGitHub ||
       !window.LibraryAnnotations ||
+      !window.LibraryPdfPolicy ||
       !window.LibraryPdfEditor ||
       !window.LibraryImmersive) {
     return;
@@ -529,6 +530,7 @@
       state.pdfjs = await import(root.dataset.pdfjsUrl);
       state.pdfjs.GlobalWorkerOptions.workerSrc = root.dataset.pdfWorkerUrl;
       globalThis.pdfjsLib = state.pdfjs;
+      window.LibraryPdfPolicy.installMinimumRenderScale(state.pdfjs);
     }
     if (!state.viewerModule) {
       state.viewerModule = await import(root.dataset.pdfViewerUrl);
@@ -547,36 +549,36 @@
 
   function pdfOptions(url, useProxy) {
     var assetRoot = root.dataset.pdfAssetsUrl;
-    var options = {
-      url: url,
-      disableAutoFetch: true,
+    var resources = {
       cMapUrl: assetRoot + "cmaps/",
-      cMapPacked: true,
       iccUrl: assetRoot + "iccs/",
       standardFontDataUrl: assetRoot + "standard_fonts/",
       wasmUrl: assetRoot + "wasm/"
     };
     if (useProxy) {
-      options.httpHeaders = {
+      resources.httpHeaders = {
         apikey: root.dataset.supabaseKey,
         Authorization: "Bearer " + root.dataset.supabaseKey
       };
     }
-    return options;
+    return window.LibraryPdfPolicy.documentOptions(url, resources);
   }
 
-  async function loadPdfAt(url, useProxy) {
-    state.loadingTask = state.pdfjs.getDocument(pdfOptions(url, useProxy));
-    try {
-      return await state.loadingTask.promise;
-    } catch (error) {
-      await state.loadingTask.destroy().catch(function () {});
-      state.loadingTask = null;
-      throw error;
-    }
+  function loadPdfAt(url, useProxy) {
+    return window.LibraryPdfPolicy.runLoadingTask({
+      create: function () {
+        return state.pdfjs.getDocument(pdfOptions(url, useProxy));
+      },
+      getCurrent: function () {
+        return state.loadingTask;
+      },
+      setCurrent: function (loadingTask) {
+        state.loadingTask = loadingTask;
+      }
+    });
   }
 
-  async function releaseDocument() {
+  async function releaseDocumentNow() {
     clearTimeout(state.saveTimer);
     if (state.pdfEditor) {
       try {
@@ -596,10 +598,9 @@
     if (state.viewerAbort) {
       state.viewerAbort.abort();
     }
-    if (state.loadingTask) {
-      await state.loadingTask.destroy().catch(function () {});
-    } else if (state.pdf) {
-      await state.pdf.destroy().catch(function () {});
+    var loadingTask = state.loadingTask || (state.pdf && state.pdf.loadingTask);
+    if (loadingTask) {
+      await loadingTask.destroy().catch(function () {});
     }
     state.loadingTask = null;
     state.pdf = null;
@@ -613,27 +614,12 @@
     updateAnnotationControls();
   }
 
-  function initializeContinuousViewer(sequence, sourceUrl, annotationRecord, annotationRef) {
-    var viewerModule = state.viewerModule;
-    var eventBus = new viewerModule.EventBus();
-    var linkService = new viewerModule.PDFLinkService({
-      eventBus: eventBus,
-      externalLinkTarget: viewerModule.LinkTarget.BLANK
-    });
-    var abortController = new AbortController();
-    var viewer = new viewerModule.PDFViewer({
-      container: elements.viewport,
-      viewer: elements.pdfViewer,
-      eventBus: eventBus,
-      linkService: linkService,
-      annotationEditorMode: state.pdfjs.AnnotationEditorType.NONE,
-      imageResourcesPath: root.dataset.pdfAssetsUrl + "web/images/",
-      abortSignal: abortController.signal
-    });
-    linkService.setViewer(viewer);
-    state.viewer = viewer;
-    state.linkService = linkService;
-    state.viewerAbort = abortController;
+  var releaseDocument = window.LibraryPdfPolicy.createSerialExecutor(releaseDocumentNow);
+
+  function initializePdfEditor(sequence, viewer, eventBus, annotationRecord, annotationRef) {
+    if (sequence !== state.openingSequence || viewer !== state.viewer || !state.pdf) {
+      return;
+    }
     state.pdfEditor = window.LibraryPdfEditor.create({
       pdf: state.pdf,
       viewer: viewer,
@@ -650,7 +636,30 @@
       }
     });
     updateAnnotationControls();
+  }
 
+  function initializeContinuousViewer(sequence, sourceUrl) {
+    var viewerModule = state.viewerModule;
+    var eventBus = new viewerModule.EventBus();
+    var linkService = new viewerModule.PDFLinkService({
+      eventBus: eventBus,
+      externalLinkTarget: viewerModule.LinkTarget.BLANK
+    });
+    var abortController = new AbortController();
+    var viewerOptions = Object.assign({
+      container: elements.viewport,
+      viewer: elements.pdfViewer,
+      eventBus: eventBus,
+      linkService: linkService,
+      annotationEditorMode: state.pdfjs.AnnotationEditorType.NONE,
+      imageResourcesPath: root.dataset.pdfAssetsUrl + "web/images/",
+      abortSignal: abortController.signal
+    }, window.LibraryPdfPolicy.viewerOptions());
+    var viewer = new viewerModule.PDFViewer(viewerOptions);
+    linkService.setViewer(viewer);
+    state.viewer = viewer;
+    state.linkService = linkService;
+    state.viewerAbort = abortController;
     eventBus.on("pagesinit", function () {
       if (sequence !== state.openingSequence || !state.pdf) {
         return;
@@ -690,6 +699,7 @@
 
     viewer.setDocument(state.pdf);
     linkService.setDocument(state.pdf, sourceUrl);
+    return { eventBus: eventBus, viewer: viewer };
   }
 
   async function openDocument(documentRecord) {
@@ -724,33 +734,67 @@
       if (sequence !== state.openingSequence) {
         return;
       }
-      try {
-        state.pdf = await loadPdfAt(documentRecord.path, false);
-      } catch (directError) {
-        var proxiedSource = documentRecord.source === "external" || documentRecord.source === "release";
-        var fallback = proxiedSource ? proxyUrl(documentRecord) : "";
-        if (!fallback) {
-          if (proxiedSource) {
-            throw new Error("external_pdf_unavailable");
-          }
-          throw directError;
+      var proxy = proxyUrl(documentRecord);
+      var candidates = window.LibraryPdfPolicy.urlCandidates(documentRecord, proxyUrl);
+      var loadError = null;
+      for (var candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+        if (sequence !== state.openingSequence) {
+          return;
         }
+        var candidateUrl = candidates[candidateIndex];
         try {
-          state.pdf = await loadPdfAt(fallback, true);
-        } catch (_) {
+          var loadedPdf = await loadPdfAt(candidateUrl, Boolean(proxy && candidateUrl === proxy));
+          if (sequence !== state.openingSequence) {
+            await loadedPdf.loadingTask.destroy().catch(function () {});
+            return;
+          }
+          state.pdf = loadedPdf;
+          break;
+        } catch (error) {
+          if (sequence !== state.openingSequence) {
+            return;
+          }
+          loadError = error;
+        }
+      }
+      if (!state.pdf) {
+        if (documentRecord.source === "external" || documentRecord.source === "release") {
           throw new Error("external_pdf_unavailable");
         }
+        throw loadError;
       }
       if (sequence !== state.openingSequence) {
         return;
       }
       state.page = Math.min(state.page, state.pdf.numPages);
-      var annotationRecord = await loadAnnotations(documentRecord);
-      if (sequence !== state.openingSequence) {
-        return;
-      }
-      var annotationRef = state.annotationRef;
-      initializeContinuousViewer(sequence, documentRecord.path, annotationRecord, annotationRef);
+      var annotationRef = null;
+      window.LibraryPdfPolicy.initializeWithDeferredData({
+        load: function () {
+          var annotationPromise = loadAnnotations(documentRecord);
+          annotationRef = state.annotationRef;
+          return annotationPromise;
+        },
+        initialize: function () {
+          return initializeContinuousViewer(sequence, documentRecord.path);
+        },
+        attach: function (viewerContext, annotationRecord) {
+          initializePdfEditor(
+            sequence,
+            viewerContext.viewer,
+            viewerContext.eventBus,
+            annotationRecord,
+            annotationRef
+          );
+        },
+        onError: function (error) {
+          if (sequence !== state.openingSequence) {
+            return;
+          }
+          state.annotationStatus = "Notes unavailable";
+          updateAnnotationControls();
+          setMessage(friendlyError(error));
+        }
+      });
       elements.reader.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       if (sequence !== state.openingSequence) {

@@ -504,6 +504,11 @@
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
 }
 
+.library-pdf-viewer .annotationEditorLayer .editToolbar button {
+  font: menu;
+  line-height: normal;
+}
+
 body.library-immersive-active {
   overflow: hidden;
 }

@@ -48,6 +48,7 @@ const wait = (milliseconds = 50) => new Promise((resolve) => setTimeout(resolve,
   window.LibraryStore.create = function () { return memoryStore; };
   window.eval(fs.readFileSync("/site/assets/js/library-github.js", "utf8"));
   window.eval(fs.readFileSync("/site/assets/js/library-annotations.js", "utf8"));
+  window.eval(fs.readFileSync("/site/assets/js/library-pdf-policy.js", "utf8"));
   window.eval(fs.readFileSync("/site/assets/js/library-pdf-editor.js", "utf8"));
   window.eval(fs.readFileSync("/site/assets/js/library-immersive.js", "utf8"));
   window.eval(fs.readFileSync("/site/assets/js/library-app.js", "utf8"));

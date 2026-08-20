@@ -60,7 +60,7 @@ Library 默认使用 PDF.js 的连续滚动查看器。当前可见页码与缩�
 
 删除外链文档只移除本站目录记录，不会删除远端原文件。删除操作仅对已验证的站点所有者显示；服务端会从最新 Git 目录按文档 ID 重新解析目标，不信任浏览器传入的路径或 Asset ID。
 
-阅读器会优先从源站直连。源站未开放浏览器 CORS 时，会回退到 `library-pdf-proxy`。代理只接受 `assets/library/catalog.json` 中已登记、`source: external` 或 `source: release` 的文档 ID，并转发 HTTP Range 请求；Release URL 还必须属于本仓库固定的 `library-assets-v1` tag。代理不接受任意 URL，也不支持私有地址。
+阅读器会优先从源站直连。源站未开放浏览器 CORS 时，会回退到 `library-pdf-proxy`；对于已经确认不支持 CORS 的稳定来源，可在该目录项中设置 `proxyRequired: true`，让阅读器直接请求代理，避免先等待一次必然失败的直连。不要给支持 CORS 的来源设置该字段，以免绕过其 CDN。代理只接受 `assets/library/catalog.json` 中已登记、`source: external` 或 `source: release` 的文档 ID，并转发 HTTP Range 请求；Release URL 还必须属于本仓库固定的 `library-assets-v1` tag。代理不接受任意 URL，也不支持私有地址。
 
 部署代理时关闭 Supabase 网关的 JWT 校验，因为 PDF.js 的 Range 请求由公开阅读页面发出；函数内部仍会校验 Origin、目录 ID、HTTPS 协议和明显的私网地址：
 

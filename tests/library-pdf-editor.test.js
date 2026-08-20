@@ -150,6 +150,94 @@ class EventBus {
   global.document = originalDocument;
   global.URL = originalUrl;
 
+  const lateValues = new Map();
+  const lateStates = [];
+  const lateEventBus = new EventBus();
+  let activeLateLayer;
+  let staleLayerAdds = 0;
+  const settledLateLayer = {
+    async deserialize(data) {
+      return { data };
+    },
+    addOrRebuild(lateEditor) {
+      lateValues.set("late-" + lateValues.size, lateEditor.data);
+    }
+  };
+  const staleLateLayer = {
+    async deserialize(data) {
+      await Promise.resolve();
+      activeLateLayer = settledLateLayer;
+      lateEventBus.dispatch("annotationeditorlayerrendered", { pageNumber: 1 });
+      return { data };
+    },
+    addOrRebuild() {
+      staleLayerAdds += 1;
+    }
+  };
+  activeLateLayer = staleLateLayer;
+  const lateUiManager = {
+    commitOrRemove() {}
+  };
+  const lateEditor = LibraryPdfEditor.create({
+    pdf: {
+      annotationStorage: {
+        get serializable() {
+          return { map: lateValues };
+        },
+        setValue(key, value) {
+          lateValues.set(key, value);
+        },
+        remove(key) {
+          lateValues.delete(key);
+        }
+      }
+    },
+    viewer: {
+      _layerProperties: {
+        annotationEditorUIManager: lateUiManager
+      },
+      getPageView() {
+        return {
+          annotationEditorLayer: {
+            annotationEditorLayer: activeLateLayer
+          }
+        };
+      }
+    },
+    eventBus: lateEventBus,
+    pdfjs: {
+      AnnotationEditorType: {
+        NONE: 0,
+        FREETEXT: 3,
+        HIGHLIGHT: 9,
+        INK: 15
+      }
+    },
+    annotations: [
+      { annotationType: 9, pageIndex: 0, rect: [0, 0, 10, 10] }
+    ],
+    onState(state) {
+      lateStates.push(state);
+    }
+  });
+  await wait(10);
+  assert.strictEqual(
+    lateValues.size,
+    1,
+    "annotations loaded after the first page rendered must hydrate immediately"
+  );
+  assert.strictEqual(
+    staleLayerAdds,
+    0,
+    "annotations must not be attached to a PDF.js page layer that was replaced mid-hydration"
+  );
+  assert.strictEqual(
+    lateStates.at(-1).ready,
+    true,
+    "a late editor must reuse PDF.js's existing annotation UI manager"
+  );
+  lateEditor.destroy();
+
   editor.destroy();
   console.log("PASS: Library PDF editor hydration, tools, autosave, and complete export tests");
 }()).catch((error) => {

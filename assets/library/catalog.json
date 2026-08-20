@@ -4,6 +4,7 @@
     {
       "id": "url-19471f2608b0bb04",
       "source": "external",
+      "proxyRequired": true,
       "title": "lecture notes of 6.s184：An Introduction to Flow Matching and Diffusion Models",
       "filename": "lecture_notes.pdf",
       "path": "https://diffusion.csail.mit.edu/2026/docs/lecture_notes.pdf",

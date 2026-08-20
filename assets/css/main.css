@@ -934,7 +934,7 @@ html[data-theme-mode="dark"] .theme-dark {
   margin: 1.65em 0;
 }
 
-.highlight {
+.highlighter-rouge > .highlight {
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--code-bg);
