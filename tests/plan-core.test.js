@@ -37,16 +37,27 @@ function configuredState(start, end) {
   });
 }());
 
-(function holidayMakeupDaysReplaceHolidaySessions() {
+(function officialMakeupWorkdaysDoNotCreateTrainingSessions() {
   const state = configuredState("2026-09-01", "2026-10-20");
   const plan = PlanCore.generate(state, [holidays2026]);
   const dates = plan.sessions.map((session) => session.date);
-  assert(dates.includes("2026-09-20"), "National Day makeup workday before the holiday should receive a session");
-  assert(dates.includes("2026-10-10"), "National Day makeup workday after the holiday should receive a session");
+  assert(!dates.includes("2026-09-20"), "official makeup workdays must not become automatic training days");
+  assert(!dates.includes("2026-10-10"), "official makeup workdays must not become automatic training days");
   ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07"].forEach((date) => {
     assert(!dates.includes(date), date + " must remain holiday-free");
   });
-  assert(plan.sessions.find((session) => session.date === "2026-09-20").holiday);
+  assert(!plan.sessions.some((session) => session.holiday && session.holiday.kind === "makeup"));
+}());
+
+(function manualMoveOfOfficialHolidaySessionStillApplies() {
+  const state = configuredState("2026-09-01", "2026-10-20");
+  const sessionId = state.activeCycle.id + ":push-volume:2026-10-02";
+  state.activeCycle.sessionOverrides[sessionId] = { action: "move", date: "2026-10-08" };
+  const plan = PlanCore.generate(state, [holidays2026]);
+  const moved = plan.sessions.find((session) => session.id === sessionId);
+  assert(moved, "an existing manual move must survive the official makeup policy change");
+  assert.strictEqual(moved.date, "2026-10-08");
+  assert.strictEqual(moved.manualMove, true);
 }());
 
 (function customHolidayOverridesCreateMakeupSession() {
@@ -156,6 +167,60 @@ function configuredState(start, end) {
   assert(preserved, "completed session must remain visible after its template day is removed");
   assert.strictEqual(preserved.status, "completed");
   assert.strictEqual(JSON.stringify(preserved.workout), frozenWorkout);
+}());
+
+(function completedAutomaticMakeupHistorySurvivesPolicyChange() {
+  let state = configuredState("2026-09-01", "2026-10-20");
+  const original = PlanCore.generate(state, []).sessions.find((session) => session.date === "2026-10-02");
+  const recordedMakeup = JSON.parse(JSON.stringify(original));
+  recordedMakeup.date = "2026-09-20";
+  recordedMakeup.holiday = {
+    name: "国庆节",
+    movedFrom: original.sourceDate,
+    kind: "makeup"
+  };
+  state = PlanCore.recordSession(state, recordedMakeup, {
+    status: "completed",
+    mainSets: [{ weight: 67.5, reps: 5, rpe: 8, completed: true }],
+    notes: "legacy automatic makeup record"
+  });
+
+  const beforeLog = JSON.parse(JSON.stringify(state.logs[recordedMakeup.id]));
+  state.activeCycle.template = state.activeCycle.template.filter((item) => item.id !== "push-volume");
+  state.activeCycle.lifts.bench.current1rm = 120;
+  const plan = PlanCore.generate(state, [holidays2026]);
+  const preserved = plan.sessions.find((session) => session.id === recordedMakeup.id);
+  assert(preserved, "a recorded legacy makeup session must remain visible");
+  assert.strictEqual(preserved.status, "completed");
+  Object.keys(beforeLog.sessionSnapshot).forEach((key) => {
+    assert.deepStrictEqual(preserved[key], beforeLog.sessionSnapshot[key]);
+  });
+  assert.deepStrictEqual(state.logs[recordedMakeup.id], beforeLog);
+
+  const publicSnapshot = PlanCore.createPublicSnapshot(state, plan);
+  const publicPreserved = publicSnapshot.sessions.find((session) => session.id === recordedMakeup.id);
+  assert(publicPreserved, "the public snapshot must retain recorded legacy history");
+  assert.strictEqual(publicPreserved.date, "2026-09-20");
+  assert.strictEqual(publicPreserved.status, "completed");
+
+  const legacyPlanned = JSON.parse(JSON.stringify(publicPreserved));
+  legacyPlanned.id += ":planned-copy";
+  legacyPlanned.status = "planned";
+  const legacySkipped = JSON.parse(JSON.stringify(legacyPlanned));
+  legacySkipped.id += ":skipped-copy";
+  legacySkipped.status = "skipped";
+  const customMakeup = JSON.parse(JSON.stringify(legacyPlanned));
+  customMakeup.id += ":custom-copy";
+  customMakeup.holiday.name = "自定义调休";
+  const filtered = PlanCore.filterLegacyOfficialMakeups(
+    [legacyPlanned, publicPreserved, legacySkipped, customMakeup],
+    [holidays2026]
+  );
+  assert.deepStrictEqual(
+    filtered.map((session) => session.id),
+    [publicPreserved.id, legacySkipped.id, customMakeup.id]
+  );
+  assert.deepStrictEqual(PlanCore.filterLegacyOfficialMakeups([legacyPlanned], []), [legacyPlanned]);
 }());
 
 (function nextSessionReceivesOneAdaptiveAdjustment() {

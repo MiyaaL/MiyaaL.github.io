@@ -256,7 +256,10 @@
     if (publicSnapshot) {
       return {
         cycle: publicSnapshot.cycle,
-        sessions: publicSnapshot.sessions || [],
+        sessions: core.filterLegacyOfficialMakeups(
+          publicSnapshot.sessions || [],
+          holidayCalendars
+        ),
         warnings: publicSnapshot.warnings || [],
         totalWeeks: publicSnapshot.totalWeeks || 0
       };

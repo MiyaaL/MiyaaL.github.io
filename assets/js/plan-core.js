@@ -308,26 +308,15 @@
 
     holidays.periods.forEach(function (period) {
       var queue = (missed[period.id] || []).sort(byDate);
-      var workdays = period.workdays.filter(function (workday) {
-        return workday >= cycle.startDate &&
-          workday <= cycle.endDate &&
-          !holidays.off[workday] &&
-          !occupied[workday];
-      }).sort();
-
-      queue.slice(0, workdays.length).forEach(function (session, index) {
-        session.date = workdays[index];
-        session.holiday = {
-          name: period.name,
-          movedFrom: session.sourceDate,
-          kind: "makeup"
-        };
-        sessions.push(session);
-        occupied[session.date] = session.id;
-      });
-
-      queue.slice(workdays.length).forEach(function (session) {
-        warnings.push(session.sourceDate + " 的" + session.label + "因" + period.name + "跳过，未找到可用调休工作日。");
+      queue.forEach(function (session) {
+        var override = cycle.sessionOverrides[session.id] || {};
+        if (override.action === "move" && override.date) {
+          sessions.push(session);
+          return;
+        }
+        warnings.push(
+          session.sourceDate + " 的" + session.label + "因" + period.name + "跳过；官方补班日不自动安排补训。"
+        );
       });
     });
 
@@ -945,6 +934,24 @@
     };
   }
 
+  function filterLegacyOfficialMakeups(sessions, holidayCalendars) {
+    return (sessions || []).filter(function (session) {
+      if (session.status !== "planned" ||
+          !session.holiday ||
+          session.holiday.kind !== "makeup") {
+        return true;
+      }
+      var isOfficialMakeup = (holidayCalendars || []).some(function (calendar) {
+        return (calendar.periods || []).some(function (period) {
+          return session.holiday.name === period.name &&
+            (period.daysOff || []).indexOf(session.sourceDate) !== -1 &&
+            (period.workdays || []).indexOf(session.date) !== -1;
+        });
+      });
+      return !isOfficialMakeup;
+    });
+  }
+
   function escapeIcs(value) {
     return String(value || "")
       .replace(/\\/g, "\\\\")
@@ -1038,6 +1045,7 @@
     estimateOneRepMax: estimateOneRepMax,
     suggestAdjustment: suggestAdjustment,
     createPublicSnapshot: createPublicSnapshot,
+    filterLegacyOfficialMakeups: filterLegacyOfficialMakeups,
     generateIcs: generateIcs,
     roundLoad: roundLoad,
     formatLoad: formatLoad,
