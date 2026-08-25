@@ -12,6 +12,11 @@ Third-party course names, lecture screenshots, and related materials under
 `assets/posts/cs224n/` and `assets/posts/cs336/` remain the property of their
 respective rights holders and are not licensed by this repository.
 
+`assets/posts/diffusion-model/flow-model-euler-method.png` is an excerpt from
+Peter Holderrieth and Ezra Erives, *An Introduction to Flow Matching and
+Diffusion Models* (MIT 6.S184, Algorithm 1), and remains available under the
+course's CC BY-NC-SA license.
+
 You may link to this content and quote brief excerpts with attribution.
 Reproduction, redistribution, translation, or commercial use requires prior
 written permission from MiyaaL.
