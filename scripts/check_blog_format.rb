@@ -449,20 +449,33 @@ end
 if blog_page.include?("course-series-link")
   add_error(errors, ROOT.join("blog/index.html"), "不得恢复逐课程独占一行的旧结构")
 end
-if blog_page.scan(%q{class="topic-directory-row"}).length < 2
-  add_error(errors, ROOT.join("blog/index.html"), "主题目录至少应包含课程系列与个人随笔两行")
+if blog_page.scan(%q{class="topic-directory-row"}).length < 3
+  add_error(errors, ROOT.join("blog/index.html"), "主题目录至少应包含课程系列、数学推导与个人随笔三行")
 end
 if blog_page.scan(">COURSE SERIES<").length != 1
   add_error(errors, ROOT.join("blog/index.html"), "COURSE SERIES 标签必须只出现一次")
 end
+if blog_page.scan(">DERIVATIONS<").length != 1
+  add_error(errors, ROOT.join("blog/index.html"), "DERIVATIONS 标签必须只出现一次")
+end
 course_label = blog_page.index(">COURSE SERIES<")
 cs224n_link = blog_page.index("/courses/cs224n/")
 cs336_link = blog_page.index("/courses/cs336/")
+derivations_label = blog_page.index(">DERIVATIONS<")
 personal_label = blog_page.index(">PERSONAL<")
-unless [course_label, cs224n_link, cs336_link, personal_label].all? && course_label < cs224n_link && cs224n_link < cs336_link && cs336_link < personal_label
-  add_error(errors, ROOT.join("blog/index.html"), "CS224N 与 CS336 必须并列在 PERSONAL 主题之前的同一课程目录中")
+unless [course_label, cs224n_link, cs336_link, derivations_label, personal_label].all? && course_label < cs224n_link && cs224n_link < cs336_link && cs336_link < derivations_label && derivations_label < personal_label
+  add_error(errors, ROOT.join("blog/index.html"), "CS224N 与 CS336 必须并列在同一课程目录中，并按 COURSE SERIES、DERIVATIONS、PERSONAL 排序")
 end
-unless blog_page.include?("cs224n_posts.size") && blog_page.include?("cs336_posts.size") && blog_page.include?("essay_posts.size")
+unless blog_page.include?("{% assign derivation_posts = published_posts | where_exp: \"post\", \"post.tags contains 'Derivations'\" %}")
+  add_error(errors, ROOT.join("blog/index.html"), "Derivations 文章集必须从 published_posts 按 Derivations 标签计算")
+end
+unless blog_page.match?(/\{% if derivation_posts\.size > 0 %\}.*?>DERIVATIONS<.*?\{% endif %\}/m)
+  add_error(errors, ROOT.join("blog/index.html"), "DERIVATIONS 主题行必须仅在存在已发布文章时展示")
+end
+unless blog_page.include?("href=\"{{ '/blog/' | relative_url }}?tag={{ 'Derivations' | url_encode }}\"")
+  add_error(errors, ROOT.join("blog/index.html"), "DERIVATIONS 入口必须使用 /blog/?tag=Derivations 标签筛选")
+end
+unless blog_page.include?("cs224n_posts.size") && blog_page.include?("cs336_posts.size") && blog_page.include?("derivation_posts.size") && blog_page.include?("essay_posts.size")
   add_error(errors, ROOT.join("blog/index.html"), "主题文章数必须由 Jekyll 动态计算")
 end
 

@@ -7,6 +7,7 @@ permalink: /blog/
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
 {% assign cs224n_posts = published_posts | where: "series", "Stanford CS224N" %}
 {% assign cs336_posts = published_posts | where: "series", "Stanford CS336" %}
+{% assign derivation_posts = published_posts | where_exp: "post", "post.tags contains 'Derivations'" %}
 {% assign essay_posts = published_posts | where_exp: "post", "post.tags contains '随笔'" %}
 {% assign all_tags = "" | split: "" %}
 {% for post in published_posts %}
@@ -49,6 +50,23 @@ permalink: /blog/
           </a>
         </div>
       </div>
+
+      {% if derivation_posts.size > 0 %}
+        <div class="topic-directory-row">
+          <div class="topic-directory-label">
+            <span class="topic-directory-kicker">DERIVATIONS</span>
+          </div>
+          <div class="topic-directory-items">
+            <a class="topic-directory-link" href="{{ '/blog/' | relative_url }}?tag={{ 'Derivations' | url_encode }}">
+              <span class="topic-directory-copy">
+                <span class="topic-directory-title">Mathematical Derivations</span>
+                <span class="topic-directory-meta">{{ derivation_posts.size }} 篇 · Models &amp; Methods</span>
+              </span>
+              <span class="topic-directory-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
+      {% endif %}
 
       {% if essay_posts.size > 0 %}
         <div class="topic-directory-row">

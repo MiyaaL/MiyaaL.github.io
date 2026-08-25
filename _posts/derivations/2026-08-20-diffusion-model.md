@@ -2,7 +2,7 @@
 title: "Diffusion Models 与 Flow Matching：从概率路径到生成采样"
 date: 2026-08-20 12:00:00 +0800
 description: "本文从概率路径、向量场和连续性方程出发，推导 Flow Matching、Score Matching 与 Diffusion Models 的训练和采样方法。"
-tags: [Diffusion Models, Flow Matching]
+tags: [Derivations, Diffusion Models, Flow Matching]
 math: true
 mermaid: false
 ---
