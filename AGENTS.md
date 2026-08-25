@@ -17,7 +17,7 @@
 
 已发布文章按专题放在 `_posts/<topic>/YYYY-MM-DD-english-slug.md` 或 `.html`，草稿在 `_drafts/` 下使用对应的专题目录。文件名 slug 只使用小写英文字母、数字和连字符。
 
-专题目录使用稳定的英文名称，站内展示继续使用中文标题：
+专题目录使用稳定的英文名称，站内专题标签只展示英文名称：
 
 ```text
 _posts/
@@ -25,6 +25,7 @@ _posts/
 │   ├── cs224n/              # Stanford CS224N
 │   └── cs336/               # Stanford CS336
 ├── essays/                  # 个人随笔
+├── derivations/             # Derivations
 ├── chip-architecture/       # 芯片架构
 └── technical-analysis/      # 技术分析与 HTML 报告
 ```
@@ -74,7 +75,7 @@ source_commit: 0123abc
 ## Blog 主题目录
 
 - Blog 顶部使用 `topic-directory-*` 组件展示高层主题；每个高层主题占一行，右侧可包含一个或多个入口。
-- 所有课程入口必须合并在同一个“COURSE SERIES / 课程系列”行中，不得为每门课程重复创建课程标签行。
+- 所有课程入口必须合并在同一个“COURSE SERIES”行中，不得为每门课程重复创建课程标签行。
 - 主题与文章数必须从 `site.posts`、series 或 tags 动态计算，不手写会过期的数量。
 - 只展示已经有文章的主题，不创建空目录。目前“个人随笔”由 `随笔` 标签驱动；以后可按同样方式增加“芯片架构”“技术分析”等行。
 - 标签主题入口使用 `/blog/?tag=<标签>`，并确认 Blog 初始化时能自动选中对应标签。

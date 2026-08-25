@@ -44,16 +44,6 @@
   font-family: var(--font-mono);
 }
 
-.topic-directory-kicker::after {
-  margin-left: 8px;
-  color: var(--text-faint);
-  content: "/";
-}
-
-.topic-directory-name {
-  font-family: var(--font-sans);
-}
-
 .topic-directory-items {
   display: grid;
   min-width: 0;

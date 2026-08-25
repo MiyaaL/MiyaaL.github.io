@@ -43,8 +43,8 @@ _posts/<专题目录>/YYYY-MM-DD-英文短名.md
 _posts/<专题目录>/YYYY-MM-DD-英文短名.html
 ```
 
-当前目录约定是 `courses/<课程名>/`、`essays/`、`chip-architecture/` 和
-`technical-analysis/`。没有内容的目录不需要提前创建。
+当前目录约定是 `courses/<课程名>/`、`essays/`、`derivations/`、
+`chip-architecture/` 和 `technical-analysis/`。没有内容的目录不需要提前创建。
 
 Markdown 文章可以从 `_drafts/template.md` 复制；HTML 技术报告可以从
 `_drafts/technical-analysis/report-template.html` 复制。两种格式使用相同的文章头部：
@@ -147,9 +147,10 @@ git push
 ├── _includes/        # 可复用页面片段
 ├── _layouts/         # 页面和文章模板
 ├── _posts/           # 按专题组织的已发布 Markdown/HTML 文章
-│   └── courses/
-│       ├── cs224n/
-│       └── cs336/
+│   ├── courses/
+│   │   ├── cs224n/
+│   │   └── cs336/
+│   └── derivations/  # Derivations
 ├── assets/
 │   ├── css/          # 站点样式
 │   ├── icons/        # 图标

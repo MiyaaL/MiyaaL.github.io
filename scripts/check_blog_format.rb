@@ -6,7 +6,7 @@ require "pathname"
 require "yaml"
 
 ROOT = Pathname(__dir__).parent.expand_path
-TOPIC_DIRECTORIES = %w[courses essays chip-architecture technical-analysis].freeze
+TOPIC_DIRECTORIES = %w[courses essays derivations chip-architecture technical-analysis].freeze
 CONTENT_PATHS = %w[_posts _drafts].flat_map do |directory|
   ROOT.join(directory).glob("**/*.{md,html}")
 end.sort.freeze
@@ -438,6 +438,14 @@ unless course_css.match?(/@media \(max-width:\s*620px\).*?\.topic-directory-row\
 end
 
 blog_page = ROOT.join("blog/index.html").read(encoding: "UTF-8")
+series_navigation_path = ROOT.join("_includes/series-navigation.html")
+series_navigation = series_navigation_path.read(encoding: "UTF-8")
+unless series_navigation.scan(">COURSE SERIES<").length == 1 && !series_navigation.include?("课程系列")
+  add_error(errors, series_navigation_path, "课程文章导航只允许英文 COURSE SERIES 标签")
+end
+if blog_page.include?(%q{class="topic-directory-name"}) || course_css.include?(".topic-directory-kicker::after")
+  add_error(errors, ROOT.join("blog/index.html"), "专题目录标签只允许英文名称，不得恢复中文副名或分隔斜杠")
+end
 if blog_page.include?("course-series-link")
   add_error(errors, ROOT.join("blog/index.html"), "不得恢复逐课程独占一行的旧结构")
 end
