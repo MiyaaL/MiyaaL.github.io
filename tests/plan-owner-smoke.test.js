@@ -35,7 +35,10 @@ const { JSDOM } = require("jsdom");
   const state = window.PlanCore.createDefaultState("2026-08-03");
   state.activeCycle.endDate = "2026-10-25";
   state.activeCycle.status = "active";
-  state.activeCycle.bodyweightEntries = [{ date: "2026-08-03", value: 70 }];
+  state.activeCycle.bodyweightEntries = [
+    { date: "2026-08-03", value: 70 },
+    { date: "2026-08-18", value: 70.5 }
+  ];
   state.activeCycle.lifts.bench.current1rm = 100;
   state.activeCycle.lifts.bench.target1rm = 110;
   state.activeCycle.lifts.pullup.current1rm = 30;
@@ -122,6 +125,7 @@ const { JSDOM } = require("jsdom");
 
   window.document.querySelector("[data-session-id]").click();
   assert(window.document.querySelector("[data-save-log]"));
+  assert.strictEqual(window.document.querySelector("[data-log-bodyweight]"), null);
   window.document.querySelector("[data-save-log]").click();
   await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -130,6 +134,14 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(Object.keys(stored.state.logs).length, 1);
   const savedLog = stored.state.logs[Object.keys(stored.state.logs)[0]];
   assert.strictEqual(savedLog.accessories.length, 3);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(savedLog, "bodyweight"), false);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(stored.state.activeCycle.bodyweightEntries)),
+    [
+      { date: "2026-08-03", value: 70 },
+      { date: "2026-08-18", value: 70.5 }
+    ]
+  );
 
   const updateBodyweight = window.document.querySelector("[data-plan-update-bodyweight]");
   assert(updateBodyweight, "owner view should expose a dedicated bodyweight update entry");
@@ -155,8 +167,38 @@ const { JSDOM } = require("jsdom");
 
   window.document.querySelector("[data-plan-edit]").click();
   assert.strictEqual(window.document.querySelector("[data-plan-settings]").open, true);
+  const settingsBodyweight = window.document.querySelector("[data-plan-settings-bodyweight]");
+  assert.strictEqual(settingsBodyweight.hidden, true);
+  assert.strictEqual(settingsBodyweight.querySelector("input").disabled, true);
+  window.document.querySelector("[data-plan-settings-form]").dispatchEvent(
+    new window.Event("submit", { bubbles: true, cancelable: true })
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const stateAfterSettings = await memory.loadPrivate();
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(stateAfterSettings.state.activeCycle.bodyweightEntries)),
+    JSON.parse(JSON.stringify(bodyweightState.state.activeCycle.bodyweightEntries))
+  );
 
-  console.log("PASS: owner login, training log save, bodyweight update, version increment, and settings smoke test");
+  window.document.querySelector("[data-plan-new-cycle]").click();
+  assert.strictEqual(settingsBodyweight.hidden, true);
+  assert.strictEqual(settingsBodyweight.querySelector("input").disabled, true);
+  const nextCycleStartInput = window.document.querySelector('[data-plan-settings-form] [name="startDate"]');
+  nextCycleStartInput.value = "2026-08-19";
+  const nextCycleStart = nextCycleStartInput.value;
+  window.document.querySelector("[data-plan-settings-form]").dispatchEvent(
+    new window.Event("submit", { bubbles: true, cancelable: true })
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const stateAfterNewCycle = await memory.loadPrivate();
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(stateAfterNewCycle.state.activeCycle.bodyweightEntries)),
+    [{ date: nextCycleStart, value: 70.5, carriedFrom: "2026-08-18" }]
+  );
+  assert.strictEqual(stateAfterNewCycle.state.archivedCycles[0].cycle.status, "archived");
+  assert.strictEqual(stateAfterNewCycle.state.archivedCycles[0].overview.cycle.status, "archived");
+
+  console.log("PASS: bodyweight changes only through dedicated updates and carries exactly across cycles");
   window.close();
 }()).catch((error) => {
   console.error(error);

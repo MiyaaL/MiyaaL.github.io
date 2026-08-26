@@ -61,7 +61,7 @@
     });
   }
 
-  function addTodayPoint(points, today, carryForward) {
+  function addTodayPoint(points, today) {
     var sorted = dedupePoints(points);
     if (!sorted.length || !today) {
       return sorted;
@@ -95,14 +95,6 @@
         isToday: true,
         isInterpolated: true
       });
-    } else if (carryForward && before) {
-      sorted.push({
-        date: today,
-        value: before.value,
-        detail: "Current date · latest entry from " + before.date,
-        isToday: true,
-        isCarried: true
-      });
     }
 
     return dedupePoints(sorted).map(function (point) {
@@ -111,6 +103,52 @@
       }
       return point;
     });
+  }
+
+  function bodyweightEndpointDate(cycle, today) {
+    if (cycle.status === "archived") {
+      return cycle.endDate;
+    }
+    if (!today || today < cycle.startDate) {
+      return null;
+    }
+    return today < cycle.endDate ? today : cycle.endDate;
+  }
+
+  function carryBodyweightToEndpoint(points, endpoint, today) {
+    var sorted = dedupePoints(points);
+    if (!endpoint) {
+      return sorted;
+    }
+
+    sorted = sorted.filter(function (point) {
+      return point.date <= endpoint;
+    });
+    if (!sorted.length) {
+      return sorted;
+    }
+
+    var last = sorted[sorted.length - 1];
+    if (last.date === endpoint) {
+      last.isEndpoint = true;
+      if (endpoint === today) {
+        last.isToday = true;
+      }
+      return sorted;
+    }
+
+    var carriedFrom = last.carriedFrom || last.date;
+    sorted.push({
+      date: endpoint,
+      value: last.value,
+      carriedFrom: carriedFrom,
+      detail: (endpoint === today ? "Current date" : "Cycle end") +
+        " · latest update from " + carriedFrom,
+      isToday: endpoint === today ? true : undefined,
+      isEndpoint: true,
+      isCarried: true
+    });
+    return sorted;
   }
 
   function liftSeries(plan, definition, today) {
@@ -152,7 +190,7 @@
 
     points = dedupePoints(points);
     if (dateInRange(today, cycle.startDate, cycle.endDate)) {
-      points = addTodayPoint(points, today, false);
+      points = addTodayPoint(points, today);
     }
     if (!points.length) {
       return null;
@@ -172,20 +210,47 @@
     if (!Array.isArray(cycle.bodyweightEntries)) {
       return null;
     }
-    var points = cycle.bodyweightEntries.map(function (entry) {
+    var sourcePoints = dedupePoints(cycle.bodyweightEntries.map(function (entry) {
       return {
         date: entry.date,
         value: readNumber(entry.value),
-        detail: "Recorded bodyweight"
+        carriedFrom: entry.carriedFrom || null,
+        detail: entry.carriedFrom
+          ? "Cycle carry · latest update from " + entry.carriedFrom
+          : "Recorded bodyweight"
       };
     }).filter(function (point) {
-      return point.value != null && dateInRange(point.date, cycle.startDate, cycle.endDate);
+      return point.value != null && point.date <= cycle.endDate;
+    }));
+    var beforeStart = null;
+    sourcePoints.forEach(function (point) {
+      if (point.date < cycle.startDate) {
+        beforeStart = point;
+      }
     });
-
-    points = dedupePoints(points);
-    if (dateInRange(today, cycle.startDate, cycle.endDate)) {
-      points = addTodayPoint(points, today, true);
+    var points = sourcePoints.filter(function (point) {
+      return dateInRange(point.date, cycle.startDate, cycle.endDate);
+    });
+    var hasStartPoint = points.some(function (point) {
+      return point.date === cycle.startDate;
+    });
+    if (!hasStartPoint && beforeStart) {
+      var carriedFrom = beforeStart.carriedFrom || beforeStart.date;
+      points.push({
+        date: cycle.startDate,
+        value: beforeStart.value,
+        carriedFrom: carriedFrom,
+        detail: "Cycle start · latest update from " + carriedFrom,
+        isCarried: true,
+        isBoundary: true
+      });
     }
+
+    points = carryBodyweightToEndpoint(
+      points,
+      bodyweightEndpointDate(cycle, today),
+      today
+    );
     if (!points.length) {
       return null;
     }
@@ -195,6 +260,7 @@
       label: definition.label,
       metric: definition.metric,
       kind: definition.kind,
+      interpolation: "step",
       points: points
     };
   }
@@ -328,6 +394,25 @@
     });
   }
 
+  function pathForSeries(item, xFor, yFor) {
+    if (!item.points.length) {
+      return "";
+    }
+
+    var first = item.points[0];
+    var commands = ["M" + xFor(first.date).toFixed(2) + " " + yFor(first.value).toFixed(2)];
+    item.points.slice(1).forEach(function (point) {
+      var x = xFor(point.date).toFixed(2);
+      var y = yFor(point.value).toFixed(2);
+      if (item.interpolation === "step") {
+        commands.push("H" + x + " V" + y);
+      } else {
+        commands.push("L" + x + " " + y);
+      }
+    });
+    return commands.join(" ");
+  }
+
   function render(rootElement, plan, options) {
     var optionsValue = options || {};
     var model = buildSeries(plan, optionsValue.today);
@@ -397,9 +482,7 @@
     }
 
     model.series.forEach(function (item) {
-      var path = item.points.map(function (point, index) {
-        return (index === 0 ? "M" : "L") + xFor(point.date).toFixed(2) + " " + yFor(point.value).toFixed(2);
-      }).join(" ");
+      var path = pathForSeries(item, xFor, yFor);
       svg.push('<path class="plan-chart-line is-' + escapeXml(item.key) + '" d="' + path + '"></path>');
 
       item.points.forEach(function (point) {

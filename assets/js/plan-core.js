@@ -164,6 +164,56 @@
     };
   }
 
+  function isBodyweightDate(date) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(date || ""));
+  }
+
+  function isValidBodyweightEntry(date, value) {
+    return isBodyweightDate(date) && value != null && value >= 30 && value <= 300;
+  }
+
+  function migrateLegacyBodyweights(cycle, logs) {
+    if (!cycle || typeof cycle !== "object") {
+      return;
+    }
+
+    var entries = Array.isArray(cycle.bodyweightEntries) ? cycle.bodyweightEntries : [];
+    var datesWithEntries = Object.create(null);
+    var addedEntry = false;
+    cycle.bodyweightEntries = entries;
+    entries.forEach(function (entry) {
+      var date = String(entry && entry.date || "");
+      if (isBodyweightDate(date)) {
+        datesWithEntries[date] = true;
+      }
+    });
+
+    Object.keys(logs || {}).forEach(function (id) {
+      var log = logs[id];
+      if (!log || typeof log !== "object" ||
+          !Object.prototype.hasOwnProperty.call(log, "bodyweight")) {
+        return;
+      }
+
+      var value = asNumber(log.bodyweight, null);
+      var date = String(log.sessionSnapshot && log.sessionSnapshot.date || "");
+      delete log.bodyweight;
+      if (!isValidBodyweightEntry(date, value) || datesWithEntries[date]) {
+        return;
+      }
+
+      entries.push({ date: date, value: value });
+      datesWithEntries[date] = true;
+      addedEntry = true;
+    });
+
+    if (addedEntry) {
+      entries.sort(function (left, right) {
+        return String(left.date).localeCompare(String(right.date));
+      });
+    }
+  }
+
   function normalizeState(input) {
     var fallback = createDefaultState();
     var state = deepClone(input || fallback);
@@ -195,6 +245,21 @@
     state.activeCycle.loadAdjustments = state.activeCycle.loadAdjustments || {};
     state.archivedCycles = Array.isArray(state.archivedCycles) ? state.archivedCycles : [];
     state.logs = state.logs || {};
+    migrateLegacyBodyweights(state.activeCycle, state.logs);
+    state.archivedCycles.forEach(function (archive) {
+      if (!archive || typeof archive !== "object") {
+        return;
+      }
+      archive.logs = archive.logs || {};
+      if (archive.cycle) {
+        archive.cycle.status = "archived";
+      }
+      migrateLegacyBodyweights(archive.cycle, archive.logs);
+      if (archive.cycle && archive.overview && archive.overview.cycle) {
+        archive.overview.cycle.status = "archived";
+        archive.overview.cycle.bodyweightEntries = deepClone(archive.cycle.bodyweightEntries);
+      }
+    });
     return state;
   }
 
@@ -222,7 +287,7 @@
     var state = normalizeState(inputState);
     var date = String(entry && entry.date || "");
     var value = asNumber(entry && entry.value, null);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || value == null || value < 30 || value > 300) {
+    if (!isValidBodyweightEntry(date, value)) {
       throw new Error("invalid_bodyweight_entry");
     }
     state.activeCycle.bodyweightEntries = state.activeCycle.bodyweightEntries.filter(function (existing) {
@@ -814,7 +879,6 @@
         };
       }),
       accessories: deepClone(log.accessories || []),
-      bodyweight: asNumber(log.bodyweight, null),
       notes: String(log.notes || "").slice(0, 2000),
       sessionSnapshot: {
         id: session.id,
@@ -830,13 +894,6 @@
       }
     };
     state.logs[session.id] = nextLog;
-
-    if (nextLog.bodyweight && nextLog.bodyweight > 0) {
-      state = recordBodyweight(state, {
-        date: session.date,
-        value: nextLog.bodyweight
-      });
-    }
 
     var liftKey = session.workout && session.workout.liftKey;
     if (liftKey && nextLog.mainSets.length) {

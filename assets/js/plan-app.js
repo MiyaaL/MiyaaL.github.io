@@ -42,6 +42,7 @@
     settings: app.querySelector("[data-plan-settings]"),
     settingsForm: app.querySelector("[data-plan-settings-form]"),
     settingsTitle: app.querySelector("[data-plan-settings-title]"),
+    settingsBodyweight: app.querySelector("[data-plan-settings-bodyweight]"),
     formError: app.querySelector("[data-plan-form-error]"),
     bodyweightDialog: app.querySelector("[data-plan-bodyweight-dialog]"),
     bodyweightForm: app.querySelector("[data-plan-bodyweight-form]"),
@@ -683,8 +684,6 @@
       '<div><div class="plan-log-grid"><span></span><span>kg</span><span>reps</span><span>RPE</span></div>' +
       rows.join("") + "</div>" +
       '<div class="plan-accessory-records"><h4>辅助动作 · 聚合记录</h4>' + accessoryRows + "</div>" +
-      '<label class="plan-log-notes">当日体重（仅本人可见）<input class="plan-log-input" data-log-bodyweight type="number" min="30" max="300" step="0.1" value="' +
-      escapeHtml(log.bodyweight || core.latestBodyweight(privateState.activeCycle) || "") + '"></label>' +
       '<label class="plan-log-notes">备注（仅本人可见）<textarea data-log-notes>' +
       escapeHtml(log.notes || "") + "</textarea></label>" +
       '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-log>按以上记录完成</button>' +
@@ -746,7 +745,6 @@
     privateState = core.recordSession(privateState, session, {
       status: "completed",
       mainSets: sets,
-      bodyweight: Number(dom.detailBody.querySelector("[data-log-bodyweight]").value),
       accessories: accessories,
       notes: dom.detailBody.querySelector("[data-log-notes]").value
     });
@@ -782,9 +780,9 @@
     dom.settingsForm.elements[name].value = value == null ? "" : value;
   }
 
-  function latestBodyweightEntry(cycle) {
+  function latestBodyweightEntry(cycle, onOrBefore) {
     return (cycle.bodyweightEntries || []).filter(function (entry) {
-      return Number(entry.value) > 0;
+      return Number(entry.value) > 0 && (!onOrBefore || entry.date <= onOrBefore);
     }).sort(function (left, right) {
       return String(left.date).localeCompare(String(right.date));
     }).slice(-1)[0] || null;
@@ -798,15 +796,17 @@
     var cycle = privateState.activeCycle;
     var date = todayInShanghai();
     if (date < cycle.startDate) {
-      date = cycle.startDate;
-    } else if (date > cycle.endDate) {
+      showMessage("当前周期尚未开始，暂不记录未来体重。", "notice");
+      return;
+    }
+    if (date > cycle.endDate) {
       date = cycle.endDate;
     }
     var dateInput = dom.bodyweightForm.elements.date;
     var weightInput = dom.bodyweightForm.elements.bodyweight;
     var latest = latestBodyweightEntry(cycle);
     dateInput.min = cycle.startDate;
-    dateInput.max = cycle.endDate;
+    dateInput.max = date;
     dateInput.value = date;
     weightInput.value = latest ? latest.value : "";
     dom.bodyweightError.textContent = "";
@@ -819,8 +819,11 @@
     var date = String(form.get("date") || "");
     var bodyweight = Number(form.get("bodyweight"));
     var cycle = privateState && privateState.activeCycle;
-    if (!cycle || !date || date < cycle.startDate || date > cycle.endDate) {
-      dom.bodyweightError.textContent = "记录日期必须位于当前周期内。";
+    var latestAllowedDate = cycle && todayInShanghai() < cycle.endDate
+      ? todayInShanghai()
+      : cycle && cycle.endDate;
+    if (!cycle || !date || date < cycle.startDate || date > latestAllowedDate) {
+      dom.bodyweightError.textContent = "记录日期必须位于当前周期内，且不能晚于今天。";
       return;
     }
     if (!bodyweight || bodyweight < 30 || bodyweight > 300) {
@@ -850,10 +853,6 @@
       fresh.activeCycle.lifts.bench.target1rm = current.lifts.bench.current1rm;
       fresh.activeCycle.lifts.pullup.target1rm = current.lifts.pullup.current1rm;
       fresh.activeCycle.lifts.squat.target1rm = current.lifts.squat.current1rm;
-      var bodyweight = core.latestBodyweight(current);
-      if (bodyweight) {
-        fresh.activeCycle.bodyweightEntries = [{ date: fresh.activeCycle.startDate, value: bodyweight }];
-      }
       settingsDraftCycle = fresh.activeCycle;
     } else {
       settingsDraftCycle = deepClone(privateState.activeCycle);
@@ -864,7 +863,11 @@
     inputValue("startDate", settingsDraftCycle.startDate);
     inputValue("endDate", settingsDraftCycle.endDate);
     inputValue("trainingTime", privateState.preferences.trainingTime || "19:00");
-    inputValue("bodyweight", core.latestBodyweight(settingsDraftCycle) || "");
+    var bootstrapsBodyweight = !settingsNewCycle && settingsDraftCycle.status === "draft";
+    dom.settingsBodyweight.hidden = !bootstrapsBodyweight;
+    dom.settingsForm.elements.bodyweight.disabled = !bootstrapsBodyweight;
+    dom.settingsForm.elements.bodyweight.required = bootstrapsBodyweight;
+    inputValue("bodyweight", bootstrapsBodyweight ? core.latestBodyweight(settingsDraftCycle) || "" : "");
     inputValue("benchCurrent", settingsDraftCycle.lifts.bench.current1rm);
     inputValue("benchTarget", settingsDraftCycle.lifts.bench.target1rm);
     inputValue("pullupCurrent", settingsDraftCycle.lifts.pullup.current1rm);
@@ -976,7 +979,14 @@
     var form = new FormData(dom.settingsForm);
     var startDate = form.get("startDate");
     var endDate = form.get("endDate");
-    var bodyweight = Number(form.get("bodyweight"));
+    var bootstrapsBodyweight = !settingsNewCycle && privateState.activeCycle.status === "draft";
+    var previousBodyweight = latestBodyweightEntry(
+      privateState.activeCycle,
+      settingsNewCycle ? String(startDate || "") : null
+    );
+    var bodyweight = bootstrapsBodyweight
+      ? Number(form.get("bodyweight"))
+      : previousBodyweight && Number(previousBodyweight.value);
     var lifts = {
       bench: { current: Number(form.get("benchCurrent")), target: Number(form.get("benchTarget")) },
       pullup: { current: Number(form.get("pullupCurrent")), target: Number(form.get("pullupTarget")) },
@@ -993,12 +1003,17 @@
       dom.formError.textContent = "计划至少需要 4 周；少于 8 周会继续显示风险提示。";
       return;
     }
-    if (!bodyweight || bodyweight <= 0 ||
-        !lifts.bench.current || !lifts.bench.target ||
+    if (!bodyweight || bodyweight <= 0) {
+      dom.formError.textContent = bootstrapsBodyweight
+        ? "请填写有效的初始体重。"
+        : "请先通过“更新体重”记录有效体重。";
+      return;
+    }
+    if (!lifts.bench.current || !lifts.bench.target ||
         !lifts.squat.current || !lifts.squat.target ||
         bodyweight + lifts.pullup.current <= 0 ||
         bodyweight + lifts.pullup.target <= 0) {
-      dom.formError.textContent = "请填写有效的体重以及三项当前/目标 1RM。";
+      dom.formError.textContent = "请填写有效的三项当前/目标 1RM。";
       return;
     }
     if (!template.length || new Set(weekdays).size !== weekdays.length) {
@@ -1008,7 +1023,10 @@
 
     if (settingsNewCycle && privateState.activeCycle.status !== "draft") {
       var archivedLogs = {};
+      var archivedCycle = deepClone(privateState.activeCycle);
       var archivedOverview = snapshotProgressOverview(core.generate(privateState, holidayCalendars));
+      archivedCycle.status = "archived";
+      archivedOverview.cycle.status = "archived";
       Object.keys(privateState.logs).forEach(function (id) {
         if (id.indexOf(privateState.activeCycle.id + ":") === 0) {
           archivedLogs[id] = privateState.logs[id];
@@ -1016,7 +1034,7 @@
         }
       });
       privateState.archivedCycles.unshift({
-        cycle: deepClone(privateState.activeCycle),
+        cycle: archivedCycle,
         logs: archivedLogs,
         overview: archivedOverview,
         archivedAt: new Date().toISOString()
@@ -1031,10 +1049,22 @@
     cycle.template = template;
     cycle.holidayOverrides = deepClone(settingsHolidayOverrides);
     cycle.sessionOverrides = settingsNewCycle ? {} : cycle.sessionOverrides || {};
-    cycle.bodyweightEntries = (settingsNewCycle ? [] : cycle.bodyweightEntries || []).filter(function (entry) {
-      return entry.date !== startDate;
-    });
-    cycle.bodyweightEntries.push({ date: startDate, value: bodyweight });
+    if (settingsNewCycle) {
+      cycle.bodyweightEntries = [];
+      if (previousBodyweight) {
+        var carriedBodyweight = { date: startDate, value: Number(previousBodyweight.value) };
+        var carriedFrom = previousBodyweight.carriedFrom || previousBodyweight.date;
+        if (carriedFrom !== startDate) {
+          carriedBodyweight.carriedFrom = carriedFrom;
+        }
+        cycle.bodyweightEntries.push(carriedBodyweight);
+      }
+    } else if (bootstrapsBodyweight) {
+      cycle.bodyweightEntries = (cycle.bodyweightEntries || []).filter(function (entry) {
+        return entry.date !== startDate;
+      });
+      cycle.bodyweightEntries.push({ date: startDate, value: bodyweight });
+    }
     cycle.lifts.bench.current1rm = lifts.bench.current;
     cycle.lifts.bench.target1rm = lifts.bench.target;
     cycle.lifts.pullup.current1rm = lifts.pullup.current;

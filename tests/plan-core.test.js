@@ -134,6 +134,83 @@ function configuredState(start, end) {
   );
 }());
 
+(function normalizeMigratesActiveLegacyBodyweightsOnce() {
+  const state = configuredState("2026-08-03", "2026-08-30");
+  state.activeCycle.bodyweightEntries.push({ date: "2026-08-10", value: 69.4 });
+  state.logs = {
+    backfill: { bodyweight: "69.8", sessionSnapshot: { date: "2026-08-07" } },
+    canonicalWins: { bodyweight: 75, sessionSnapshot: { date: "2026-08-10" } },
+    minimum: { bodyweight: 30, sessionSnapshot: { date: "2026-08-11" } },
+    maximum: { bodyweight: 300, sessionSnapshot: { date: "2026-08-12" } },
+    tooLight: { bodyweight: 29.9, sessionSnapshot: { date: "2026-08-13" } },
+    tooHeavy: { bodyweight: 300.1, sessionSnapshot: { date: "2026-08-14" } },
+    missingSessionDate: { bodyweight: 68 }
+  };
+
+  const normalized = PlanCore.normalizeState(state);
+  assert.deepStrictEqual(normalized.activeCycle.bodyweightEntries, [
+    { date: "2026-08-03", value: 70 },
+    { date: "2026-08-07", value: 69.8 },
+    { date: "2026-08-10", value: 69.4 },
+    { date: "2026-08-11", value: 30 },
+    { date: "2026-08-12", value: 300 }
+  ]);
+  Object.values(normalized.logs).forEach((log) => {
+    assert(!Object.prototype.hasOwnProperty.call(log, "bodyweight"));
+  });
+  assert(Object.prototype.hasOwnProperty.call(state.logs.backfill, "bodyweight"), "normalization must not mutate input");
+  assert.deepStrictEqual(PlanCore.normalizeState(normalized), normalized, "migration must be idempotent");
+}());
+
+(function normalizeMigratesArchivedLegacyBodyweightsAndSyncsOverview() {
+  const state = configuredState("2026-08-03", "2026-08-30");
+  const archivedCycle = PlanCore.createDefaultState("2026-04-06").activeCycle;
+  archivedCycle.bodyweightEntries = [
+    { date: "2026-04-06", value: 72 },
+    { date: "2026-04-13", value: 71.5 }
+  ];
+  const overviewCycle = JSON.parse(JSON.stringify(archivedCycle));
+  overviewCycle.bodyweightEntries = [{ date: "2026-04-06", value: 99 }];
+  state.archivedCycles = [{
+    cycle: archivedCycle,
+    logs: {
+      backfill: { bodyweight: 71.8, sessionSnapshot: { date: "2026-04-10" } },
+      canonicalWins: { bodyweight: 80, sessionSnapshot: { date: "2026-04-13" } },
+      invalid: { bodyweight: 301, sessionSnapshot: { date: "2026-04-14" } }
+    },
+    overview: { cycle: overviewCycle, sessions: [], totalWeeks: 12 },
+    archivedAt: "2026-07-01T00:00:00.000Z"
+  }];
+
+  const normalized = PlanCore.normalizeState(state);
+  const archive = normalized.archivedCycles[0];
+  assert.deepStrictEqual(archive.cycle.bodyweightEntries, [
+    { date: "2026-04-06", value: 72 },
+    { date: "2026-04-10", value: 71.8 },
+    { date: "2026-04-13", value: 71.5 }
+  ]);
+  assert.deepStrictEqual(archive.overview.cycle.bodyweightEntries, archive.cycle.bodyweightEntries);
+  assert.strictEqual(archive.cycle.status, "archived");
+  assert.strictEqual(archive.overview.cycle.status, "archived");
+  Object.values(archive.logs).forEach((log) => {
+    assert(!Object.prototype.hasOwnProperty.call(log, "bodyweight"));
+  });
+  assert.deepStrictEqual(PlanCore.normalizeState(normalized), normalized, "archive migration must be idempotent");
+}());
+
+(function sessionLogsIgnoreBodyweightInput() {
+  const state = configuredState("2026-08-03", "2026-08-30");
+  const session = PlanCore.generate(state, [holidays2026]).sessions[0];
+  const recorded = PlanCore.recordSession(state, session, {
+    status: "completed",
+    bodyweight: 69.5,
+    mainSets: []
+  });
+
+  assert(!Object.prototype.hasOwnProperty.call(recorded.logs[session.id], "bodyweight"));
+  assert.deepStrictEqual(recorded.activeCycle.bodyweightEntries, state.activeCycle.bodyweightEntries);
+}());
+
 (function manualMoveAndRecordKeepStableSessionId() {
   const state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
