@@ -2,6 +2,26 @@
   "schemaVersion": 3,
   "documents": [
     {
+      "id": "pdf-3e4ef732a5196ff4",
+      "source": "release",
+      "title": "Quantitative Trading",
+      "filename": "Ernest P. Chan - Quantitative Trading_ How to Build Your Own Algorithmic Trading Business (Wiley Trading) (2021, Wiley) - libgen.li.pdf",
+      "path": "https://github.com/MiyaaL/MiyaaL.github.io/releases/download/library-assets-v1/quantitative-trading-3e4ef732a519.pdf",
+      "tags": [
+        "Quantitative Trading"
+      ],
+      "bytes": 9502339,
+      "sha256": "3e4ef732a5196ff4e0077147f9cfb514fe757f49bfd5459147a63645adea6619",
+      "addedAt": "2026-08-26T08:24:09.057Z",
+      "release": {
+        "tag": "library-assets-v1",
+        "releaseId": 364927245,
+        "assetId": 530507890,
+        "assetName": "quantitative-trading-3e4ef732a519.pdf",
+        "downloadUrl": "https://github.com/MiyaaL/MiyaaL.github.io/releases/download/library-assets-v1/quantitative-trading-3e4ef732a519.pdf"
+      }
+    },
+    {
       "id": "url-19471f2608b0bb04",
       "source": "external",
       "proxyRequired": true,
