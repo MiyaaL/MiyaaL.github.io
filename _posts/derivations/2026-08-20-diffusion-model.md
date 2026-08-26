@@ -770,7 +770,7 @@ $$
 
 ### 7.4 与传统 forward/reverse diffusion 记号的关系
 
-传统扩散文献通常先定义从数据到噪声的 forward process。令 $\overline{p}_\tau=\operatorname{Law}(\overline{X}_\tau)$ 表示它的边缘密度；在常见的 VP、VE 等构造中，drift 取线性形式 $f_\tau(x)=a_\tau x$：
+传统扩散文献通常先定义从数据到噪声的 forward process。令 $\overline{p}\_{\tau}=\operatorname{Law}(\overline{X}\_{\tau})$ 表示它的边缘密度；在常见的 VP、VE 等构造中，drift 取线性形式 $f_\tau(x)=a_\tau x$：
 
 $$
 \overline{X}_0\sim p_{\mathrm{data}},

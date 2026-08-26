@@ -108,6 +108,7 @@ source_commit: 0123abc
 
 - 文章含公式时设置 `math: true`；否则保持 `false`。
 - 行内公式使用 `$...$`。
+- 同一行内公式的 `_` 或 `*` 若会被 Kramdown 配对成强调标签，在 Markdown 源码中将触发冲突的字符写成 `\_` 或 `\*`；Kramdown 输出会恢复为 MathJax 所需的原字符。
 - 块级公式的 `$$` 必须独占一行；公式块前后各留一个空行：
 
 ```markdown

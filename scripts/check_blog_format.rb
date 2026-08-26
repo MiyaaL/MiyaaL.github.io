@@ -1,7 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "bundler/setup"
 require "date"
+require "kramdown"
+require "kramdown-parser-gfm"
+require "nokogiri"
 require "pathname"
 require "yaml"
 
@@ -22,6 +26,13 @@ COURSE_FIELDS = %w[
   permalink
   source_commit
 ].freeze
+MATHJAX_SKIP_TAGS = %w[script noscript style textarea pre code annotation annotation-xml].freeze
+MATH_BLOCK_TAGS = %w[
+  address article aside blockquote dd div dl dt fieldset figcaption figure footer form
+  h1 h2 h3 h4 h5 h6 header hr li main nav ol p section table tbody td tfoot th thead tr ul
+].freeze
+MATH_BLOCK_MARKER = "\u0000math-block\u0000"
+MATH_EMPHASIS_MARKER = "\u0000math-emphasis\u0000"
 
 errors = []
 
@@ -137,6 +148,78 @@ def validate_display_math(path, lines, body_start_line, errors)
   return unless opening
 
   add_error(errors, path, "块级公式缺少闭合 $$", body_start_line + opening)
+end
+
+def append_math_text(node, stream, ignored = false)
+  return if node.comment?
+
+  if node.text?
+    stream << node.text unless ignored
+    return
+  end
+
+  if node.element?
+    tag = node.name.downcase
+    classes = node["class"].to_s.split
+    process = classes.include?("mathjax_process")
+    ignored = process ? false : ignored || MATHJAX_SKIP_TAGS.include?(tag) || classes.include?("mathjax_ignore")
+
+    if ignored
+      node.children.each { |child| append_math_text(child, stream, true) }
+      return
+    end
+
+    block = MATH_BLOCK_TAGS.include?(tag)
+    emphasis = %w[em strong].include?(tag)
+    stream << MATH_BLOCK_MARKER if block
+    stream << MATH_EMPHASIS_MARKER if emphasis
+    node.children.each { |child| append_math_text(child, stream) }
+    stream << MATH_EMPHASIS_MARKER if emphasis
+    stream << MATH_BLOCK_MARKER if block
+    return
+  end
+
+  node.children.each { |child| append_math_text(child, stream, ignored) }
+end
+
+def inline_math_emphasis_count(rendered)
+  stream = []
+  append_math_text(Nokogiri::HTML.fragment(rendered), stream)
+  inline_delimiter = /(?<!\\)\$(?!\$)/
+
+  stream.join.split(MATH_BLOCK_MARKER).sum do |block|
+    segments = block.split(inline_delimiter, -1)
+    next 0 if segments.length < 3
+
+    segments.each_with_index.sum do |segment, position|
+      position.odd? ? segment.scan(MATH_EMPHASIS_MARKER).length : 0
+    end
+  end
+end
+
+def validate_inline_math_markdown(path, lines, body_start_line, errors)
+  rendered_document = Kramdown::Document.new(lines.join("\n"), input: "GFM").to_html
+  document_count = inline_math_emphasis_count(rendered_document)
+  return if document_count.zero?
+
+  line_count = 0
+  lines.each_with_index do |line, index|
+    rendered_line = Kramdown::Document.new(line, input: "GFM").to_html
+    current_count = inline_math_emphasis_count(rendered_line)
+    next if current_count.zero?
+
+    line_count += current_count
+    add_error(
+      errors,
+      path,
+      "行内公式被 Kramdown 解析为强调；请用 \\_ 或 \\* 转义触发冲突的 Markdown 强调符",
+      body_start_line + index
+    )
+  end
+
+  return unless document_count > line_count
+
+  add_error(errors, path, "跨行的行内公式被 Kramdown 解析为强调；请转义触发冲突的 Markdown 强调符")
 end
 
 def css_block(css, selector)
@@ -295,6 +378,7 @@ CONTENT_PATHS.each do |path|
     add_error(errors, path, "math 为 true，但正文没有检测到 LaTeX")
   end
 
+  validate_inline_math_markdown(path, visible_lines, body_start_line, errors) if markdown_source
   validate_display_math(path, visible_lines, body_start_line, errors)
   if visible_text.match?(/\\begin\{align\*?\}|\\end\{align\*?\}/)
     add_error(errors, path, "$$ 内请使用 aligned，不要嵌套 align/align*")
