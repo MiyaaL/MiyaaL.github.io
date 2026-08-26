@@ -79,6 +79,11 @@
     return date.toISOString().slice(0, 10);
   }
 
+  function isIsoDate(value) {
+    var date = String(value || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && formatDate(parseDate(date)) === date;
+  }
+
   function addDays(value, amount) {
     var date = value instanceof Date ? new Date(value.getTime()) : parseDate(value);
     date.setUTCDate(date.getUTCDate() + amount);
@@ -834,6 +839,82 @@
     };
   }
 
+  function sessionMoveError(code, details) {
+    var error = new Error(code);
+    error.code = code;
+    Object.keys(details || {}).forEach(function (key) {
+      error[key] = details[key];
+    });
+    return error;
+  }
+
+  function moveSession(inputState, sourceId, targetDate, options) {
+    var settings = options || {};
+    var state = normalizeState(inputState);
+    var cycle = state.activeCycle;
+    var date = String(targetDate || "");
+    if (!isIsoDate(date) || date < cycle.startDate || date > cycle.endDate) {
+      throw sessionMoveError("invalid_session_move_date", { date: date });
+    }
+
+    var plan = generate(state, settings.holidayCalendars || []);
+    var source = plan.sessions.find(function (session) {
+      return session.id === sourceId;
+    });
+    if (!source) {
+      throw sessionMoveError("invalid_session_move_source", { sourceId: sourceId });
+    }
+    if (source.date === date) {
+      return state;
+    }
+
+    var conflicts = plan.sessions.filter(function (session) {
+      return session.id !== source.id && session.date === date;
+    });
+    var recordedConflicts = conflicts.filter(function (session) {
+      return Boolean(state.logs[session.id]);
+    });
+    if (recordedConflicts.length) {
+      throw sessionMoveError("session_move_recorded_target", {
+        source: deepClone(source),
+        date: date,
+        conflicts: deepClone(recordedConflicts)
+      });
+    }
+    if (conflicts.length && settings.replace !== true) {
+      throw sessionMoveError("session_move_conflict", {
+        source: deepClone(source),
+        date: date,
+        conflicts: deepClone(conflicts)
+      });
+    }
+
+    conflicts.forEach(function (session) {
+      state.activeCycle.sessionOverrides[session.id] = {
+        action: "skip",
+        replacedBy: source.id
+      };
+    });
+    state.activeCycle.sessionOverrides[source.id] = {
+      action: "move",
+      date: date
+    };
+
+    var log = state.logs[source.id];
+    if (log && log.sessionSnapshot) {
+      var previousDate = log.sessionSnapshot.date;
+      log.sessionSnapshot.date = date;
+      var liftKey = log.sessionSnapshot.workout && log.sessionSnapshot.workout.liftKey;
+      var adjustment = liftKey && state.activeCycle.loadAdjustments[liftKey];
+      if (adjustment && adjustment.afterDate === previousDate &&
+          (!adjustment.updatedAt || !log.completedAt || adjustment.updatedAt === log.completedAt)) {
+        adjustment.afterDate = date;
+      }
+    }
+
+    return state;
+  }
+
   function estimateOneRepMax(weight, reps, rpe) {
     var load = asNumber(weight, 0);
     var repetitions = Math.round(asNumber(reps, 0));
@@ -1097,6 +1178,7 @@
     createDefaultState: createDefaultState,
     normalizeState: normalizeState,
     generate: generate,
+    moveSession: moveSession,
     recordSession: recordSession,
     recordBodyweight: recordBodyweight,
     estimateOneRepMax: estimateOneRepMax,

@@ -346,4 +346,93 @@ function configuredState(start, end) {
   assert(ics.includes("杠铃卧推"));
 }());
 
+(function moveSessionUsesStableIdsAndRequiresReplacementConsent() {
+  const state = configuredState("2026-08-03", "2026-08-30");
+  const initial = PlanCore.generate(state, [holidays2026]);
+  const source = initial.sessions.find((session) => session.date === "2026-08-07");
+  const target = initial.sessions.find((session) => session.date === "2026-08-04");
+
+  assert.throws(
+    () => PlanCore.moveSession(state, source.id, target.date, { holidayCalendars: [holidays2026] }),
+    (error) => error.code === "session_move_conflict" && error.conflicts[0].id === target.id
+  );
+  assert.deepStrictEqual(state.activeCycle.sessionOverrides, {}, "a rejected move must not mutate input state");
+
+  const movedState = PlanCore.moveSession(state, source.id, target.date, {
+    holidayCalendars: [holidays2026],
+    replace: true
+  });
+  const movedPlan = PlanCore.generate(movedState, [holidays2026]);
+  const moved = movedPlan.sessions.find((session) => session.id === source.id);
+
+  assert.strictEqual(moved.date, target.date);
+  assert.strictEqual(moved.sourceDate, source.sourceDate);
+  assert.strictEqual(movedState.activeCycle.sessionOverrides[source.id].action, "move");
+  assert.deepStrictEqual(movedState.activeCycle.sessionOverrides[target.id], {
+    action: "skip",
+    replacedBy: source.id
+  });
+  assert.strictEqual(movedPlan.sessions.some((session) => session.id === target.id), false);
+  assert.strictEqual(movedPlan.sessions.filter((session) => session.date === target.date).length, 1);
+  assert.strictEqual(movedPlan.sessions.some((session) => session.date === source.date), false);
+  assert.strictEqual(movedPlan.warnings.some((warning) => warning.includes("训练冲突")), false);
+
+  const movedAgainState = PlanCore.moveSession(movedState, source.id, "2026-08-06", {
+    holidayCalendars: [holidays2026]
+  });
+  const movedAgainPlan = PlanCore.generate(movedAgainState, [holidays2026]);
+  assert.strictEqual(movedAgainPlan.sessions.find((session) => session.id === source.id).date, "2026-08-06");
+  assert.strictEqual(movedAgainPlan.sessions.some((session) => session.id === target.id), false);
+  assert.strictEqual(movedAgainPlan.sessions.filter((session) => session.id === source.id).length, 1);
+  assert.strictEqual(movedState.activeCycle.sessionOverrides[source.id].date, target.date);
+}());
+
+(function completedSessionMoveUpdatesItsFrozenDateAndKeepsItsLog() {
+  let state = configuredState("2026-08-03", "2026-08-30");
+  let plan = PlanCore.generate(state, [holidays2026]);
+  const source = plan.sessions.find((session) => session.date === "2026-08-24");
+  state = PlanCore.recordSession(state, source, {
+    status: "completed",
+    mainSets: [{ weight: 95, reps: 1, rpe: 8, completed: true }]
+  });
+  const originalSnapshotDate = state.logs[source.id].sessionSnapshot.date;
+
+  const movedState = PlanCore.moveSession(state, source.id, "2026-08-27", {
+    holidayCalendars: [holidays2026]
+  });
+  plan = PlanCore.generate(movedState, [holidays2026]);
+  const moved = plan.sessions.find((session) => session.id === source.id);
+
+  assert.strictEqual(originalSnapshotDate, "2026-08-24");
+  assert.strictEqual(state.logs[source.id].sessionSnapshot.date, "2026-08-24", "input log must stay immutable");
+  assert.strictEqual(movedState.logs[source.id].sessionSnapshot.date, "2026-08-27");
+  assert.strictEqual(movedState.activeCycle.loadAdjustments.bench.afterDate, "2026-08-27");
+  assert.strictEqual(moved.date, "2026-08-27");
+  assert.strictEqual(moved.status, "completed");
+}());
+
+(function recordedDestinationCannotBeReplacedAsPlanning() {
+  let state = configuredState("2026-08-03", "2026-08-30");
+  let plan = PlanCore.generate(state, [holidays2026]);
+  const source = plan.sessions.find((session) => session.date === "2026-08-07");
+  const target = plan.sessions.find((session) => session.date === "2026-08-04");
+  state = PlanCore.recordSession(state, target, {
+    status: "completed",
+    mainSets: [{ weight: 20, reps: 3, rpe: 8, completed: true }]
+  });
+
+  assert.throws(
+    () => PlanCore.moveSession(state, source.id, target.date, {
+      holidayCalendars: [holidays2026],
+      replace: true
+    }),
+    (error) => error.code === "session_move_recorded_target" && error.conflicts[0].id === target.id
+  );
+  plan = PlanCore.generate(state, [holidays2026]);
+
+  assert.strictEqual(plan.sessions.find((session) => session.id === target.id).status, "completed");
+  assert.strictEqual(plan.sessions.find((session) => session.id === source.id).date, source.date);
+  assert.deepStrictEqual(state.activeCycle.sessionOverrides, {});
+}());
+
 console.log("PASS: PlanCore schedule, holiday, load, privacy, logging, and ICS tests");

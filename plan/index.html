@@ -210,6 +210,20 @@ plan: true
       </form>
     </dialog>
 
+    <dialog class="plan-dialog plan-confirm-dialog" data-plan-move-confirm aria-labelledby="plan-move-confirm-title" aria-describedby="plan-move-confirm-description">
+      <div class="plan-dialog-header">
+        <div>
+          <p class="eyebrow">MOVE / 调整日期</p>
+          <h2 id="plan-move-confirm-title">替代已有规划？</h2>
+        </div>
+      </div>
+      <p id="plan-move-confirm-description" data-plan-move-confirm-message></p>
+      <div class="plan-dialog-actions">
+        <button class="plan-button" type="button" data-plan-cancel-move>取消</button>
+        <button class="plan-button plan-button-primary" type="button" data-plan-confirm-move>确认替代</button>
+      </div>
+    </dialog>
+
     <dialog class="plan-dialog plan-conflict-dialog" data-plan-conflict>
       <div class="plan-dialog-header">
         <div>

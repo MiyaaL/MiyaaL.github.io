@@ -224,4 +224,25 @@ function configuredState() {
   assert(!JSON.stringify(model).includes("bodyweight"));
 }());
 
+(function movedAndReplacedSessionsChangeProgressPointDates() {
+  const state = configuredState();
+  const initial = PlanCore.generate(state, [holidays2026]);
+  const source = initial.sessions.find((session) => session.date === "2026-08-28");
+  const target = initial.sessions.find((session) => session.date === "2026-08-25");
+  const movedState = PlanCore.moveSession(state, source.id, target.date, {
+    holidayCalendars: [holidays2026],
+    replace: true
+  });
+  const model = PlanChart.buildSeries(
+    PlanCore.generate(movedState, [holidays2026]),
+    "2026-08-20"
+  );
+  const bench = model.series.find((series) => series.key === "bench");
+  const pullup = model.series.find((series) => series.key === "pullup");
+
+  assert(bench.points.some((point) => point.date === "2026-08-25"));
+  assert.strictEqual(bench.points.some((point) => point.date === "2026-08-28"), false);
+  assert.strictEqual(pullup.points.some((point) => point.date === "2026-08-25"), false);
+}());
+
 console.log("PASS: PlanChart trajectories, current-date markers, and bodyweight privacy tests");

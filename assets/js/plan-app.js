@@ -51,6 +51,8 @@
     holidayDate: app.querySelector("[data-plan-holiday-date]"),
     holidayType: app.querySelector("[data-plan-holiday-type]"),
     holidayOverrides: app.querySelector("[data-plan-holiday-overrides]"),
+    moveConfirm: app.querySelector("[data-plan-move-confirm]"),
+    moveConfirmMessage: app.querySelector("[data-plan-move-confirm-message]"),
     conflict: app.querySelector("[data-plan-conflict]")
   };
   var config = {
@@ -73,6 +75,11 @@
   var settingsDraftCycle = null;
   var settingsHolidayOverrides = {};
   var pendingConflictState = null;
+  var pendingSessionMove = null;
+  var draggedSessionId = null;
+  var calendarDragActive = false;
+  var suppressCalendarClick = false;
+  var sessionMovePending = false;
   var mobileQuery = window.matchMedia("(max-width: 780px)");
   var chartResizeTimer = null;
 
@@ -479,7 +486,14 @@
       if (date === todayInShanghai()) {
         classes.push("is-today");
       }
-      var attributes = session ? ' data-session-id="' + escapeHtml(session.id) + '"' : "";
+      var canDrag = Boolean(session && isOwner && !isOffline);
+      var attributes = ' data-plan-date="' + escapeHtml(date) + '"';
+      if (session) {
+        attributes += ' data-session-id="' + escapeHtml(session.id) + '"';
+      }
+      if (canDrag) {
+        attributes += ' draggable="true"';
+      }
       var content = '<span class="plan-day-number">' + Number(date.slice(-2)) + "</span>";
       if (session) {
         content += '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>";
@@ -497,8 +511,11 @@
           content += '<span class="plan-day-holiday">休</span>';
         }
       }
+      var aria = session
+        ? formatChineseDate(date, true) + " " + session.label + (canDrag ? "，可拖动调整日期" : "")
+        : "";
       cells.push('<button class="' + classes.join(" ") + '" type="button"' + attributes +
-        (session ? ' aria-label="' + escapeHtml(formatChineseDate(date, true) + " " + session.label) + '"' : ' tabindex="-1"') +
+        (session ? ' aria-label="' + escapeHtml(aria) + '"' : ' tabindex="-1"') +
         ">" + content + "</button>");
     }
     dom.monthGrid.innerHTML = cells.join("");
@@ -693,6 +710,127 @@
       '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>仅移动本次</button></div></section>';
   }
 
+  function moveConflicts(plan, sourceId, targetDate) {
+    return (plan.sessions || []).filter(function (session) {
+      return session.id !== sourceId && session.date === targetDate;
+    });
+  }
+
+  function openMoveConfirmation(request, source, conflicts) {
+    pendingSessionMove = request;
+    var conflictSummary = conflicts.map(function (session) {
+      return "“" + session.label + "”（" + statusLabel(session.status) + "）";
+    }).join("、");
+    dom.moveConfirmMessage.textContent = "确认将“" + source.label + "”移动到 " +
+      formatChineseDate(request.targetDate, true) + " 并替代 " + conflictSummary +
+      "？原规划会从日历和 Progress Overview 中移除。";
+    dom.moveConfirm.showModal();
+  }
+
+  async function applySessionMove(request) {
+    if (sessionMovePending) {
+      showMessage("上一次改期正在保存，请稍候。", "notice");
+      return;
+    }
+    sessionMovePending = true;
+    var previousState = privateState;
+    var previousChartArchive = viewingChartArchive;
+    try {
+      privateState = core.moveSession(privateState, request.sourceId, request.targetDate, {
+        holidayCalendars: holidayCalendars,
+        replace: request.replace === true
+      });
+      viewingChartArchive = -1;
+      var saveResult = await persist(
+        request.replace ? "原规划已替代，本次训练已改期。" : "本次训练已改期。"
+      );
+      if (saveResult === false) {
+        privateState = previousState;
+        viewingChartArchive = previousChartArchive;
+        render();
+      }
+    } catch (error) {
+      if (error.code === "session_move_conflict") {
+        var source = findSession(request.sourceId);
+        if (source) {
+          openMoveConfirmation({
+            sourceId: request.sourceId,
+            targetDate: request.targetDate,
+            replace: true
+          }, source, error.conflicts || []);
+        }
+      } else if (error.code === "session_move_recorded_target") {
+        showMessage("目标日期已有训练记录，请先将那条记录移动到其他日期。", "error");
+      } else if (error.code === "invalid_session_move_date") {
+        showMessage("改期日期必须位于当前周期内。", "error");
+      } else {
+        showMessage("改期失败：" + error.message, "error");
+      }
+    } finally {
+      sessionMovePending = false;
+    }
+  }
+
+  function requestSessionMove(sourceId, targetDate) {
+    if (sessionMovePending) {
+      showMessage("上一次改期正在保存，请稍候。", "notice");
+      return;
+    }
+    if (!isOwner || isOffline || !privateState) {
+      showMessage("请先以本人账号在线登录。", "error");
+      return;
+    }
+    var plan = displayPlan();
+    var source = (plan.sessions || []).find(function (session) {
+      return session.id === sourceId;
+    });
+    var cycle = privateState.activeCycle;
+    if (!source) {
+      showMessage("这项训练已发生变化，请刷新后重试。", "error");
+      return;
+    }
+    if (!targetDate || targetDate < cycle.startDate || targetDate > cycle.endDate) {
+      showMessage("改期日期必须位于当前周期内。", "error");
+      return;
+    }
+    if (source.date === targetDate) {
+      showMessage("训练日期没有变化。", "notice");
+      return;
+    }
+
+    var request = { sourceId: sourceId, targetDate: targetDate, replace: false };
+    var conflicts = moveConflicts(plan, sourceId, targetDate);
+    var recordedConflict = conflicts.some(function (session) {
+      return Boolean(privateState.logs[session.id]);
+    });
+    if (recordedConflict) {
+      showMessage("目标日期已有训练记录，请先将那条记录移动到其他日期。", "error");
+      return;
+    }
+    if (conflicts.length) {
+      request.replace = true;
+      openMoveConfirmation(request, source, conflicts);
+      return;
+    }
+    applySessionMove(request);
+  }
+
+  function cancelSessionMove() {
+    pendingSessionMove = null;
+    dom.moveConfirm.close();
+  }
+
+  function confirmSessionMove() {
+    if (!pendingSessionMove) {
+      dom.moveConfirm.close();
+      return;
+    }
+    var request = pendingSessionMove;
+    pendingSessionMove = null;
+    dom.moveConfirm.close();
+    applySessionMove(request);
+  }
+
   function bindDetailActions(session) {
     var save = dom.detailBody.querySelector("[data-save-log]");
     if (save) {
@@ -719,8 +857,7 @@
           showMessage("请选择改期日期。", "error");
           return;
         }
-        privateState.activeCycle.sessionOverrides[session.id] = { action: "move", date: date };
-        persist("本次训练已改期。");
+        requestSessionMove(session.id, date);
       });
     }
   }
@@ -754,7 +891,7 @@
   async function persist(successMessage) {
     if (!isOwner || isOffline || !store.configured) {
       showMessage("当前为只读状态，无法保存。", "error");
-      return;
+      return false;
     }
     privateState.updatedAt = new Date().toISOString();
     var generated = core.generate(privateState, holidayCalendars);
@@ -766,13 +903,15 @@
       closeDetails();
       render();
       showMessage(successMessage, "success");
+      return true;
     } catch (error) {
       if (error.code === "version_conflict") {
         pendingConflictState = deepClone(privateState);
         dom.conflict.showModal();
-        return;
+        return "conflict";
       }
       showMessage("保存失败：" + error.message, "error");
+      return false;
     }
   }
 
@@ -1176,7 +1315,96 @@
     viewDate = mobileQuery.matches ? core.addDays(weekStart(viewDate), 7) : shiftMonth(viewDate, 1);
     renderCalendar(displayPlan());
   });
+  function clearCalendarDrag() {
+    draggedSessionId = null;
+    calendarDragActive = false;
+    Array.prototype.slice.call(dom.monthGrid.querySelectorAll(".is-dragging, .is-drop-target, .is-replace-target")).forEach(function (cell) {
+      cell.classList.remove("is-dragging", "is-drop-target", "is-replace-target");
+      cell.removeAttribute("aria-grabbed");
+    });
+  }
+
+  function suppressNextCalendarClick() {
+    suppressCalendarClick = true;
+    window.setTimeout(function () {
+      suppressCalendarClick = false;
+    }, 0);
+  }
+
+  function calendarCell(event) {
+    return event.target && event.target.closest
+      ? event.target.closest("[data-plan-date]")
+      : null;
+  }
+
+  dom.monthGrid.addEventListener("dragstart", function (event) {
+    var source = event.target.closest('[data-session-id][draggable="true"]');
+    if (!source || sessionMovePending) {
+      event.preventDefault();
+      return;
+    }
+    draggedSessionId = source.dataset.sessionId;
+    calendarDragActive = true;
+    source.classList.add("is-dragging");
+    source.setAttribute("aria-grabbed", "true");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", draggedSessionId);
+    }
+  });
+
+  dom.monthGrid.addEventListener("dragover", function (event) {
+    if (!calendarDragActive || !draggedSessionId) {
+      return;
+    }
+    var target = calendarCell(event);
+    var cycle = privateState && privateState.activeCycle;
+    if (!target || !cycle || target.dataset.planDate < cycle.startDate || target.dataset.planDate > cycle.endDate) {
+      return;
+    }
+    event.preventDefault();
+    Array.prototype.slice.call(dom.monthGrid.querySelectorAll(".is-drop-target, .is-replace-target")).forEach(function (cell) {
+      cell.classList.remove("is-drop-target", "is-replace-target");
+    });
+    target.classList.add("is-drop-target");
+    if (target.dataset.sessionId && target.dataset.sessionId !== draggedSessionId) {
+      target.classList.add("is-replace-target");
+    }
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+  });
+
+  dom.monthGrid.addEventListener("dragleave", function (event) {
+    var target = calendarCell(event);
+    if (target && (!event.relatedTarget || !target.contains(event.relatedTarget))) {
+      target.classList.remove("is-drop-target", "is-replace-target");
+    }
+  });
+
+  dom.monthGrid.addEventListener("drop", function (event) {
+    var target = calendarCell(event);
+    var sourceId = draggedSessionId || (event.dataTransfer && event.dataTransfer.getData("text/plain"));
+    if (!target || !sourceId) {
+      clearCalendarDrag();
+      return;
+    }
+    event.preventDefault();
+    var targetDate = target.dataset.planDate;
+    suppressNextCalendarClick();
+    clearCalendarDrag();
+    requestSessionMove(sourceId, targetDate);
+  });
+
+  dom.monthGrid.addEventListener("dragend", function () {
+    suppressNextCalendarClick();
+    clearCalendarDrag();
+  });
+
   dom.monthGrid.addEventListener("click", function (event) {
+    if (calendarDragActive || suppressCalendarClick) {
+      return;
+    }
     var button = event.target.closest("[data-session-id]");
     if (button) {
       openDetails(button.dataset.sessionId);
@@ -1229,6 +1457,11 @@
     renderCycleSelect();
     renderTrajectory(displayTrajectoryPlan(plan));
   });
+  app.querySelector("[data-plan-cancel-move]").addEventListener("click", cancelSessionMove);
+  app.querySelector("[data-plan-confirm-move]").addEventListener("click", confirmSessionMove);
+  dom.moveConfirm.addEventListener("cancel", function () {
+    pendingSessionMove = null;
+  });
   app.querySelector("[data-plan-reload]").addEventListener("click", reloadAfterConflict);
   window.addEventListener("resize", function () {
     window.clearTimeout(chartResizeTimer);
@@ -1244,6 +1477,9 @@
     renderCalendar(displayPlan());
   });
   document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && app.querySelector("dialog[open]")) {
+      return;
+    }
     if (event.key === "Escape" && !dom.drawer.hidden) {
       closeDetails();
     }
