@@ -28,6 +28,7 @@
     pullup: "负重引体向上",
     squat: "杠铃深蹲"
   };
+  var LEARNING_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
   var RPE_PERCENTAGES = {
     "10": [1, 0.955, 0.922, 0.892, 0.863, 0.837, 0.811, 0.786, 0.762, 0.739],
     "9.5": [0.978, 0.939, 0.907, 0.878, 0.85, 0.824, 0.799, 0.774, 0.751, 0.723],
@@ -131,7 +132,7 @@
   function createDefaultState(startDate) {
     var start = startDate || todayInShanghai();
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 0,
       updatedAt: null,
       preferences: {
@@ -165,7 +166,153 @@
         createdAt: new Date().toISOString()
       },
       archivedCycles: [],
-      logs: {}
+      logs: {},
+      learningPlans: [],
+      activePlanId: null
+    };
+  }
+
+  function createDefaultLearningPlan(startDate, endDate, options) {
+    var settings = options || {};
+    var start = startDate || todayInShanghai();
+    var end = endDate || addDays(start, 27);
+    var id = String(settings.id || ("learning-" + start + "-" + Date.now().toString(36)));
+    var dailyTemplate = {};
+    LEARNING_WEEKDAYS.forEach(function (weekday) {
+      dailyTemplate[String(weekday)] = {
+        title: settings.defaultTitle || "学习任务",
+        objective: "",
+        tasks: []
+      };
+    });
+    return {
+      id: id,
+      type: "learning",
+      title: String(settings.title || "学习计划"),
+      objective: String(settings.objective || ""),
+      startDate: start,
+      endDate: end,
+      status: "active",
+      dailyTemplate: settings.dailyTemplate || dailyTemplate,
+      dailyPlans: {},
+      acceptanceCriteria: Array.isArray(settings.acceptanceCriteria)
+        ? deepClone(settings.acceptanceCriteria)
+        : [],
+      logs: {},
+      artifacts: [],
+      createdAt: settings.createdAt || new Date().toISOString()
+    };
+  }
+
+  function normalizeLearningPlan(input) {
+    var fallback = createDefaultLearningPlan();
+    var plan = Object.assign({}, fallback, deepClone(input || {}));
+    plan.type = "learning";
+    plan.id = String(plan.id || fallback.id);
+    plan.title = String(plan.title || "学习计划");
+    plan.objective = String(plan.objective || "");
+    plan.status = ["draft", "active", "archived", "completed"].indexOf(plan.status) >= 0
+      ? plan.status
+      : "active";
+    plan.dailyTemplate = Object.assign({}, fallback.dailyTemplate, plan.dailyTemplate || {});
+    plan.dailyPlans = plan.dailyPlans && typeof plan.dailyPlans === "object" ? plan.dailyPlans : {};
+    Object.keys(plan.dailyPlans).forEach(function (date) {
+      var day = plan.dailyPlans[date] || {};
+      plan.dailyPlans[date] = {
+        title: String(day.title || "学习任务"),
+        objective: String(day.objective || ""),
+        tasks: Array.isArray(day.tasks)
+          ? day.tasks.map(function (task) { return String(task).trim(); }).filter(Boolean)
+          : String(day.tasks || "").split(/\n+/).map(function (task) { return task.trim(); }).filter(Boolean)
+      };
+    });
+    LEARNING_WEEKDAYS.forEach(function (weekday) {
+      var key = String(weekday);
+      var item = plan.dailyTemplate[key] || {};
+      plan.dailyTemplate[key] = {
+        title: String(item.title || "学习任务"),
+        objective: String(item.objective || ""),
+        tasks: Array.isArray(item.tasks)
+          ? item.tasks.map(function (task) { return String(task).trim(); }).filter(Boolean)
+          : String(item.tasks || "").split(/\n+/).map(function (task) { return task.trim(); }).filter(Boolean)
+      };
+    });
+    plan.acceptanceCriteria = (Array.isArray(plan.acceptanceCriteria) ? plan.acceptanceCriteria : [])
+      .map(function (criterion, index) {
+        if (typeof criterion === "string") {
+          return { id: "criterion-" + (index + 1), title: criterion.trim(), description: "" };
+        }
+        return {
+          id: String(criterion && criterion.id || "criterion-" + (index + 1)),
+          title: String(criterion && criterion.title || "").trim(),
+          description: String(criterion && criterion.description || "").trim()
+        };
+      }).filter(function (criterion) { return criterion.title; });
+    plan.logs = plan.logs && typeof plan.logs === "object" ? plan.logs : {};
+    plan.artifacts = Array.isArray(plan.artifacts) ? plan.artifacts : [];
+    return plan;
+  }
+
+  function learningSessionId(plan, date) {
+    return plan.id + ":day:" + date;
+  }
+
+  function generateLearningPlan(inputPlan) {
+    var plan = normalizeLearningPlan(inputPlan);
+    var sessions = [];
+    var warnings = [];
+    if (!isIsoDate(plan.startDate) || !isIsoDate(plan.endDate) || plan.endDate < plan.startDate) {
+      return { plan: plan, cycle: plan, sessions: [], warnings: ["学习计划起止日期无效。"], totalDays: 0, completedDays: 0 };
+    }
+    var date = plan.startDate;
+    while (date <= plan.endDate) {
+      var template = Object.assign({}, plan.dailyTemplate[String(isoWeekday(date))] || {}, plan.dailyPlans[date] || {});
+      var id = learningSessionId(plan, date);
+      var log = plan.logs[id] || {};
+      var snapshot = log.sessionSnapshot;
+      var session = snapshot ? deepClone(snapshot) : {
+        id: id,
+        sourceDate: date,
+        date: date,
+        type: "learning",
+        templateId: "weekday-" + isoWeekday(date),
+        label: template.title || "学习任务",
+        phase: { label: "学习日", key: "learning" },
+        learning: {
+          objective: template.objective || "",
+          tasks: deepClone(template.tasks || []),
+          acceptanceCriteria: deepClone(plan.acceptanceCriteria)
+        }
+      };
+      session.status = log.status || "planned";
+      session.learning = session.learning || {
+        objective: "",
+        tasks: [],
+        acceptanceCriteria: deepClone(plan.acceptanceCriteria)
+      };
+      session.learning.objective = String(session.learning.objective || "");
+      session.learning.tasks = Array.isArray(session.learning.tasks) ? session.learning.tasks : [];
+      session.learning.acceptanceCriteria = deepClone(plan.acceptanceCriteria);
+      session.log = log;
+      sessions.push(session);
+      date = addDays(date, 1);
+    }
+    var completedDays = sessions.filter(function (session) { return session.status === "completed"; }).length;
+    if (!plan.acceptanceCriteria.length) {
+      warnings.push("还没有设置验收成果；在计划设置中添加可交付成果会更容易复盘。");
+    }
+    return {
+      plan: plan,
+      cycle: plan,
+      sessions: sessions,
+      warnings: warnings,
+      totalDays: sessions.length,
+      completedDays: completedDays,
+      completedCriteria: plan.acceptanceCriteria.filter(function (criterion) {
+        return sessions.some(function (session) {
+          return session.log && Array.isArray(session.log.criteria) && session.log.criteria.indexOf(criterion.id) >= 0;
+        });
+      }).length
     };
   }
 
@@ -222,7 +369,7 @@
   function normalizeState(input) {
     var fallback = createDefaultState();
     var state = deepClone(input || fallback);
-    state.schemaVersion = 1;
+    state.schemaVersion = 2;
     state.version = Math.max(0, Math.floor(asNumber(state.version, 0)));
     state.preferences = Object.assign({}, fallback.preferences, state.preferences || {});
     state.activeCycle = Object.assign({}, fallback.activeCycle, state.activeCycle || {});
@@ -250,6 +397,11 @@
     state.activeCycle.loadAdjustments = state.activeCycle.loadAdjustments || {};
     state.archivedCycles = Array.isArray(state.archivedCycles) ? state.archivedCycles : [];
     state.logs = state.logs || {};
+    state.learningPlans = (Array.isArray(state.learningPlans) ? state.learningPlans : [])
+      .map(normalizeLearningPlan);
+    state.activePlanId = state.activePlanId && state.learningPlans.some(function (plan) {
+      return plan.id === state.activePlanId;
+    }) ? state.activePlanId : null;
     migrateLegacyBodyweights(state.activeCycle, state.logs);
     state.archivedCycles.forEach(function (archive) {
       if (!archive || typeof archive !== "object") {
@@ -1017,6 +1169,92 @@
     return state;
   }
 
+  function recordLearningSession(inputState, planId, session, log) {
+    var state = normalizeState(inputState);
+    var plan = state.learningPlans.find(function (candidate) { return candidate.id === planId; });
+    if (!plan) {
+      throw new Error("learning_plan_not_found");
+    }
+    var source = session || {};
+    var nextLog = {
+      status: log && log.status || "completed",
+      completedAt: log && log.completedAt || new Date().toISOString(),
+      reflection: String(log && (log.reflection != null ? log.reflection : log.notes) || "").slice(0, 10000),
+      notes: String(log && log.notes || "").slice(0, 2000),
+      criteria: Array.isArray(log && log.criteria) ? log.criteria.map(String) : [],
+      artifacts: Array.isArray(log && log.artifacts) ? deepClone(log.artifacts).slice(0, 12) : [],
+      dailyPlan: log && log.dailyPlan ? deepClone(log.dailyPlan) : null,
+      sessionSnapshot: {
+        id: source.id,
+        sourceDate: source.sourceDate || source.date,
+        date: source.date,
+        templateId: source.templateId,
+        type: "learning",
+        label: source.label || "学习任务",
+        phase: deepClone(source.phase || { label: "学习日", key: "learning" }),
+        learning: deepClone(source.learning || {})
+      }
+    };
+    if (nextLog.dailyPlan) {
+      plan.dailyPlans[source.date] = {
+        title: String(nextLog.dailyPlan.title || source.label || "学习任务"),
+        objective: String(nextLog.dailyPlan.objective || ""),
+        tasks: Array.isArray(nextLog.dailyPlan.tasks) ? nextLog.dailyPlan.tasks.map(String).filter(Boolean) : []
+      };
+      nextLog.sessionSnapshot.learning = Object.assign({}, nextLog.sessionSnapshot.learning, {
+        objective: plan.dailyPlans[source.date].objective,
+        tasks: deepClone(plan.dailyPlans[source.date].tasks)
+      });
+    }
+    plan.logs[source.id] = nextLog;
+    nextLog.artifacts.forEach(function (artifact) {
+      if (!artifact || !artifact.id) {
+        return;
+      }
+      var exists = plan.artifacts.some(function (existing) { return existing.id === artifact.id; });
+      if (!exists) {
+        plan.artifacts.push(deepClone(artifact));
+      }
+    });
+    plan.artifacts = plan.artifacts.slice(-50);
+    state.activePlanId = plan.id;
+    return state;
+  }
+
+  function createLearningPublicSnapshot(inputState) {
+    var state = normalizeState(inputState);
+    return state.learningPlans.map(function (inputPlan) {
+      var generated = generateLearningPlan(inputPlan);
+      return {
+        id: inputPlan.id,
+        type: "learning",
+        title: inputPlan.title,
+        objective: inputPlan.objective,
+        status: inputPlan.status,
+        startDate: inputPlan.startDate,
+        endDate: inputPlan.endDate,
+        acceptanceCriteria: deepClone(inputPlan.acceptanceCriteria),
+        sessions: generated.sessions.map(function (session) {
+          return {
+            id: session.id,
+            date: session.date,
+            sourceDate: session.sourceDate,
+            type: "learning",
+            label: session.label,
+            status: session.status,
+            phase: deepClone(session.phase),
+            learning: {
+              objective: session.learning.objective,
+              tasks: deepClone(session.learning.tasks)
+            }
+          };
+        }),
+        totalDays: generated.totalDays,
+        completedDays: generated.completedDays
+      };
+    });
+  }
+
   function publicWorkout(workout) {
     var result = {
       liftKey: workout.liftKey,
@@ -1068,7 +1306,8 @@
           phase: deepClone(session.phase),
           workout: publicWorkout(session.workout)
         };
-      })
+      }),
+      learningPlans: createLearningPublicSnapshot(state)
     };
   }
 
@@ -1125,10 +1364,10 @@
     var lines = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//MiyaaL//Fitness Plan//ZH-CN",
+      "PRODID:-//MiyaaL//Plan//ZH-CN",
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH",
-      "X-WR-CALNAME:MiyaaL 健身计划",
+      "X-WR-CALNAME:MiyaaL " + (generated && generated.cycle && generated.cycle.type === "learning" ? "学习计划" : "健身计划"),
       "X-WR-TIMEZONE:" + prefs.timezone
     ];
 
@@ -1176,14 +1415,19 @@
     TYPE_LABELS: deepClone(TYPE_LABELS),
     LIFT_LABELS: deepClone(LIFT_LABELS),
     createDefaultState: createDefaultState,
+    createDefaultLearningPlan: createDefaultLearningPlan,
+    normalizeLearningPlan: normalizeLearningPlan,
+    generateLearningPlan: generateLearningPlan,
     normalizeState: normalizeState,
     generate: generate,
     moveSession: moveSession,
     recordSession: recordSession,
+    recordLearningSession: recordLearningSession,
     recordBodyweight: recordBodyweight,
     estimateOneRepMax: estimateOneRepMax,
     suggestAdjustment: suggestAdjustment,
     createPublicSnapshot: createPublicSnapshot,
+    createLearningPublicSnapshot: createLearningPublicSnapshot,
     filterLegacyOfficialMakeups: filterLegacyOfficialMakeups,
     generateIcs: generateIcs,
     roundLoad: roundLoad,

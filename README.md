@@ -9,7 +9,7 @@ MiyaaL 的个人主页与技术博客，使用 GitHub Pages 原生支持的 Jeky
 - 中文技术简约风，支持系统、浅色、深色三种主题模式
 - 首页自动展示最近 6 篇文章
 - Blog 归档支持标签筛选与本地关键词搜索
-- Plan 支持周期趋势图、推拉蹲 + 推训练日历、节假日调度、训练记录和跨设备同步
+- Plan 支持健身周期趋势图、推拉蹲 + 推训练日历，也支持按日学习计划、验收成果、总结感悟与学习生产物上传
 - Markdown 与 HTML 文章、Rouge 代码高亮和一键复制
 - 按文章启用 LaTeX 公式与 Mermaid 图表
 - RSS、Sitemap、SEO 元数据和响应式布局
@@ -157,7 +157,7 @@ git push
 │   ├── js/           # 主题、搜索、代码复制和 Mermaid
 │   └── posts/        # 文章图片
 ├── blog/             # Blog 归档页
-├── plan/             # 交互式训练计划
+├── plan/             # 交互式健身 / 学习计划
 ├── supabase/         # Plan 同步数据库迁移与配置说明
 ├── _config.yml       # 站点配置
 └── index.html        # 首页

@@ -13,7 +13,7 @@ supabase/migrations/001_fitness_plan.sql
 迁移会创建：
 
 - `fitness_plan_public`：匿名访客可读的脱敏快照；
-- `fitness_plan_private`：仅通过受控数据库函数访问的完整状态；
+- `fitness_plan_private`：仅通过受控数据库函数访问的完整状态（健身与学习计划共用该状态载荷）；
 - `load_private_fitness_plan()`：仅本人读取；
 - `save_fitness_plan()`：带版本检查的原子保存；
 - GitHub 数字账号 ID `73994563` 的写权限校验。
@@ -52,8 +52,8 @@ Publishable Key 设计为浏览器公开使用；真正的访问控制由迁移�
 
 1. 打开 `/plan/`；
 2. 点击“管理计划”并使用 GitHub 账号 MiyaaL 登录；
-3. 填写周期、体重和三项当前/目标 1RM；
-4. 首次保存会同时创建私有状态和公开脱敏快照。
+3. 填写周期、体重和三项当前/目标 1RM，或从“学习计划”创建按日学习目标；
+4. 首次保存会同时创建私有状态和公开脱敏快照。学习总结、感悟与上传附件只保存在私有状态，附件单个限制为 2 MB。
 
 若登录账号不是 GitHub 数字 ID `73994563`，数据库函数会返回 `not_plan_owner`，无法读取或修改私有计划。
 

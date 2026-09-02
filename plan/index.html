@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Plan
-description: "以目标 1RM 为核心的推、拉、蹲训练周期与交互式日历。"
+description: "支持健身周期与按日学习计划，并记录可验收的总结、感悟和学习生产物。"
 permalink: /plan/
 plan: true
 ---
@@ -10,7 +10,7 @@ plan: true
     <div>
       <p class="eyebrow">PLAN / 个人计划</p>
       <h1>Plan</h1>
-      <p class="plan-intro">围绕杠铃卧推、负重引体和杠铃深蹲生成可执行、可记录、可跨设备同步的训练周期。</p>
+      <p class="plan-intro">把训练、学习和可验收的产出放进同一份按日计划：每天知道要做什么，也留下可以复盘的成果。</p>
     </div>
     <div class="plan-hero-actions">
       <span class="plan-sync-state" data-plan-sync-state>正在载入</span>
@@ -30,15 +30,26 @@ plan: true
   >
     <div class="plan-message" data-plan-message role="status" aria-live="polite"></div>
 
+    <div class="plan-kind-toolbar" aria-label="计划类型">
+      <div class="plan-kind-switch" role="tablist" aria-label="切换计划类型">
+        <button class="plan-kind-button is-active" type="button" data-plan-kind="fitness" role="tab" aria-selected="true">健身计划</button>
+        <button class="plan-kind-button" type="button" data-plan-kind="learning" role="tab" aria-selected="false">学习计划</button>
+      </div>
+      <div class="plan-learning-selector" data-plan-learning-selector hidden>
+        <label>学习计划<select data-plan-learning-select aria-label="选择学习计划"></select></label>
+        <button class="plan-text-button" type="button" data-plan-new-learning hidden>新增学习计划</button>
+      </div>
+    </div>
+
     <div class="plan-loading" data-plan-loading>
       <span aria-hidden="true"></span>
-      <p>正在载入训练计划…</p>
+      <p>正在载入计划…</p>
     </div>
 
     <section class="plan-empty" data-plan-empty hidden>
-      <p class="eyebrow">FITNESS / 健身计划</p>
-      <h2>计划尚未发布</h2>
-      <p>登录后填写周期、体重与三项当前/目标 1RM，即可生成第一份训练日历。</p>
+      <p class="eyebrow" data-plan-empty-eyebrow>FITNESS / 健身计划</p>
+      <h2 data-plan-empty-title>计划尚未发布</h2>
+      <p data-plan-empty-description>登录后填写周期、体重与三项当前/目标 1RM，即可生成第一份训练日历。</p>
     </section>
 
     <div data-plan-view hidden>
@@ -88,6 +99,8 @@ plan: true
           Set cycle dates and 1RM targets to display the trajectory.
         </p>
       </section>
+
+      <section class="plan-learning-summary" data-plan-learning-summary hidden aria-label="学习进度"></section>
 
       <section class="plan-calendar-shell" aria-labelledby="plan-calendar-title">
         <div class="plan-calendar-toolbar">
@@ -180,6 +193,50 @@ plan: true
         <footer class="plan-dialog-actions">
           <button class="plan-button" type="button" data-plan-cancel-settings>取消</button>
           <button class="plan-button plan-button-primary" type="submit">生成并保存</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog class="plan-dialog plan-learning-settings-dialog" data-plan-learning-settings>
+      <form method="dialog" data-plan-learning-settings-form>
+        <header class="plan-dialog-header">
+          <div>
+            <p class="eyebrow">LEARNING / 学习计划</p>
+            <h2 data-plan-learning-settings-title>新增学习计划</h2>
+          </div>
+          <button class="plan-icon-button" type="button" data-plan-close-learning-settings aria-label="关闭学习计划设置">×</button>
+        </header>
+
+        <div class="plan-form-section">
+          <h3>目标与周期</h3>
+          <div class="plan-form-grid">
+            <label>计划名称<input type="text" name="learningTitle" maxlength="80" required placeholder="例如：完成 CS336 课程复习"></label>
+            <label>开始日期<input type="date" name="learningStartDate" required></label>
+            <label>结束日期<input type="date" name="learningEndDate" required></label>
+          </div>
+          <label class="plan-learning-wide-field">学习目标<textarea name="learningObjective" maxlength="1000" placeholder="完成后你希望获得什么能力或可验证的结果？"></textarea></label>
+        </div>
+
+        <div class="plan-form-section">
+          <div class="plan-form-section-heading"><div><h3>每日计划模板</h3><p>每个日期会继承对应星期的任务，也可以在当天记录中补充成果。</p></div></div>
+          <div class="plan-learning-day-editor" data-plan-learning-day-editor>
+            <label><span>周一</span><input type="text" name="learningDay1Title" placeholder="当天主题"><textarea name="learningDay1Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+            <label><span>周二</span><input type="text" name="learningDay2Title" placeholder="当天主题"><textarea name="learningDay2Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+            <label><span>周三</span><input type="text" name="learningDay3Title" placeholder="当天主题"><textarea name="learningDay3Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+            <label><span>周四</span><input type="text" name="learningDay4Title" placeholder="当天主题"><textarea name="learningDay4Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+            <label><span>周五</span><input type="text" name="learningDay5Title" placeholder="当天主题"><textarea name="learningDay5Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+            <label><span>周六</span><input type="text" name="learningDay6Title" placeholder="当天主题"><textarea name="learningDay6Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+            <label><span>周日</span><input type="text" name="learningDay7Title" placeholder="当天主题"><textarea name="learningDay7Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
+          </div>
+        </div>
+
+        <div class="plan-form-section">
+          <label class="plan-learning-wide-field"><span>验收成果（每行一项）</span><textarea name="learningCriteria" rows="4" maxlength="2000" placeholder="例如：一页课程总结\n一个可运行的练习项目\n三条可复述的核心洞见"></textarea></label>
+        </div>
+        <p class="plan-form-error" data-plan-learning-form-error role="alert"></p>
+        <footer class="plan-dialog-actions">
+          <button class="plan-button" type="button" data-plan-cancel-learning-settings>取消</button>
+          <button class="plan-button plan-button-primary" type="submit">保存学习计划</button>
         </footer>
       </form>
     </dialog>

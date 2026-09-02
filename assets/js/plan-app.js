@@ -13,6 +13,13 @@
     empty: app.querySelector("[data-plan-empty]"),
     view: app.querySelector("[data-plan-view]"),
     message: app.querySelector("[data-plan-message]"),
+    kindButtons: app.querySelectorAll("[data-plan-kind]"),
+    learningSelector: app.querySelector("[data-plan-learning-selector]"),
+    learningSelect: app.querySelector("[data-plan-learning-select]"),
+    newLearning: app.querySelector("[data-plan-new-learning]"),
+    emptyEyebrow: app.querySelector("[data-plan-empty-eyebrow]"),
+    emptyTitle: app.querySelector("[data-plan-empty-title]"),
+    emptyDescription: app.querySelector("[data-plan-empty-description]"),
     syncState: document.querySelector("[data-plan-sync-state]"),
     auth: document.querySelector("[data-plan-auth]"),
     title: app.querySelector("[data-plan-title]"),
@@ -24,6 +31,7 @@
     signOut: app.querySelector("[data-plan-sign-out]"),
     progress: app.querySelector("[data-plan-progress]"),
     chart: app.querySelector("[data-plan-chart]"),
+    learningSummary: app.querySelector("[data-plan-learning-summary]"),
     warnings: app.querySelector("[data-plan-warnings]"),
     cycleSelectWrap: app.querySelector("[data-plan-cycle-select-wrap]"),
     cycleSelect: app.querySelector("[data-plan-cycle-select]"),
@@ -44,6 +52,10 @@
     settingsTitle: app.querySelector("[data-plan-settings-title]"),
     settingsBodyweight: app.querySelector("[data-plan-settings-bodyweight]"),
     formError: app.querySelector("[data-plan-form-error]"),
+    learningSettings: app.querySelector("[data-plan-learning-settings]"),
+    learningSettingsForm: app.querySelector("[data-plan-learning-settings-form]"),
+    learningSettingsTitle: app.querySelector("[data-plan-learning-settings-title]"),
+    learningFormError: app.querySelector("[data-plan-learning-form-error]"),
     bodyweightDialog: app.querySelector("[data-plan-bodyweight-dialog]"),
     bodyweightForm: app.querySelector("[data-plan-bodyweight-form]"),
     bodyweightError: app.querySelector("[data-plan-bodyweight-error]"),
@@ -80,6 +92,9 @@
   var calendarDragActive = false;
   var suppressCalendarClick = false;
   var sessionMovePending = false;
+  var selectedPlanKind = "fitness";
+  var selectedLearningPlanId = null;
+  var learningSettingsEditingId = null;
   var mobileQuery = window.matchMedia("(max-width: 780px)");
   var chartResizeTimer = null;
 
@@ -184,6 +199,12 @@
         : core.createDefaultState(todayInShanghai());
       privateState.version = record ? Number(record.version || 0) : 0;
       privateState.updatedAt = record ? record.updatedAt : null;
+      if (privateState.activePlanId && privateState.learningPlans.some(function (plan) {
+        return plan.id === privateState.activePlanId;
+      })) {
+        selectedPlanKind = "learning";
+        selectedLearningPlanId = privateState.activePlanId;
+      }
       isOwner = true;
       isOffline = false;
       publicSnapshot = null;
@@ -249,12 +270,52 @@
     setLoading(false);
     dom.empty.hidden = false;
     dom.view.hidden = true;
+    renderPlanKindControls();
+    if (selectedPlanKind === "learning") {
+      dom.emptyEyebrow.textContent = "LEARNING / 学习计划";
+      dom.emptyTitle.textContent = "还没有学习计划";
+      dom.emptyDescription.textContent = isOwner
+        ? "点击“新增学习计划”，设置每日任务与最终验收成果。"
+        : "当前还没有公开的学习计划。";
+    } else {
+      dom.emptyEyebrow.textContent = "FITNESS / 健身计划";
+      dom.emptyTitle.textContent = "计划尚未发布";
+      dom.emptyDescription.textContent = "登录后填写周期、体重与三项当前/目标 1RM，即可生成第一份训练日历。";
+    }
     setSyncState();
     dom.auth.hidden = false;
     dom.auth.textContent = store.configured ? "管理计划" : "同步未配置";
   }
 
   function displayPlan() {
+    if (selectedPlanKind === "learning") {
+      var learningPlan = null;
+      if (isOwner && privateState) {
+        learningPlan = (privateState.learningPlans || []).find(function (candidate) {
+          return candidate.id === selectedLearningPlanId;
+        }) || (privateState.learningPlans || [])[0];
+      } else if (publicSnapshot) {
+        learningPlan = (publicSnapshot.learningPlans || []).find(function (candidate) {
+          return candidate.id === selectedLearningPlanId;
+        }) || (publicSnapshot.learningPlans || [])[0];
+      }
+      if (!learningPlan) {
+        return null;
+      }
+      selectedLearningPlanId = learningPlan.id;
+      if (!isOwner && Array.isArray(learningPlan.sessions)) {
+        return {
+          plan: learningPlan,
+          cycle: learningPlan,
+          sessions: learningPlan.sessions,
+          warnings: [],
+          totalDays: Number(learningPlan.totalDays || learningPlan.sessions.length),
+          completedDays: Number(learningPlan.completedDays || 0),
+          completedCriteria: 0
+        };
+      }
+      return core.generateLearningPlan(learningPlan);
+    }
     if (isOwner && privateState) {
       return core.generate(privateState, holidayCalendars);
     }
@@ -319,6 +380,7 @@
   function render() {
     setLoading(false);
     var plan = displayPlan();
+    renderPlanKindControls();
     if (!plan || !plan.cycle) {
       renderEmpty();
       return;
@@ -330,18 +392,43 @@
     dom.auth.textContent = store.configured ? "管理计划" : "同步未配置";
     dom.ownerActions.hidden = !isOwner || isOffline;
     dom.exportJson.hidden = !isOwner;
+    dom.updateBodyweight.hidden = selectedPlanKind === "learning";
+    dom.newCycle.hidden = selectedPlanKind === "learning";
+    dom.edit.textContent = selectedPlanKind === "learning" ? "编辑学习计划" : "编辑计划";
     setSyncState();
 
-    dom.title.textContent = plan.cycle.title || "推拉蹲 + 推";
+    dom.title.textContent = plan.cycle.title || (selectedPlanKind === "learning" ? "学习计划" : "推拉蹲 + 推");
     dom.cycleMeta.textContent = formatDateRange(plan.cycle.startDate, plan.cycle.endDate) +
-      " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练";
+      (selectedPlanKind === "learning"
+        ? " · " + plan.totalDays + " 天 · " + plan.completedDays + " 天已完成"
+        : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练");
 
     renderProgress(plan.cycle);
+    renderLearningSummary(plan);
     renderWarnings(plan);
     renderCycleSelect();
     renderTrajectory(displayTrajectoryPlan(plan));
     normalizeViewDate(plan.cycle);
     renderCalendar(plan);
+  }
+
+  function renderPlanKindControls() {
+    Array.prototype.slice.call(dom.kindButtons || []).forEach(function (button) {
+      var active = button.dataset.planKind === selectedPlanKind;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    var plans = isOwner && privateState
+      ? (privateState.learningPlans || [])
+      : (publicSnapshot && publicSnapshot.learningPlans) || [];
+    dom.learningSelector.hidden = selectedPlanKind !== "learning";
+    dom.newLearning.hidden = !isOwner || isOffline || selectedPlanKind !== "learning";
+    if (selectedPlanKind === "learning") {
+      dom.learningSelect.innerHTML = plans.length ? plans.map(function (plan) {
+        return '<option value="' + escapeHtml(plan.id) + '">' + escapeHtml(plan.title) + '</option>';
+      }).join("") : '<option value="">暂无学习计划</option>';
+      dom.learningSelect.value = selectedLearningPlanId || (plans[0] && plans[0].id) || "";
+    }
   }
 
   function normalizeViewDate(cycle) {
@@ -366,6 +453,25 @@
   }
 
   function renderProgress(cycle) {
+    if (selectedPlanKind === "learning") {
+      var plan = displayPlan();
+      var total = Math.max(0, Number(plan && plan.totalDays || 0));
+      var completed = Math.max(0, Number(plan && plan.completedDays || 0));
+      var criteria = (cycle.acceptanceCriteria || []).length;
+      var completedCriteria = Math.max(0, Number(plan && plan.completedCriteria || 0));
+      var artifacts = (cycle.artifacts || []).length;
+      dom.progress.innerHTML = [
+        ["学习日", completed + " / " + total, total ? completed / total * 100 : 0],
+        ["验收成果", completedCriteria + " / " + criteria, criteria ? completedCriteria / criteria * 100 : 0],
+        ["学习生产物", artifacts + " 份", artifacts ? 100 : 0]
+      ].map(function (item) {
+        return '<div class="plan-progress-item"><div class="plan-progress-label"><strong>' +
+          escapeHtml(item[0]) + '</strong><span>' + escapeHtml(item[1]) + '</span></div>' +
+          '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
+          Math.min(100, item[2]).toFixed(1) + '%"></span></div></div>';
+      }).join("");
+      return;
+    }
     dom.progress.innerHTML = ["bench", "pullup", "squat"].map(function (key) {
       var lift = cycle.lifts[key] || {};
       var current = Number(lift.current1rm || 0);
@@ -385,6 +491,10 @@
     if (!dom.chart) {
       return;
     }
+    if (selectedPlanKind === "learning") {
+      dom.chart.hidden = true;
+      return;
+    }
     if (!chart) {
       dom.chart.hidden = true;
       return;
@@ -393,8 +503,31 @@
     chart.render(dom.chart, plan, { today: todayInShanghai() });
   }
 
+  function renderLearningSummary(plan) {
+    if (selectedPlanKind !== "learning") {
+      dom.learningSummary.hidden = true;
+      return;
+    }
+    var cycle = plan.cycle;
+    var criteria = cycle.acceptanceCriteria || [];
+    dom.learningSummary.hidden = false;
+    dom.learningSummary.innerHTML = '<div><p class="eyebrow">OUTCOME / 验收成果</p><h2>计划完成时要留下什么</h2>' +
+      (cycle.objective ? '<p class="plan-learning-objective">' + escapeHtml(cycle.objective) + '</p>' : "") +
+      '</div><ol class="plan-learning-criteria">' +
+      (criteria.length ? criteria.map(function (criterion) {
+        return '<li><span>' + escapeHtml(criterion.title) + '</span></li>';
+      }).join("") : '<li><span>尚未设置验收成果。</span></li>') + '</ol>';
+  }
+
   function renderWarnings(plan) {
     var warnings = (plan.warnings || []).slice();
+    if (selectedPlanKind === "learning") {
+      dom.warnings.hidden = warnings.length === 0;
+      dom.warnings.innerHTML = warnings.slice(0, 5).map(function (warning) {
+        return "<p>· " + escapeHtml(warning) + "</p>";
+      }).join("");
+      return;
+    }
     var startYear = Number(String(plan.cycle.startDate).slice(0, 4));
     if (!holidayCalendars.some(function (calendar) { return Number(calendar.year) === startYear; })) {
       warnings.unshift("当前周期缺少 " + startYear + " 年官方节假日数据，请在设置中手动覆盖。");
@@ -406,6 +539,10 @@
   }
 
   function renderCycleSelect() {
+    if (selectedPlanKind === "learning") {
+      dom.cycleSelectWrap.hidden = true;
+      return;
+    }
     var archives = isOwner && privateState ? privateState.archivedCycles : [];
     dom.cycleSelectWrap.hidden = !isOwner || !privateState;
     if (!isOwner || !privateState) {
@@ -486,7 +623,7 @@
       if (date === todayInShanghai()) {
         classes.push("is-today");
       }
-      var canDrag = Boolean(session && isOwner && !isOffline);
+      var canDrag = Boolean(session && isOwner && !isOffline && selectedPlanKind === "fitness");
       var attributes = ' data-plan-date="' + escapeHtml(date) + '"';
       if (session) {
         attributes += ' data-session-id="' + escapeHtml(session.id) + '"';
@@ -502,11 +639,11 @@
           content += '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
             escapeHtml(statusLabel(session.status)) + "</span>";
         }
-        if (session.holiday) {
+        if (session.holiday && selectedPlanKind !== "learning") {
           content += '<span class="plan-day-holiday">调休</span>';
         }
       } else {
-        var holiday = holidayForDate(date);
+        var holiday = selectedPlanKind === "learning" ? null : holidayForDate(date);
         if (holiday && holiday.type === "off") {
           content += '<span class="plan-day-holiday">休</span>';
         }
@@ -538,10 +675,12 @@
       var content = sessions.length ? sessions.map(function (session) {
         return '<button class="plan-agenda-session" type="button" data-session-id="' +
           escapeHtml(session.id) + '"><strong>' + escapeHtml(session.label) + '</strong><span>' +
-          escapeHtml(primaryLoad(session) + " · " + session.phase.label + " · " + statusLabel(session.status)) +
+          escapeHtml(primaryLoad(session) + " · " + (session.phase && session.phase.label || "学习日") + " · " + statusLabel(session.status)) +
           "</span></button>";
       }).join("") : '<span class="plan-agenda-rest">' +
-        (holidayForDate(date) && holidayForDate(date).type === "off" ? "法定休息日" : "恢复 / 无训练") +
+        (selectedPlanKind !== "learning" && holidayForDate(date) && holidayForDate(date).type === "off"
+          ? "法定休息日"
+          : (selectedPlanKind === "learning" ? "无学习安排" : "恢复 / 无训练")) +
         "</span>";
       rows.push('<div class="plan-agenda-day"><div class="plan-agenda-date">' +
         escapeHtml(dateLabel) + '</div><div>' + content + "</div></div>");
@@ -551,6 +690,7 @@
 
   function shortTypeLabel(type) {
     return {
+      learning: "学习",
       "push-strength": "推 · 强度",
       pull: "拉",
       squat: "蹲",
@@ -567,6 +707,13 @@
   }
 
   function primaryLoad(session) {
+    if (session.type === "learning" || session.learning) {
+      var tasks = session.learning && session.learning.tasks || [];
+      if (tasks.length) {
+        return tasks.length + " 项任务";
+      }
+      return session.learning && session.learning.objective ? "目标已设置" : "待补充任务";
+    }
     var workout = session.workout || {};
     if (workout.needsSetup || !workout.workSets || !workout.workSets.length) {
       return "待设置重量";
@@ -645,6 +792,9 @@
   }
 
   function sessionDetailsHtml(session) {
+    if (selectedPlanKind === "learning" || session.type === "learning") {
+      return learningSessionDetailsHtml(session);
+    }
     var workout = session.workout || {};
     var holiday = session.holiday
       ? " · " + session.holiday.name + "补课（原 " + session.holiday.movedFrom + "）"
@@ -665,6 +815,61 @@
       html += trainingLogHtml(session);
     }
     return html;
+  }
+
+  function learningSessionDetailsHtml(session) {
+    var learning = session.learning || {};
+    var log = session.log || (privateState && privateState.learningPlans || []).reduce(function (found, plan) {
+      return found || (plan.logs && plan.logs[session.id]);
+    }, null) || {};
+    var criteria = learning.acceptanceCriteria || [];
+    var checked = log.criteria || [];
+    var tasks = learning.tasks || [];
+    var html = '<p class="plan-session-meta"><span>' + escapeHtml(formatChineseDate(session.date, true)) +
+      '</span><span>学习日</span><span>' + escapeHtml(statusLabel(session.status)) + '</span></p>';
+    html += '<section class="plan-session-section"><h3>今日学习任务</h3>' +
+      (learning.objective ? '<p class="plan-learning-objective">' + escapeHtml(learning.objective) + '</p>' : "") +
+      (tasks.length ? '<ul class="plan-learning-task-list">' + tasks.map(function (task) {
+        return '<li>' + escapeHtml(task) + '</li>';
+      }).join("") + '</ul>' : '<p>今天还没有预设任务，可以直接在总结中记录。</p>') + '</section>';
+    if (criteria.length) {
+      html += '<section class="plan-session-section"><h3>验收成果</h3><div class="plan-learning-checklist">' +
+        criteria.map(function (criterion) {
+          return '<label><input type="checkbox" data-learning-criterion="' + escapeHtml(criterion.id) + '"' +
+            (checked.indexOf(criterion.id) >= 0 ? ' checked' : '') + '><span>' + escapeHtml(criterion.title) +
+            (criterion.description ? '<small>' + escapeHtml(criterion.description) + '</small>' : '') + '</span></label>';
+        }).join("") + '</div></section>';
+    }
+    if (isOwner && !isOffline) {
+      var artifacts = log.artifacts || [];
+      html += '<section class="plan-session-section"><h3>成果记录</h3>' +
+        '<label class="plan-log-notes">今日计划（每行一项）<textarea data-learning-day-tasks rows="3">' +
+        escapeHtml(tasks.join("\n")) + '</textarea></label>' +
+        '<label class="plan-log-notes">学习总结 / 感悟<textarea data-learning-reflection maxlength="10000" placeholder="今天理解了什么？哪里仍然卡住？下一步是什么？">' +
+        escapeHtml(log.reflection || log.notes || "") + '</textarea></label>' +
+        '<label class="plan-learning-upload">学习生产物（可选）<input type="file" multiple data-learning-files>' +
+        '<small>支持文档、图片、压缩包；每个文件不超过 2 MB，文件内容会随计划同步。</small></label>' +
+        (artifacts.length ? '<ul class="plan-learning-artifacts">' + artifacts.map(learningArtifactHtml).join("") + '</ul>' : "") +
+        '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-learning>保存今日成果</button>' +
+        '<button class="plan-button" type="button" data-save-learning-plan>只保存当天计划</button>' +
+        '<button class="plan-button" type="button" data-skip-session>标记为跳过</button></div></section>';
+    }
+    return html;
+  }
+
+  function learningArtifactHtml(artifact) {
+    var label = escapeHtml(artifact.name || "未命名文件");
+    var candidate = String(artifact.dataUrl || artifact.url || "");
+    var href = /^(data:|https?:|blob:)/i.test(candidate) ? candidate : "#";
+    return '<li><a href="' + escapeHtml(href) + '" download="' + label + '" target="_blank" rel="noreferrer">' +
+      label + '</a><span>' + escapeHtml(formatArtifactSize(artifact.size)) + '</span></li>';
+  }
+
+  function formatArtifactSize(size) {
+    var value = Number(size || 0);
+    if (value < 1024) return value + " B";
+    if (value < 1024 * 1024) return (value / 1024).toFixed(1) + " KB";
+    return (value / (1024 * 1024)).toFixed(1) + " MB";
   }
 
   function trainingLogHtml(session) {
@@ -832,6 +1037,18 @@
   }
 
   function bindDetailActions(session) {
+    var learningSave = dom.detailBody.querySelector("[data-save-learning]");
+    if (learningSave) {
+      learningSave.addEventListener("click", function () {
+        saveLearningLog(session, learningSave);
+      });
+    }
+    var learningPlanSave = dom.detailBody.querySelector("[data-save-learning-plan]");
+    if (learningPlanSave) {
+      learningPlanSave.addEventListener("click", function () {
+        saveLearningLog(session, learningPlanSave, "planned");
+      });
+    }
     var save = dom.detailBody.querySelector("[data-save-log]");
     if (save) {
       save.addEventListener("click", function () {
@@ -841,12 +1058,16 @@
     var skip = dom.detailBody.querySelector("[data-skip-session]");
     if (skip) {
       skip.addEventListener("click", function () {
-        privateState = core.recordSession(privateState, session, {
-          status: "skipped",
-          mainSets: [],
-          notes: dom.detailBody.querySelector("[data-log-notes]").value
-        });
-        persist("已标记为跳过。");
+        if (selectedPlanKind === "learning") {
+          saveLearningLog(session, skip, "skipped");
+        } else {
+          privateState = core.recordSession(privateState, session, {
+            status: "skipped",
+            mainSets: [],
+            notes: dom.detailBody.querySelector("[data-log-notes]").value
+          });
+          persist("已标记为跳过。");
+        }
       });
     }
     var move = dom.detailBody.querySelector("[data-move-session]");
@@ -859,6 +1080,81 @@
         }
         requestSessionMove(session.id, date);
       });
+    }
+  }
+
+  function fileToArtifact(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || file.size > 2 * 1024 * 1024) {
+        reject(new Error("learning_file_too_large"));
+        return;
+      }
+      if (typeof FileReader === "undefined") {
+        resolve({ id: "artifact-" + Date.now().toString(36), name: file.name, size: file.size, type: file.type });
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        resolve({
+          id: "artifact-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
+          name: String(file.name || "未命名文件").slice(0, 180),
+          size: Number(file.size || 0),
+          type: String(file.type || "application/octet-stream"),
+          dataUrl: reader.result,
+          uploadedAt: new Date().toISOString()
+        });
+      };
+      reader.onerror = function () { reject(new Error("learning_file_read_failed")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function saveLearningLog(session, button, forcedStatus) {
+    if (!isOwner || isOffline || !privateState) {
+      showMessage("请先以本人账号在线登录。", "error");
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      var plan = privateState.learningPlans.find(function (candidate) {
+        return candidate.id === selectedLearningPlanId;
+      });
+      var filesInput = dom.detailBody.querySelector("[data-learning-files]");
+      var files = filesInput ? Array.prototype.slice.call(filesInput.files || []) : [];
+      if (files.length > 5) {
+        throw new Error("learning_file_limit");
+      }
+      var artifacts = [];
+      for (var index = 0; index < files.length; index += 1) {
+        artifacts.push(await fileToArtifact(files[index]));
+      }
+      var previous = plan && plan.logs && plan.logs[session.id];
+      var criteria = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-learning-criterion]:checked"))
+        .map(function (input) { return input.dataset.learningCriterion; });
+      privateState = core.recordLearningSession(privateState, selectedLearningPlanId, session, {
+        status: forcedStatus || "completed",
+        reflection: dom.detailBody.querySelector("[data-learning-reflection]").value,
+        dailyPlan: {
+          title: session.label,
+          objective: session.learning && session.learning.objective || "",
+          tasks: dom.detailBody.querySelector("[data-learning-day-tasks]").value.split(/\n+/)
+            .map(function (task) { return task.trim(); }).filter(Boolean)
+        },
+        criteria: criteria,
+        artifacts: (previous && previous.artifacts || []).concat(artifacts).slice(-12)
+      });
+      await persist(forcedStatus === "skipped"
+        ? "学习日已标记为跳过。"
+        : (forcedStatus === "planned" ? "当天学习计划已保存。" : "学习成果已保存。"));
+    } catch (error) {
+      var messages = {
+        learning_file_too_large: "单个学习生产物不能超过 2 MB。",
+        learning_file_limit: "一次最多上传 5 个文件。",
+        learning_file_read_failed: "文件读取失败，请重试。"
+      };
+      showMessage(messages[error.message] || "学习成果保存失败：" + error.message, "error");
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -975,6 +1271,96 @@
     });
     dom.bodyweightDialog.close();
     await persist("体重记录已更新。");
+  }
+
+  function setLearningInput(name, value) {
+    if (dom.learningSettingsForm && dom.learningSettingsForm.elements[name]) {
+      dom.learningSettingsForm.elements[name].value = value == null ? "" : value;
+    }
+  }
+
+  function openLearningSettings(planId) {
+    if (!isOwner || isOffline || !privateState) {
+      showMessage("请先以本人账号在线登录。", "error");
+      return;
+    }
+    learningSettingsEditingId = planId || null;
+    var existing = (privateState.learningPlans || []).find(function (plan) { return plan.id === planId; });
+    var plan = existing ? core.normalizeLearningPlan(existing) : core.createDefaultLearningPlan(todayInShanghai(), core.addDays(todayInShanghai(), 27));
+    dom.learningSettingsTitle.textContent = existing ? "编辑学习计划" : "新增学习计划";
+    setLearningInput("learningTitle", plan.title);
+    setLearningInput("learningObjective", plan.objective);
+    setLearningInput("learningStartDate", plan.startDate);
+    setLearningInput("learningEndDate", plan.endDate);
+    LEARNING_DAY_NAMES.forEach(function (name, index) {
+      var item = plan.dailyTemplate[String(index + 1)] || {};
+      setLearningInput("learningDay" + (index + 1) + "Title", item.title);
+      setLearningInput("learningDay" + (index + 1) + "Tasks", (item.tasks || []).join("\n"));
+    });
+    setLearningInput("learningCriteria", (plan.acceptanceCriteria || []).map(function (criterion) {
+      return criterion.title + (criterion.description ? " · " + criterion.description : "");
+    }).join("\n"));
+    dom.learningFormError.textContent = "";
+    dom.learningSettings.showModal();
+  }
+
+  var LEARNING_DAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
+  async function saveLearningSettings(event) {
+    event.preventDefault();
+    var form = new FormData(dom.learningSettingsForm);
+    var title = String(form.get("learningTitle") || "").trim();
+    var objective = String(form.get("learningObjective") || "").trim();
+    var startDate = String(form.get("learningStartDate") || "");
+    var endDate = String(form.get("learningEndDate") || "");
+    if (!title) {
+      dom.learningFormError.textContent = "请填写学习计划名称。";
+      return;
+    }
+    if (!startDate || !endDate || endDate < startDate) {
+      dom.learningFormError.textContent = "结束日期必须不早于开始日期。";
+      return;
+    }
+    var dailyTemplate = {};
+    LEARNING_DAY_NAMES.forEach(function (_, index) {
+      dailyTemplate[String(index + 1)] = {
+        title: String(form.get("learningDay" + (index + 1) + "Title") || "").trim() || "学习任务",
+        objective: "",
+        tasks: String(form.get("learningDay" + (index + 1) + "Tasks") || "").split(/\n+/)
+          .map(function (task) { return task.trim(); }).filter(Boolean)
+      };
+    });
+    var acceptanceCriteria = String(form.get("learningCriteria") || "").split(/\n+/)
+      .map(function (line) { return line.trim(); }).filter(Boolean)
+      .map(function (line, index) {
+        var parts = line.split(/\s+[·|｜]\s+/);
+        return { id: "criterion-" + (index + 1), title: parts[0], description: parts.slice(1).join(" · ") };
+      });
+    var existing = (privateState.learningPlans || []).find(function (plan) {
+      return plan.id === learningSettingsEditingId;
+    });
+    var next = core.normalizeLearningPlan(Object.assign({}, existing || core.createDefaultLearningPlan(startDate, endDate), {
+      id: existing ? existing.id : "learning-" + startDate + "-" + Date.now().toString(36),
+      title: title,
+      objective: objective,
+      startDate: startDate,
+      endDate: endDate,
+      dailyTemplate: dailyTemplate,
+      acceptanceCriteria: acceptanceCriteria,
+      status: existing ? existing.status : "active"
+    }));
+    if (existing) {
+      privateState.learningPlans = privateState.learningPlans.map(function (plan) {
+        return plan.id === next.id ? next : plan;
+      });
+    } else {
+      privateState.learningPlans = (privateState.learningPlans || []).concat(next);
+    }
+    privateState.activePlanId = next.id;
+    selectedPlanKind = "learning";
+    selectedLearningPlanId = next.id;
+    dom.learningSettings.close();
+    await persist(existing ? "学习计划已更新。" : "学习计划已创建。");
   }
 
   function openSettings(newCycle) {
@@ -1246,7 +1632,8 @@
       durationMinutes: 90,
       reminderMinutes: 120
     };
-    download("miyaal-fitness-plan.ics", core.generateIcs(plan, preferences), "text/calendar;charset=utf-8");
+    download("miyaal-" + (selectedPlanKind === "learning" ? "learning-plan" : "fitness-plan") + ".ics",
+      core.generateIcs(plan, preferences), "text/calendar;charset=utf-8");
   }
 
   function exportJson() {
@@ -1254,7 +1641,7 @@
       return;
     }
     download(
-      "miyaal-fitness-plan-backup-" + todayInShanghai() + ".json",
+      "miyaal-plan-backup-" + todayInShanghai() + ".json",
       JSON.stringify(privateState, null, 2) + "\n",
       "application/json;charset=utf-8"
     );
@@ -1294,7 +1681,13 @@
     });
   });
   dom.updateBodyweight.addEventListener("click", openBodyweightDialog);
-  dom.edit.addEventListener("click", function () { openSettings(false); });
+  dom.edit.addEventListener("click", function () {
+    if (selectedPlanKind === "learning") {
+      openLearningSettings(selectedLearningPlanId);
+    } else {
+      openSettings(false);
+    }
+  });
   dom.newCycle.addEventListener("click", function () { openSettings(true); });
   dom.signOut.addEventListener("click", function () {
     store.signOut().catch(function (error) {
@@ -1303,6 +1696,23 @@
   });
   dom.exportIcs.addEventListener("click", exportIcs);
   dom.exportJson.addEventListener("click", exportJson);
+  Array.prototype.slice.call(dom.kindButtons || []).forEach(function (button) {
+    button.addEventListener("click", function () {
+      selectedPlanKind = button.dataset.planKind;
+      if (selectedPlanKind === "learning" && isOwner && privateState) {
+        selectedLearningPlanId = privateState.activePlanId || selectedLearningPlanId ||
+          (privateState.learningPlans[0] && privateState.learningPlans[0].id);
+      }
+      viewDate = todayInShanghai();
+      render();
+    });
+  });
+  dom.learningSelect.addEventListener("change", function () {
+    selectedLearningPlanId = dom.learningSelect.value || null;
+    viewDate = todayInShanghai();
+    render();
+  });
+  dom.newLearning.addEventListener("click", function () { openLearningSettings(null); });
   dom.previous.addEventListener("click", function () {
     viewDate = mobileQuery.matches ? core.addDays(weekStart(viewDate), -7) : shiftMonth(viewDate, -1);
     renderCalendar(displayPlan());
@@ -1420,6 +1830,7 @@
     button.addEventListener("click", closeDetails);
   });
   dom.settingsForm.addEventListener("submit", saveSettings);
+  dom.learningSettingsForm.addEventListener("submit", saveLearningSettings);
   dom.bodyweightForm.addEventListener("submit", saveBodyweight);
   app.querySelector("[data-plan-close-settings]").addEventListener("click", function () { dom.settings.close(); });
   app.querySelector("[data-plan-close-bodyweight]").addEventListener("click", function () {
@@ -1430,6 +1841,8 @@
   });
   dom.templateEditor.addEventListener("dragover", handleTemplateDrag);
   app.querySelector("[data-plan-cancel-settings]").addEventListener("click", function () { dom.settings.close(); });
+  app.querySelector("[data-plan-close-learning-settings]").addEventListener("click", function () { dom.learningSettings.close(); });
+  app.querySelector("[data-plan-cancel-learning-settings]").addEventListener("click", function () { dom.learningSettings.close(); });
   app.querySelector("[data-plan-add-template]").addEventListener("click", function () {
     var template = readTemplateEditor();
     template.push({
