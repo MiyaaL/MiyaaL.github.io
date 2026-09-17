@@ -248,6 +248,7 @@
       try {
         await loadPublicPlan();
       } catch (_) {
+        isOffline = true;
         renderEmpty();
       }
     }
@@ -1671,14 +1672,29 @@
     showMessage("已重新载入服务器版本。", "success");
   }
 
-  dom.auth.addEventListener("click", function () {
+  dom.auth.addEventListener("click", async function () {
     if (!store.configured) {
       showMessage("请先在 _config.yml 配置 Supabase URL 与 Publishable Key。", "notice");
       return;
     }
-    store.signIn().catch(function (error) {
+    dom.auth.disabled = true;
+    try {
+      var availability;
+      try {
+        availability = await store.loadPublic();
+      } catch (_) {
+        availability = null;
+      }
+      if (!availability || availability.offline) {
+        showMessage("同步服务暂不可用，无法登录。请稍后重试。", "offline");
+        return;
+      }
+      await store.signIn();
+    } catch (error) {
       showMessage("GitHub 登录失败：" + error.message, "error");
-    });
+    } finally {
+      dom.auth.disabled = false;
+    }
   });
   dom.updateBodyweight.addEventListener("click", openBodyweightDialog);
   dom.edit.addEventListener("click", function () {
