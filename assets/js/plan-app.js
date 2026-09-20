@@ -64,7 +64,10 @@
     holidayType: app.querySelector("[data-plan-holiday-type]"),
     holidayOverrides: app.querySelector("[data-plan-holiday-overrides]"),
     moveConfirm: app.querySelector("[data-plan-move-confirm]"),
+    moveConfirmEyebrow: app.querySelector("[data-plan-move-confirm-eyebrow]"),
+    moveConfirmTitle: app.querySelector("[data-plan-move-confirm-title]"),
     moveConfirmMessage: app.querySelector("[data-plan-move-confirm-message]"),
+    moveConfirmButton: app.querySelector("[data-plan-confirm-move]"),
     conflict: app.querySelector("[data-plan-conflict]")
   };
   var config = {
@@ -88,6 +91,7 @@
   var settingsHolidayOverrides = {};
   var pendingConflictState = null;
   var pendingSessionMove = null;
+  var pendingSessionDeferral = null;
   var draggedSessionId = null;
   var calendarDragActive = false;
   var suppressCalendarClick = false;
@@ -903,6 +907,12 @@
         escapeHtml(saved.reps != null ? saved.reps : defaultReps) + '"></label></div>';
     }).join("");
 
+    var deferButton = session.status === "skipped"
+      ? '<button class="plan-button" type="button" data-defer-sessions>从本次起顺延</button>'
+      : "";
+    var deferHint = session.status === "skipped"
+      ? '<p class="plan-cycle-meta">顺延会撤销范围内的跳过记录，并把本次及后续未完成训练整体后移。</p>'
+      : "";
     return '<section class="plan-session-section"><h3>训练记录</h3>' +
       '<div><div class="plan-log-grid"><span></span><span>kg</span><span>reps</span><span>RPE</span></div>' +
       rows.join("") + "</div>" +
@@ -912,8 +922,9 @@
       '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-log>按以上记录完成</button>' +
       '<button class="plan-button" type="button" data-skip-session>跳过本次</button></div>' +
       '<div class="plan-reschedule"><label>改期<input class="plan-log-input" data-move-date type="date" min="' +
-      escapeHtml(privateState.activeCycle.startDate) + '" max="' + escapeHtml(privateState.activeCycle.endDate) +
-      '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>仅移动本次</button></div></section>';
+      escapeHtml(privateState.activeCycle.startDate) + '" max="' + escapeHtml(core.addDays(privateState.activeCycle.endDate, 365)) +
+      '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>仅移动本次</button>' +
+      deferButton + "</div>" + deferHint + "</section>";
   }
 
   function moveConflicts(plan, sourceId, targetDate) {
@@ -923,7 +934,11 @@
   }
 
   function openMoveConfirmation(request, source, conflicts) {
+    pendingSessionDeferral = null;
     pendingSessionMove = request;
+    dom.moveConfirmEyebrow.textContent = "MOVE / 调整日期";
+    dom.moveConfirmTitle.textContent = "替代已有规划？";
+    dom.moveConfirmButton.textContent = "确认替代";
     var conflictSummary = conflicts.map(function (session) {
       return "“" + session.label + "”（" + statusLabel(session.status) + "）";
     }).join("、");
@@ -977,6 +992,95 @@
     }
   }
 
+  function showSessionDeferralError(error) {
+    if (error.code === "session_defer_recorded_future") {
+      showMessage("顺延范围内已有训练记录，无法整体移动。请从更晚的训练开始，或仅移动本次。", "error");
+    } else if (error.code === "invalid_session_defer_date") {
+      showMessage("顺延日期必须晚于本次训练日期，且最多顺延一年。", "error");
+    } else if (error.code === "invalid_session_defer_source") {
+      showMessage("这项训练已完成或已发生变化，无法顺延。", "error");
+    } else {
+      showMessage("顺延失败：" + error.message, "error");
+    }
+  }
+
+  function openSessionDeferralConfirmation(request) {
+    pendingSessionMove = null;
+    pendingSessionDeferral = request;
+    dom.moveConfirmEyebrow.textContent = "DEFER / 顺延计划";
+    dom.moveConfirmTitle.textContent = "顺延后续计划？";
+    dom.moveConfirmButton.textContent = "确认顺延";
+    dom.moveConfirmMessage.textContent = "从“" + request.sourceLabel + "”开始的 " +
+      request.affectedCount + " 次未完成训练将整体顺延 " + request.days + " 天，周期预计结束日期变为 " +
+      formatChineseDate(request.newEndDate, false) + "。范围内的“已跳过”会恢复为待训练。";
+    dom.moveConfirm.showModal();
+  }
+
+  async function applySessionDeferral(request) {
+    if (sessionMovePending) {
+      showMessage("上一次日程调整正在保存，请稍候。", "notice");
+      return;
+    }
+    sessionMovePending = true;
+    var previousState = privateState;
+    var previousChartArchive = viewingChartArchive;
+    try {
+      privateState = core.deferSessions(privateState, request.sourceId, request.targetDate, {
+        holidayCalendars: holidayCalendars,
+        asOfDate: todayInShanghai()
+      });
+      viewingChartArchive = -1;
+      var saveResult = await persist("跳过记录已撤销，后续训练已顺延。");
+      if (saveResult === false) {
+        privateState = previousState;
+        viewingChartArchive = previousChartArchive;
+        render();
+      }
+    } catch (error) {
+      showSessionDeferralError(error);
+    } finally {
+      sessionMovePending = false;
+    }
+  }
+
+  function requestSessionDeferral(sourceId, targetDate) {
+    if (sessionMovePending) {
+      showMessage("上一次日程调整正在保存，请稍候。", "notice");
+      return;
+    }
+    if (!isOwner || isOffline || !privateState) {
+      showMessage("请先以本人账号在线登录。", "error");
+      return;
+    }
+    var plan = displayPlan();
+    var source = (plan.sessions || []).find(function (session) {
+      return session.id === sourceId;
+    });
+    if (!source) {
+      showMessage("这项训练已发生变化，请刷新后重试。", "error");
+      return;
+    }
+    try {
+      var previewState = core.deferSessions(privateState, sourceId, targetDate, {
+        holidayCalendars: holidayCalendars,
+        asOfDate: todayInShanghai()
+      });
+      var previewPlan = core.generate(previewState, holidayCalendars, { asOfDate: todayInShanghai() });
+      openSessionDeferralConfirmation({
+        sourceId: sourceId,
+        sourceLabel: source.label,
+        targetDate: targetDate,
+        days: core.daysBetween(source.date, targetDate),
+        affectedCount: (plan.sessions || []).filter(function (session) {
+          return session.date >= source.date && session.status !== "completed";
+        }).length,
+        newEndDate: previewPlan.cycle.endDate
+      });
+    } catch (error) {
+      showSessionDeferralError(error);
+    }
+  }
+
   function requestSessionMove(sourceId, targetDate) {
     if (sessionMovePending) {
       showMessage("上一次改期正在保存，请稍候。", "notice");
@@ -1023,10 +1127,18 @@
 
   function cancelSessionMove() {
     pendingSessionMove = null;
+    pendingSessionDeferral = null;
     dom.moveConfirm.close();
   }
 
   function confirmSessionMove() {
+    if (pendingSessionDeferral) {
+      var deferral = pendingSessionDeferral;
+      pendingSessionDeferral = null;
+      dom.moveConfirm.close();
+      applySessionDeferral(deferral);
+      return;
+    }
     if (!pendingSessionMove) {
       dom.moveConfirm.close();
       return;
@@ -1080,6 +1192,17 @@
           return;
         }
         requestSessionMove(session.id, date);
+      });
+    }
+    var defer = dom.detailBody.querySelector("[data-defer-sessions]");
+    if (defer) {
+      defer.addEventListener("click", function () {
+        var date = dom.detailBody.querySelector("[data-move-date]").value;
+        if (!date) {
+          showMessage("请选择顺延后的日期。", "error");
+          return;
+        }
+        requestSessionDeferral(session.id, date);
       });
     }
   }
@@ -1890,6 +2013,7 @@
   app.querySelector("[data-plan-confirm-move]").addEventListener("click", confirmSessionMove);
   dom.moveConfirm.addEventListener("cancel", function () {
     pendingSessionMove = null;
+    pendingSessionDeferral = null;
   });
   app.querySelector("[data-plan-reload]").addEventListener("click", reloadAfterConflict);
   window.addEventListener("resize", function () {

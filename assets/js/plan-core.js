@@ -162,6 +162,7 @@
         template: deepClone(DEFAULT_TEMPLATE),
         holidayOverrides: {},
         sessionOverrides: {},
+        scheduleDeferrals: [],
         loadAdjustments: {},
         createdAt: new Date().toISOString()
       },
@@ -394,6 +395,20 @@
       : [];
     state.activeCycle.holidayOverrides = state.activeCycle.holidayOverrides || {};
     state.activeCycle.sessionOverrides = state.activeCycle.sessionOverrides || {};
+    state.activeCycle.scheduleDeferrals = (Array.isArray(state.activeCycle.scheduleDeferrals)
+      ? state.activeCycle.scheduleDeferrals : []).map(function (entry, index) {
+      return {
+        id: String(entry && entry.id || "deferral-" + (index + 1)),
+        sourceId: String(entry && entry.sourceId || ""),
+        fromDate: String(entry && entry.fromDate || ""),
+        days: Math.max(0, Math.floor(asNumber(entry && entry.days, 0))),
+        restoredSkips: Array.isArray(entry && entry.restoredSkips)
+          ? deepClone(entry.restoredSkips) : [],
+        createdAt: entry && entry.createdAt ? String(entry.createdAt) : null
+      };
+    }).filter(function (entry) {
+      return isIsoDate(entry.fromDate) && entry.days > 0;
+    });
     state.activeCycle.loadAdjustments = state.activeCycle.loadAdjustments || {};
     state.archivedCycles = Array.isArray(state.archivedCycles) ? state.archivedCycles : [];
     state.logs = state.logs || {};
@@ -499,8 +514,12 @@
     var missed = {};
     var occupied = {};
     var date = cycle.startDate;
+    var deferredDays = (cycle.scheduleDeferrals || []).reduce(function (total, entry) {
+      return total + entry.days;
+    }, 0);
+    var sourceEndDate = addDays(cycle.endDate, -deferredDays);
 
-    while (date <= cycle.endDate) {
+    while (date <= sourceEndDate) {
       var weekday = isoWeekday(date);
       cycle.template.filter(function (item) {
         return Number(item.weekday) === weekday;
@@ -552,7 +571,7 @@
     var customWorkdays = Object.keys(holidays.work).filter(function (workday) {
       return holidays.work[workday].source === "override" &&
         workday >= cycle.startDate &&
-        workday <= cycle.endDate &&
+        workday <= sourceEndDate &&
         !occupied[workday];
     }).sort();
 
@@ -604,6 +623,31 @@
     return result.sort(byDate);
   }
 
+  function applyScheduleDeferrals(sessions, deferrals, overrides) {
+    var entries = deferrals || [];
+    return sessions.map(function (session) {
+      var next = Object.assign({}, session);
+      var override = (overrides || {})[session.id] || {};
+      var firstDeferral = override.action === "move"
+        ? Math.max(0, Math.min(entries.length, Math.floor(asNumber(override.scheduleDeferralCount, 0))))
+        : 0;
+      var deferredDays = 0;
+      next.programDate = next.date;
+      entries.slice(firstDeferral).forEach(function (entry) {
+        if (next.date >= entry.fromDate) {
+          if (!next.originalDate) next.originalDate = next.date;
+          next.date = addDays(next.date, entry.days);
+          deferredDays += entry.days;
+        }
+      });
+      if (deferredDays) {
+        next.deferredDays = deferredDays;
+        next.manualDefer = true;
+      }
+      return next;
+    }).sort(byDate);
+  }
+
   function liftKeyForType(type) {
     if (type === "pull") {
       return "pullup";
@@ -615,7 +659,8 @@
   }
 
   function phaseFor(session, cycle, totalWeeks) {
-    var weekIndex = Math.max(0, Math.floor(daysBetween(cycle.startDate, session.date) / 7));
+    var phaseDate = session.programDate || session.date;
+    var weekIndex = Math.max(0, Math.floor(daysBetween(cycle.startDate, phaseDate) / 7));
     if (session.isTest) {
       return { key: "test", label: "目标测试", weekIndex: weekIndex, blockWeek: null };
     }
@@ -942,6 +987,7 @@
     var holidays = compileHolidayCalendar(holidayCalendars, cycle.holidayOverrides);
     var sessions = buildBaseSessions(cycle, holidays, warnings);
     sessions = applySessionOverrides(sessions, cycle.sessionOverrides, warnings);
+    sessions = applyScheduleDeferrals(sessions, cycle.scheduleDeferrals, cycle.sessionOverrides);
     markTestSessions(sessions);
 
     var sessionMap = sessions.reduce(function (map, session) {
@@ -960,7 +1006,11 @@
     });
     sessions.sort(byDate);
 
-    var totalWeeks = Math.max(1, Math.ceil((daysBetween(cycle.startDate, cycle.endDate) + 1) / 7));
+    var deferredDays = (cycle.scheduleDeferrals || []).reduce(function (total, entry) {
+      return total + entry.days;
+    }, 0);
+    var programEndDate = addDays(cycle.endDate, -deferredDays);
+    var totalWeeks = Math.max(1, Math.ceil((daysBetween(cycle.startDate, programEndDate) + 1) / 7));
     sessions.forEach(function (session) {
       var log = state.logs[session.id];
       if (log && log.sessionSnapshot) {
@@ -973,6 +1023,7 @@
         session.workout = workoutFor(session, state, session.phase, totalWeeks);
       }
       session.status = log && log.status ? log.status : "planned";
+      delete session.programDate;
     });
     applyNextAdjustments(sessions, state);
     applyAccessoryProgression(sessions, state);
@@ -1049,7 +1100,8 @@
     });
     state.activeCycle.sessionOverrides[source.id] = {
       action: "move",
-      date: date
+      date: date,
+      scheduleDeferralCount: cycle.scheduleDeferrals.length
     };
 
     var log = state.logs[source.id];
@@ -1064,6 +1116,63 @@
       }
     }
 
+    return state;
+  }
+
+  function deferSessions(inputState, sourceId, targetDate, options) {
+    var settings = options || {};
+    var state = normalizeState(inputState);
+    var plan = generate(state, settings.holidayCalendars || []);
+    state = plan.state;
+    var cycle = state.activeCycle;
+    var date = String(targetDate || "");
+    var source = plan.sessions.find(function (session) {
+      return session.id === sourceId;
+    });
+    if (!source || source.status === "completed") {
+      throw sessionMoveError("invalid_session_defer_source", { sourceId: sourceId });
+    }
+    if (!isIsoDate(date) || date <= source.date || daysBetween(source.date, date) > 365) {
+      throw sessionMoveError("invalid_session_defer_date", { date: date });
+    }
+
+    var candidates = plan.sessions.filter(function (session) {
+      return session.date >= source.date;
+    });
+    var recorded = candidates.filter(function (session) {
+      var log = state.logs[session.id];
+      return log && log.status !== "skipped";
+    });
+    if (recorded.length) {
+      throw sessionMoveError("session_defer_recorded_future", {
+        source: deepClone(source),
+        date: date,
+        sessions: deepClone(recorded)
+      });
+    }
+
+    var restoredSkips = [];
+    candidates.forEach(function (session) {
+      var log = state.logs[session.id];
+      if (log && log.status === "skipped") {
+        restoredSkips.push({
+          sessionId: session.id,
+          notes: log.notes || "",
+          recordedAt: log.completedAt || null
+        });
+        delete state.logs[session.id];
+      }
+    });
+    var days = daysBetween(source.date, date);
+    cycle.scheduleDeferrals.push({
+      id: "deferral-" + Date.now().toString(36) + "-" + (cycle.scheduleDeferrals.length + 1),
+      sourceId: source.id,
+      fromDate: source.date,
+      days: days,
+      restoredSkips: restoredSkips,
+      createdAt: new Date().toISOString()
+    });
+    cycle.endDate = addDays(cycle.endDate, days);
     return state;
   }
 
@@ -1421,6 +1530,7 @@
     normalizeState: normalizeState,
     generate: generate,
     moveSession: moveSession,
+    deferSessions: deferSessions,
     recordSession: recordSession,
     recordLearningSession: recordLearningSession,
     recordBodyweight: recordBodyweight,
