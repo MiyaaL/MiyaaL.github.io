@@ -1207,6 +1207,35 @@
     return { percentage: 0, reason: "表现符合计划" };
   }
 
+  function restoreSkippedSession(inputState, sessionId) {
+    var state = normalizeState(inputState);
+    var id = String(sessionId || "");
+    var log = state.logs[id];
+    if (!log || log.status !== "skipped") {
+      throw new Error("session_not_skipped");
+    }
+    delete state.logs[id];
+    return state;
+  }
+
+  function restoreSkippedLearningSession(inputState, planId, sessionId) {
+    var state = normalizeState(inputState);
+    var plan = state.learningPlans.find(function (candidate) {
+      return candidate.id === planId;
+    });
+    if (!plan) {
+      throw new Error("learning_plan_not_found");
+    }
+    var log = plan.logs[String(sessionId || "")];
+    if (!log || log.status !== "skipped") {
+      throw new Error("learning_session_not_skipped");
+    }
+    log.status = "planned";
+    delete log.completedAt;
+    delete log.sessionSnapshot;
+    return state;
+  }
+
   function recordSession(inputState, session, log) {
     var state = normalizeState(inputState);
     var nextLog = {
@@ -1533,6 +1562,8 @@
     deferSessions: deferSessions,
     recordSession: recordSession,
     recordLearningSession: recordLearningSession,
+    restoreSkippedSession: restoreSkippedSession,
+    restoreSkippedLearningSession: restoreSkippedLearningSession,
     recordBodyweight: recordBodyweight,
     estimateOneRepMax: estimateOneRepMax,
     suggestAdjustment: suggestAdjustment,

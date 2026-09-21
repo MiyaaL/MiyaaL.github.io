@@ -654,7 +654,8 @@
         }
       }
       var aria = session
-        ? formatChineseDate(date, true) + " " + session.label + (canDrag ? "，可拖动调整日期" : "")
+        ? formatChineseDate(date, true) + " " + session.label + "，" + statusLabel(session.status) +
+          (canDrag ? "，可拖动调整日期" : "")
         : "";
       cells.push('<button class="' + classes.join(" ") + '" type="button"' + attributes +
         (session ? ' aria-label="' + escapeHtml(aria) + '"' : ' tabindex="-1"') +
@@ -847,6 +848,9 @@
     }
     if (isOwner && !isOffline) {
       var artifacts = log.artifacts || [];
+      var skipAction = session.status === "skipped"
+        ? '<button class="plan-button" type="button" data-restore-skipped-session>取消跳过</button>'
+        : '<button class="plan-button" type="button" data-skip-session>标记为跳过</button>';
       html += '<section class="plan-session-section"><h3>成果记录</h3>' +
         '<label class="plan-log-notes">今日计划（每行一项）<textarea data-learning-day-tasks rows="3">' +
         escapeHtml(tasks.join("\n")) + '</textarea></label>' +
@@ -857,7 +861,7 @@
         (artifacts.length ? '<ul class="plan-learning-artifacts">' + artifacts.map(learningArtifactHtml).join("") + '</ul>' : "") +
         '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-learning>保存今日成果</button>' +
         '<button class="plan-button" type="button" data-save-learning-plan>只保存当天计划</button>' +
-        '<button class="plan-button" type="button" data-skip-session>标记为跳过</button></div></section>';
+        skipAction + '</div></section>';
     }
     return html;
   }
@@ -910,6 +914,9 @@
     var deferButton = session.status === "skipped"
       ? '<button class="plan-button" type="button" data-defer-sessions>从本次起顺延</button>'
       : "";
+    var skipAction = session.status === "skipped"
+      ? '<button class="plan-button" type="button" data-restore-skipped-session>取消跳过</button>'
+      : '<button class="plan-button" type="button" data-skip-session>跳过本次</button>';
     var deferHint = session.status === "skipped"
       ? '<p class="plan-cycle-meta">顺延会撤销范围内的跳过记录，并把本次及后续未完成训练整体后移。</p>'
       : "";
@@ -920,7 +927,7 @@
       '<label class="plan-log-notes">备注（仅本人可见）<textarea data-log-notes>' +
       escapeHtml(log.notes || "") + "</textarea></label>" +
       '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-log>按以上记录完成</button>' +
-      '<button class="plan-button" type="button" data-skip-session>跳过本次</button></div>' +
+      skipAction + '</div>' +
       '<div class="plan-reschedule"><label>改期<input class="plan-log-input" data-move-date type="date" min="' +
       escapeHtml(privateState.activeCycle.startDate) + '" max="' + escapeHtml(core.addDays(privateState.activeCycle.endDate, 365)) +
       '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>仅移动本次</button>' +
@@ -1183,6 +1190,12 @@
         }
       });
     }
+    var restoreSkipped = dom.detailBody.querySelector("[data-restore-skipped-session]");
+    if (restoreSkipped) {
+      restoreSkipped.addEventListener("click", function () {
+        cancelSessionSkip(session, restoreSkipped);
+      });
+    }
     var move = dom.detailBody.querySelector("[data-move-session]");
     if (move) {
       move.addEventListener("click", function () {
@@ -1204,6 +1217,35 @@
         }
         requestSessionDeferral(session.id, date);
       });
+    }
+  }
+
+  async function cancelSessionSkip(session, button) {
+    var previousState = privateState;
+    button.disabled = true;
+    try {
+      if (selectedPlanKind === "learning") {
+        privateState = core.restoreSkippedLearningSession(
+          privateState,
+          selectedLearningPlanId,
+          session.id
+        );
+      } else {
+        privateState = core.restoreSkippedSession(privateState, session.id);
+      }
+      var saveResult = await persist(selectedPlanKind === "learning"
+        ? "已取消跳过，学习日恢复为计划中。"
+        : "已取消跳过，训练恢复为计划中。");
+      if (saveResult === false) {
+        privateState = previousState;
+        render();
+      }
+    } catch (error) {
+      privateState = previousState;
+      render();
+      showMessage("取消跳过失败：" + error.message, "error");
+    } finally {
+      button.disabled = false;
     }
   }
 
