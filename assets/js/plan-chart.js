@@ -165,7 +165,7 @@
       points.push({
         date: session.date,
         value: value,
-        detail: (session.status === "completed" ? "Completed session" : "Planned session") +
+        detail: (session.status === "completed" ? "Historical prescription" : "Capacity used for prescription") +
           (session.phase && session.phase.label ? " · " + session.phase.label : "")
       });
     });
@@ -181,7 +181,7 @@
       points.push({ date: cycle.startDate, value: baseline, detail: "Cycle baseline" });
     }
     var target = readNumber(lift.target1rm);
-    if (target != null) {
+    if (target != null && !cycle.schedule) {
       points = points.filter(function (point) {
         return point.date !== cycle.endDate;
       });

@@ -91,7 +91,7 @@
   var settingsHolidayOverrides = {};
   var pendingConflictState = null;
   var pendingSessionMove = null;
-  var pendingSessionDeferral = null;
+  var pendingScheduleAdjustment = null;
   var draggedSessionId = null;
   var calendarDragActive = false;
   var suppressCalendarClick = false;
@@ -322,7 +322,9 @@
       return core.generateLearningPlan(learningPlan);
     }
     if (isOwner && privateState) {
-      return core.generate(privateState, holidayCalendars);
+      var generated = core.generate(privateState, holidayCalendars, { asOfDate: todayInShanghai() });
+      privateState = generated.state;
+      return generated;
     }
     if (previewState) {
       return core.generate(previewState, holidayCalendars);
@@ -334,7 +336,7 @@
           publicSnapshot.sessions || [],
           holidayCalendars
         ),
-        warnings: publicSnapshot.warnings || [],
+        warnings: publicSnapshot.cycle.schedule ? [publicSnapshot.cycle.schedule.reason] : (publicSnapshot.warnings || []),
         totalWeeks: publicSnapshot.totalWeeks || 0
       };
     }
@@ -364,10 +366,13 @@
       return deepClone(archive.overview);
     }
     var archivedState = core.createDefaultState(archive.cycle.startDate);
+    if (!Array.isArray(archive.cycle.scheduleAdjustments)) {
+      archivedState.schemaVersion = 2;
+    }
     archivedState.preferences = deepClone(privateState.preferences);
     archivedState.activeCycle = deepClone(archive.cycle);
     archivedState.logs = deepClone(archive.logs || {});
-    return core.generate(archivedState, holidayCalendars);
+    return core.generate(archivedState, holidayCalendars, { asOfDate: todayInShanghai() });
   }
 
   function displayTrajectoryPlan(activePlan) {
@@ -406,7 +411,9 @@
     dom.cycleMeta.textContent = formatDateRange(plan.cycle.startDate, plan.cycle.endDate) +
       (selectedPlanKind === "learning"
         ? " · " + plan.totalDays + " 天 · " + plan.completedDays + " 天已完成"
-        : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练");
+        : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练" +
+          (plan.cycle.requestedEndDate ? " · 参考截止 " + formatChineseDate(plan.cycle.requestedEndDate, false) +
+            " · 预计结束可调整" : ""));
 
     renderProgress(plan.cycle);
     renderLearningSummary(plan);
@@ -811,11 +818,12 @@
     html += '<section class="plan-session-section"><h3>主动作 · ' +
       escapeHtml(workout.mainExercise || session.label) + "</h3>" +
       (workout.needsSetup ? "<p>尚未填写当前与目标 1RM。</p>" : "") +
-      setListHtml(workout.workSets, workout.liftKey) + "</section>";
+      setListHtml(workout.workSets, workout.liftKey) +
+      (workout.guidance ? "<p>" + escapeHtml(workout.guidance) + "</p>" : "") + "</section>";
     html += '<section class="plan-session-section"><h3>热身组</h3>' +
       setListHtml(workout.warmups, workout.liftKey) + "</section>";
     html += '<section class="plan-session-section"><h3>辅助动作</h3>' +
-      setListHtml(workout.accessories, null) + "</section>";
+      (workout.accessories && workout.accessories.length ? setListHtml(workout.accessories, null) : "<p>本次不安排辅助训练。</p>") + "</section>";
 
     if (isOwner && !isOffline && !workout.needsSetup) {
       html += trainingLogHtml(session);
@@ -891,38 +899,44 @@
           escapeHtml(prescription.reps) + '"><span>#' + (rows.length + 1) + '</span>' +
           '<label>重量<input class="plan-log-input" data-log-weight type="number" step="0.1" value="' +
           escapeHtml(saved.weight != null ? saved.weight : prescription.loadKg) + '"></label>' +
-          '<label>次数<input class="plan-log-input" data-log-reps type="number" min="1" max="30" value="' +
+          '<label>次数<input class="plan-log-input" data-log-reps type="number" min="0" max="30" value="' +
           escapeHtml(saved.reps != null ? saved.reps : prescription.reps) + '"></label>' +
-          '<label>RPE<input class="plan-log-input" data-log-rpe type="number" min="6" max="10" step="0.5" value="' +
-          escapeHtml(saved.rpe != null ? saved.rpe : prescription.rpe) + '"></label></div>');
+          '<label>RPE<input class="plan-log-input" data-log-rpe type="number" min="1" max="10" step="0.5" placeholder="实际 RPE" value="' +
+          escapeHtml(saved.rpe != null ? saved.rpe : "") + '"></label></div>');
       }
     });
     var accessoryRows = (session.workout.accessories || []).map(function (accessory) {
       var saved = (log.accessories || []).find(function (entry) {
         return entry.name === accessory.name;
       }) || {};
-      var repMatches = String(accessory.reps || "").match(/\d+/g);
-      var defaultReps = repMatches ? Math.max.apply(Math, repMatches.map(Number)) : "";
       return '<div class="plan-accessory-log" data-accessory-log data-accessory-name="' +
-        escapeHtml(accessory.name) + '"><strong>' + escapeHtml(accessory.name) + '</strong>' +
+        escapeHtml(accessory.name) + '" data-accessory-planned-sets="' + accessory.sets + '"><strong>' + escapeHtml(accessory.name) + '</strong>' +
         '<label>重量<input class="plan-log-input" data-accessory-weight type="number" min="0" step="0.1" value="' +
         escapeHtml(saved.weight != null ? saved.weight : (accessory.loadKg != null ? accessory.loadKg : "")) + '"></label>' +
-        '<label>次数<input class="plan-log-input" data-accessory-reps type="number" min="0" max="200" value="' +
-        escapeHtml(saved.reps != null ? saved.reps : defaultReps) + '"></label></div>';
+        '<label>各组最少次数<input class="plan-log-input" data-accessory-reps type="number" min="0" max="200" value="' +
+        escapeHtml(saved.reps != null ? saved.reps : "") + '"></label>' +
+        '<label>完成组数<input class="plan-log-input" data-accessory-sets type="number" min="0" max="20" value="' +
+        escapeHtml(saved.sets != null ? saved.sets : "") + '"></label>' +
+        '<label>最高实际 RPE<input class="plan-log-input" data-accessory-rpe type="number" min="1" max="10" step="0.5" value="' +
+        escapeHtml(saved.rpe != null ? saved.rpe : "") + '"></label>' +
+        '<label>可用加重步幅（kg）<input class="plan-log-input" data-accessory-increment type="number" min="0.25" step="0.25" value="' +
+        escapeHtml(saved.incrementKg != null ? saved.incrementKg : privateState.preferences.accessoryIncrement) + '"></label>' +
+        '<label>全组动作稳定<select class="plan-log-input" data-accessory-quality><option value="no">未确认</option>' +
+        '<option value="yes"' + (saved.qualityConfirmed === true || saved.allSetsCompleted === true ? ' selected' : '') + '>已确认</option></select></label></div>';
     }).join("");
 
-    var deferButton = session.status === "skipped"
-      ? '<button class="plan-button" type="button" data-defer-sessions>从本次起顺延</button>'
+    var scheduleButton = session.status !== "completed"
+      ? '<button class="plan-button" type="button" data-adjust-schedule>整体调整后续计划</button>'
       : "";
     var skipAction = session.status === "skipped"
       ? '<button class="plan-button" type="button" data-restore-skipped-session>取消跳过</button>'
       : '<button class="plan-button" type="button" data-skip-session>跳过本次</button>';
-    var deferHint = session.status === "skipped"
-      ? '<p class="plan-cycle-meta">顺延会撤销范围内的跳过记录，并把本次及后续未完成训练整体后移。</p>'
+    var scheduleHint = session.status !== "completed"
+      ? '<p class="plan-cycle-meta">目标日期早于本次会整体提前，晚于本次会整体顺延；范围内的跳过记录会恢复为待训练。</p>'
       : "";
     return '<section class="plan-session-section"><h3>训练记录</h3>' +
       '<div><div class="plan-log-grid"><span></span><span>kg</span><span>reps</span><span>RPE</span></div>' +
-      rows.join("") + "</div>" +
+      rows.join("") + "</div><p>填写实际 RPE；不确定可留空，该组不参与能力估算。失败或未做的组填 0 次。</p>" +
       '<div class="plan-accessory-records"><h4>辅助动作 · 聚合记录</h4>' + accessoryRows + "</div>" +
       '<label class="plan-log-notes">备注（仅本人可见）<textarea data-log-notes>' +
       escapeHtml(log.notes || "") + "</textarea></label>" +
@@ -931,7 +945,7 @@
       '<div class="plan-reschedule"><label>改期<input class="plan-log-input" data-move-date type="date" min="' +
       escapeHtml(privateState.activeCycle.startDate) + '" max="' + escapeHtml(core.addDays(privateState.activeCycle.endDate, 365)) +
       '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>仅移动本次</button>' +
-      deferButton + "</div>" + deferHint + "</section>";
+      scheduleButton + "</div>" + scheduleHint + "</section>";
   }
 
   function moveConflicts(plan, sourceId, targetDate) {
@@ -941,7 +955,7 @@
   }
 
   function openMoveConfirmation(request, source, conflicts) {
-    pendingSessionDeferral = null;
+    pendingScheduleAdjustment = null;
     pendingSessionMove = request;
     dom.moveConfirmEyebrow.textContent = "MOVE / 调整日期";
     dom.moveConfirmTitle.textContent = "替代已有规划？";
@@ -966,6 +980,7 @@
     try {
       privateState = core.moveSession(privateState, request.sourceId, request.targetDate, {
         holidayCalendars: holidayCalendars,
+        asOfDate: todayInShanghai(),
         replace: request.replace === true
       });
       viewingChartArchive = -1;
@@ -999,31 +1014,35 @@
     }
   }
 
-  function showSessionDeferralError(error) {
-    if (error.code === "session_defer_recorded_future") {
-      showMessage("顺延范围内已有训练记录，无法整体移动。请从更晚的训练开始，或仅移动本次。", "error");
-    } else if (error.code === "invalid_session_defer_date") {
-      showMessage("顺延日期必须晚于本次训练日期，且最多顺延一年。", "error");
-    } else if (error.code === "invalid_session_defer_source") {
-      showMessage("这项训练已完成或已发生变化，无法顺延。", "error");
+  function showScheduleAdjustmentError(error) {
+    if (error.code === "schedule_adjust_recorded_future") {
+      showMessage("调整范围内已有训练记录，无法整体移动。请从更晚的训练开始，或仅移动本次。", "error");
+    } else if (error.code === "schedule_adjust_conflict") {
+      showMessage("提前日期不能早于或等于此前最后一场训练，请选择更接近本次的日期，或先单独调整此前训练。", "error");
+    } else if (error.code === "invalid_schedule_adjust_date") {
+      showMessage("目标日期必须不同于本次日期，提前不能早于周期开始，且最多调整一年。", "error");
+    } else if (error.code === "invalid_schedule_adjust_source") {
+      showMessage("这项训练已完成或已发生变化，无法整体调整。", "error");
     } else {
-      showMessage("顺延失败：" + error.message, "error");
+      showMessage("整体调整失败：" + error.message, "error");
     }
   }
 
-  function openSessionDeferralConfirmation(request) {
+  function openScheduleAdjustmentConfirmation(request) {
+    var advancing = request.days < 0;
+    var action = advancing ? "提前" : "顺延";
     pendingSessionMove = null;
-    pendingSessionDeferral = request;
-    dom.moveConfirmEyebrow.textContent = "DEFER / 顺延计划";
-    dom.moveConfirmTitle.textContent = "顺延后续计划？";
-    dom.moveConfirmButton.textContent = "确认顺延";
+    pendingScheduleAdjustment = request;
+    dom.moveConfirmEyebrow.textContent = advancing ? "ADVANCE / 提前计划" : "DEFER / 顺延计划";
+    dom.moveConfirmTitle.textContent = action + "后续计划？";
+    dom.moveConfirmButton.textContent = "确认" + action;
     dom.moveConfirmMessage.textContent = "从“" + request.sourceLabel + "”开始的 " +
-      request.affectedCount + " 次未完成训练将整体顺延 " + request.days + " 天，周期预计结束日期变为 " +
+      request.affectedCount + " 次未完成训练将整体" + action + " " + Math.abs(request.days) + " 天，周期预计结束日期变为 " +
       formatChineseDate(request.newEndDate, false) + "。范围内的“已跳过”会恢复为待训练。";
     dom.moveConfirm.showModal();
   }
 
-  async function applySessionDeferral(request) {
+  async function applyScheduleAdjustment(request) {
     if (sessionMovePending) {
       showMessage("上一次日程调整正在保存，请稍候。", "notice");
       return;
@@ -1032,25 +1051,27 @@
     var previousState = privateState;
     var previousChartArchive = viewingChartArchive;
     try {
-      privateState = core.deferSessions(privateState, request.sourceId, request.targetDate, {
+      privateState = core.adjustSchedule(privateState, request.sourceId, request.targetDate, {
         holidayCalendars: holidayCalendars,
         asOfDate: todayInShanghai()
       });
       viewingChartArchive = -1;
-      var saveResult = await persist("跳过记录已撤销，后续训练已顺延。");
+      var saveResult = await persist(request.days < 0
+        ? "跳过记录已撤销，后续训练已提前。"
+        : "跳过记录已撤销，后续训练已顺延。");
       if (saveResult === false) {
         privateState = previousState;
         viewingChartArchive = previousChartArchive;
         render();
       }
     } catch (error) {
-      showSessionDeferralError(error);
+      showScheduleAdjustmentError(error);
     } finally {
       sessionMovePending = false;
     }
   }
 
-  function requestSessionDeferral(sourceId, targetDate) {
+  function requestScheduleAdjustment(sourceId, targetDate) {
     if (sessionMovePending) {
       showMessage("上一次日程调整正在保存，请稍候。", "notice");
       return;
@@ -1067,13 +1088,17 @@
       showMessage("这项训练已发生变化，请刷新后重试。", "error");
       return;
     }
+    if (source.date === targetDate) {
+      showMessage("训练日期没有变化。", "notice");
+      return;
+    }
     try {
-      var previewState = core.deferSessions(privateState, sourceId, targetDate, {
+      var previewState = core.adjustSchedule(privateState, sourceId, targetDate, {
         holidayCalendars: holidayCalendars,
         asOfDate: todayInShanghai()
       });
       var previewPlan = core.generate(previewState, holidayCalendars, { asOfDate: todayInShanghai() });
-      openSessionDeferralConfirmation({
+      openScheduleAdjustmentConfirmation({
         sourceId: sourceId,
         sourceLabel: source.label,
         targetDate: targetDate,
@@ -1084,7 +1109,7 @@
         newEndDate: previewPlan.cycle.endDate
       });
     } catch (error) {
-      showSessionDeferralError(error);
+      showScheduleAdjustmentError(error);
     }
   }
 
@@ -1134,16 +1159,16 @@
 
   function cancelSessionMove() {
     pendingSessionMove = null;
-    pendingSessionDeferral = null;
+    pendingScheduleAdjustment = null;
     dom.moveConfirm.close();
   }
 
   function confirmSessionMove() {
-    if (pendingSessionDeferral) {
-      var deferral = pendingSessionDeferral;
-      pendingSessionDeferral = null;
+    if (pendingScheduleAdjustment) {
+      var adjustment = pendingScheduleAdjustment;
+      pendingScheduleAdjustment = null;
       dom.moveConfirm.close();
-      applySessionDeferral(deferral);
+      applyScheduleAdjustment(adjustment);
       return;
     }
     if (!pendingSessionMove) {
@@ -1207,15 +1232,15 @@
         requestSessionMove(session.id, date);
       });
     }
-    var defer = dom.detailBody.querySelector("[data-defer-sessions]");
-    if (defer) {
-      defer.addEventListener("click", function () {
+    var adjustSchedule = dom.detailBody.querySelector("[data-adjust-schedule]");
+    if (adjustSchedule) {
+      adjustSchedule.addEventListener("click", function () {
         var date = dom.detailBody.querySelector("[data-move-date]").value;
         if (!date) {
-          showMessage("请选择顺延后的日期。", "error");
+          showMessage("请选择整体调整后的日期。", "error");
           return;
         }
-        requestSessionDeferral(session.id, date);
+        requestScheduleAdjustment(session.id, date);
       });
     }
   }
@@ -1325,11 +1350,19 @@
   }
 
   function saveTrainingLog(session) {
+    var invalid = Array.prototype.slice.call(dom.detailBody.querySelectorAll("input[type=number]")).find(function (input) {
+      return !input.checkValidity();
+    });
+    if (invalid) {
+      invalid.reportValidity();
+      showMessage("请检查训练记录中的重量、次数和 RPE。", "error");
+      return;
+    }
     var sets = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-log-set]")).map(function (row) {
       return {
         weight: Number(row.querySelector("[data-log-weight]").value),
         reps: Number(row.querySelector("[data-log-reps]").value),
-        rpe: Number(row.querySelector("[data-log-rpe]").value),
+        rpe: row.querySelector("[data-log-rpe]").value === "" ? null : Number(row.querySelector("[data-log-rpe]").value),
         completed: Number(row.querySelector("[data-log-reps]").value) >= Number(row.dataset.plannedReps)
       };
     });
@@ -1338,7 +1371,11 @@
         name: row.dataset.accessoryName,
         weight: Number(row.querySelector("[data-accessory-weight]").value),
         reps: Number(row.querySelector("[data-accessory-reps]").value),
-        completed: Number(row.querySelector("[data-accessory-reps]").value) > 0
+        sets: Number(row.querySelector("[data-accessory-sets]").value),
+        rpe: row.querySelector("[data-accessory-rpe]").value === "" ? null : Number(row.querySelector("[data-accessory-rpe]").value),
+        incrementKg: Number(row.querySelector("[data-accessory-increment]").value),
+        qualityConfirmed: row.querySelector("[data-accessory-quality]").value === "yes",
+        completed: Number(row.querySelector("[data-accessory-reps]").value) > 0 && Number(row.querySelector("[data-accessory-sets]").value) > 0
       };
     });
     privateState = core.recordSession(privateState, session, {
@@ -1356,7 +1393,8 @@
       return false;
     }
     privateState.updatedAt = new Date().toISOString();
-    var generated = core.generate(privateState, holidayCalendars);
+    var generated = core.generate(privateState, holidayCalendars, { asOfDate: todayInShanghai() });
+    privateState = generated.state;
     var snapshot = core.createPublicSnapshot(privateState, generated);
     try {
       var record = await store.save(privateState.version, privateState, snapshot);
@@ -1552,7 +1590,8 @@
     settingsHolidayOverrides = deepClone(settingsDraftCycle.holidayOverrides || {});
     dom.settingsTitle.textContent = settingsNewCycle ? "开始新周期" : "编辑计划";
     inputValue("startDate", settingsDraftCycle.startDate);
-    inputValue("endDate", settingsDraftCycle.endDate);
+    inputValue("endDate", settingsDraftCycle.requestedEndDate || settingsDraftCycle.endDate);
+    inputValue("priorities", (settingsDraftCycle.priorities || ["bench", "squat"]).join(","));
     inputValue("trainingTime", privateState.preferences.trainingTime || "19:00");
     var bootstrapsBodyweight = !settingsNewCycle && settingsDraftCycle.status === "draft";
     dom.settingsBodyweight.hidden = !bootstrapsBodyweight;
@@ -1715,7 +1754,11 @@
     if (settingsNewCycle && privateState.activeCycle.status !== "draft") {
       var archivedLogs = {};
       var archivedCycle = deepClone(privateState.activeCycle);
-      var archivedOverview = snapshotProgressOverview(core.generate(privateState, holidayCalendars));
+      var archivedOverview = snapshotProgressOverview(core.generate(
+        privateState,
+        holidayCalendars,
+        { asOfDate: todayInShanghai() }
+      ));
       archivedCycle.status = "archived";
       archivedOverview.cycle.status = "archived";
       Object.keys(privateState.logs).forEach(function (id) {
@@ -1734,7 +1777,10 @@
 
     var cycle = settingsNewCycle ? core.createDefaultState(startDate).activeCycle : privateState.activeCycle;
     cycle.startDate = startDate;
+    cycle.requestedEndDate = endDate;
     cycle.endDate = endDate;
+    cycle.priorities = String(form.get("priorities") || "bench,squat").split(",");
+    cycle.schedule = null;
     cycle.id = settingsNewCycle ? "cycle-" + startDate + "-" + Date.now().toString(36) : cycle.id;
     cycle.status = "active";
     cycle.template = template;
@@ -1756,17 +1802,15 @@
       });
       cycle.bodyweightEntries.push({ date: startDate, value: bodyweight });
     }
-    cycle.lifts.bench.current1rm = lifts.bench.current;
-    cycle.lifts.bench.target1rm = lifts.bench.target;
-    cycle.lifts.pullup.current1rm = lifts.pullup.current;
-    cycle.lifts.pullup.target1rm = lifts.pullup.target;
-    cycle.lifts.squat.current1rm = lifts.squat.current;
-    cycle.lifts.squat.target1rm = lifts.squat.target;
     ["bench", "pullup", "squat"].forEach(function (key) {
       var lift = cycle.lifts[key];
-      if (settingsNewCycle || lift.baseline1rm == null || lift.baseline1rm === "") {
-        lift.baseline1rm = lift.current1rm;
+      if (settingsNewCycle || Number(lift.current1rm) !== lifts[key].current) {
+        lift.assessed1rm = lifts[key].current;
+        lift.assessedOn = settingsNewCycle ? core.addDays(startDate, -1) : todayInShanghai();
       }
+      lift.current1rm = lifts[key].current;
+      lift.target1rm = lifts[key].target;
+      if (settingsNewCycle || lift.baseline1rm == null || lift.baseline1rm === "") lift.baseline1rm = lift.current1rm;
     });
     privateState.activeCycle = cycle;
     privateState.preferences.trainingTime = form.get("trainingTime") || "19:00";
@@ -2055,7 +2099,7 @@
   app.querySelector("[data-plan-confirm-move]").addEventListener("click", confirmSessionMove);
   dom.moveConfirm.addEventListener("cancel", function () {
     pendingSessionMove = null;
-    pendingSessionDeferral = null;
+    pendingScheduleAdjustment = null;
   });
   app.querySelector("[data-plan-reload]").addEventListener("click", reloadAfterConflict);
   window.addEventListener("resize", function () {

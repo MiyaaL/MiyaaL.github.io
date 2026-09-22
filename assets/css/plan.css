@@ -844,7 +844,7 @@
 
 .plan-accessory-log {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) repeat(2, minmax(72px, 0.55fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
   padding: 9px 0;
@@ -852,6 +852,7 @@
 }
 
 .plan-accessory-log strong {
+  grid-column: 1 / -1;
   align-self: center;
   font-size: 12px;
   font-weight: 500;
@@ -1259,7 +1260,7 @@
   }
 
   .plan-accessory-log {
-    grid-template-columns: 1fr 72px 72px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .plan-dialog-actions {

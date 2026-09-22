@@ -63,6 +63,8 @@ Publishable Key 设计为浏览器公开使用；真正的访问控制由迁移�
 
 ```bash
 docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-core.test.js
+docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-adaptive.test.js
+docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-defer.test.js
 docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-chart.test.js
 docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-store.test.js
 docker compose run --rm site ruby scripts/check_blog_format.rb
@@ -77,3 +79,41 @@ git diff --check
 - 其他 GitHub 账号无法调用私有读取和保存函数；
 - 浏览器离线时只显示最近一次公开缓存，编辑入口不可用；
 - 两台设备同时修改时会出现版本冲突提示。
+
+
+## 6. 健身计划生成规则
+
+规则位于 `assets/js/plan-core.js`，所有新周期与现有周期共用，不在数据库中硬编码个人重量。
+
+- `requestedEndDate` 保存用户输入的参考日期，`endDate` 是本次生成的预计结束日期。私有状态当前为 schema v3；旧顺延记录首次读取时会迁移为带正负天数的 `scheduleAdjustments`，并从已顺延的 `endDate` 还原原参考日期，避免重复顺延。
+- `priorities` 决定哪些目标影响周期长度，默认是卧推和深蹲；引体仍按自身能力训练与评估。设置中可选择其他优先项。
+- 截止日期按 14 天调整。近期两次有效表现支持目标且预留至少两周时，最多提前 14 天；目标激进或进展不足时可延长超过 14 天。保留原参考日期与调整原因。
+- 预计时间默认暂按每周 0.5% 的能力变化估计；有至少跨两周的近期有效记录时使用观测速度，并限制在 0.25%–1%/周。这些是可复评的排程假设，不是训练收益承诺，不用于抬高训练重量。超过一年仍难以估计时只排阶段评估。
+- 训练重量基于当前有效能力，不再按日期向目标插值。无新表现证据时不会自动提升能力基准。跳过的课不推进训练波次；同一主项间隔超过 10 天先恢复训练。
+- 训练详情中的“整体调整后续计划”会根据目标日期自动提前或顺延本次及其后的未完成训练，并同步调整预计结束日期。范围内的跳过记录恢复为待训练；已有正式记录时拒绝调整；整体提前不能越过此前最后一场训练，否则会拒绝并提示改期。
+- 单次训练使用完成的 1–5 次、明确填写的实际 RPE 7–10 主项组估算，以较少次数组为优先，同日仅一条观察。辅助引体允许负的额外重量，只要体重加器械负荷仍为正。减量、减量准备和恢复训练不参与估算；缺失 RPE 不补成计划值。schema v3 迁移前没有来源标记的 RPE 不视为实测，迁移时以已保存的当前能力作为评估锚点。最近三次有效观察取中位数，只有一次观察时与固定基准平滑。
+- 能力从原始记录重新计算，因此重复保存、改备注、补录旧训练不会重复累计。手动修改当前能力会创建带日期的新评估基准，保留周期初始基线和原始日志。
+- 提前结束与目标测试需要近期至少两个不同训练日支持，最近失败会撤销准入。远期日程标为待确认评估，测试前须重新确认；目标尝试也保留现场停止条件。
+- 减量同步减少辅助组数和目标 RPE，测试日取消辅助训练。深蹲优先时，容量日使用轻深蹲替换暂停卧推；不额外堆加整堂训练。
+- 辅助加重需要所有组达到次数上限、实际最高 RPE 合适且确认动作稳定。设备最小增量可记录；单次增量超过当前重量 10% 时保持重量。减量建议按可装载重量向下选择。
+- `generate(state, calendars, { asOfDate })` 支持固定评估日期，浏览器传上海当天，测试可使用确定日期。生成函数不修改输入；调用方保存其返回的 `state` 与对应公开快照。
+- 私有日志、体重与引体训练负荷仍不进入公开快照。已记录训练的日期和处方快照保持不变；新规则在本人登录后重新生成，并随下一次“生成并保存”或训练记录保存同步到公开视图。
+
+相关回归检查已包含在上面的 `plan-adaptive.test.js` 与 `plan-defer.test.js` 命令中；浏览器级用例还会覆盖跳过后顺延、再次提前和确认弹窗：
+
+```bash
+docker run --rm --network none \
+  -v "$PWD:/site:ro" \
+  -v "/path/to/jsdom/node_modules:/deps/node_modules:ro" \
+  -e NODE_PATH=/deps/node_modules \
+  node:22-alpine node /site/tests/plan-defer-smoke.test.js
+docker run --rm --network none \
+  -v "$PWD:/site:ro" \
+  -v "/path/to/jsdom/node_modules:/deps/node_modules:ro" \
+  -e NODE_PATH=/deps/node_modules \
+  node:22-alpine node /site/tests/plan-repeat-defer-smoke.test.js
+```
+
+浏览器级用例需要先把安装了 `jsdom` 的 `node_modules` 路径替换进命令，并在 Jekyll 构建后执行。
+
+训练原则参考：[ACSM 2026 指南](https://acsm.org/resistance-training-guidelines-update-2026/)、[力量测试前减量综述](https://pmc.ncbi.nlm.nih.gov/articles/PMC7552788/)、[卧推 RIR/RPE 研究](https://pubmed.ncbi.nlm.nih.gov/28301439/)。上述具体日期策略与阈值属于本应用的可调整启发式。

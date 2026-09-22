@@ -43,46 +43,47 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   });
   const initial = window.PlanCore.generate(state, [holidays], { asOfDate: "2026-09-20" });
   const source = initial.sessions.find((session) => session.date === "2026-09-15");
-  const next = initial.sessions.find((session) => session.date === "2026-09-16");
   state = window.PlanCore.recordSession(state, source, { status: "skipped", notes: "出差" });
-  state = window.PlanCore.recordSession(state, next, { status: "skipped" });
 
   const memory = window.PlanStore.createMemoryAdapter({ version: 0, state, signedIn: true });
   window.PlanStore.createSupabaseAdapter = () => memory;
   window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
   await waitForRender();
 
-  window.document.querySelector(`[data-session-id="${source.id}"]`).click();
   const drawer = window.document.querySelector("[data-plan-drawer]");
-  assert.strictEqual(drawer.hidden, false);
-  assert(drawer.querySelector("[data-adjust-schedule]"), "a skipped workout should offer whole-plan adjustment");
+  const confirm = window.document.querySelector("[data-plan-move-confirm]");
+
+  window.document.querySelector(`[data-session-id="${source.id}"]`).click();
   drawer.querySelector("[data-move-date]").value = "2026-09-22";
   drawer.querySelector("[data-adjust-schedule]").click();
-
-  const confirm = window.document.querySelector("[data-plan-move-confirm]");
-  assert.strictEqual(confirm.open, true);
-  assert(confirm.querySelector("[data-plan-move-confirm-title]").textContent.includes("顺延"));
-  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("整体顺延 7 天"));
-  assert.strictEqual((await memory.loadPrivate()).version, 0, "confirmation must precede saving");
-
   confirm.querySelector("[data-plan-confirm-move]").click();
   await waitForRender();
-  const stored = await memory.loadPrivate();
-  const generated = window.PlanCore.generate(stored.state, [holidays], { asOfDate: "2026-09-20" });
-  assert.strictEqual(stored.version, 1);
-  assert.strictEqual(generated.sessions.find((session) => session.id === source.id).date, "2026-09-22");
-  assert.strictEqual(generated.sessions.find((session) => session.id === next.id).date, "2026-09-23");
-  assert.strictEqual(generated.sessions.find((session) => session.id === source.id).status, "planned");
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(stored.state.logs, source.id), false);
-  assert.strictEqual(stored.state.activeCycle.scheduleAdjustments.length, 1);
-  const publicRecord = await memory.loadPublic();
-  assert.strictEqual(
-    publicRecord.record.snapshot.sessions.find((session) => session.id === source.id).date,
-    "2026-09-22"
-  );
-  assert(window.document.querySelector("[data-plan-message]").textContent.includes("后续训练已顺延"));
 
-  console.log("PASS: skipped workout can defer and restore the remaining plan");
+  let stored = await memory.loadPrivate();
+  let generated = window.PlanCore.generate(stored.state, [holidays], { asOfDate: "2026-09-20" });
+  assert.strictEqual(generated.sessions.find((session) => session.id === source.id).date, "2026-09-22");
+  assert.strictEqual(generated.sessions.find((session) => session.id === source.id).status, "planned");
+  assert.strictEqual(stored.state.activeCycle.scheduleAdjustments.length, 1);
+
+  window.document.querySelector(`[data-session-id="${source.id}"]`).click();
+  const secondAdjustment = drawer.querySelector("[data-adjust-schedule]");
+  assert(secondAdjustment, "a planned workout must still offer another whole-plan adjustment");
+  drawer.querySelector("[data-move-date]").value = "2026-09-21";
+  secondAdjustment.click();
+  assert.strictEqual(confirm.open, true);
+  assert(confirm.querySelector("[data-plan-move-confirm-title]").textContent.includes("提前"));
+  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("整体提前 1 天"));
+  confirm.querySelector("[data-plan-confirm-move]").click();
+  await waitForRender();
+
+  stored = await memory.loadPrivate();
+  generated = window.PlanCore.generate(stored.state, [holidays], { asOfDate: "2026-09-20" });
+  assert.strictEqual(stored.version, 2);
+  assert.strictEqual(stored.state.activeCycle.scheduleAdjustments.length, 2);
+  assert.strictEqual(stored.state.activeCycle.scheduleAdjustments.map((entry) => entry.days).join(","), "7,-1");
+  assert.strictEqual(generated.sessions.find((session) => session.id === source.id).date, "2026-09-21");
+
+  console.log("PASS: a workout can defer and then advance the remaining plan");
   window.close();
 }()).catch((error) => {
   console.error(error);

@@ -315,7 +315,7 @@ function configuredState(start, end) {
     session.status === "planned"
   );
   assert.strictEqual(adjusted.workout.adjustment.percentage, -0.025);
-  assert.strictEqual(adjusted.workout.adjustment.reason, "实际 RPE 高于目标");
+  assert.strictEqual(adjusted.workout.adjustment.reason, "实际 RPE 超出对应组目标");
   assert(adjusted.workout.warmups.every((set) => set.loadKg < adjusted.workout.workSets[0].loadKg));
 }());
 
@@ -326,7 +326,7 @@ function configuredState(start, end) {
   state = PlanCore.recordSession(state, completed, {
     status: "completed",
     mainSets: [],
-    accessories: [{ name: "站姿推举", weight: 40, reps: 8, completed: true }]
+    accessories: [{ name: "站姿推举", weight: 40, reps: 8, sets: 2, rpe: 7.5, qualityConfirmed: true, completed: true }]
   });
   plan = PlanCore.generate(state, [holidays2026]);
   const nextPush = plan.sessions.find((session) =>
@@ -334,7 +334,7 @@ function configuredState(start, end) {
   );
   const press = nextPush.workout.accessories.find((accessory) => accessory.name === "站姿推举");
   assert.strictEqual(press.loadKg, 42.5);
-  assert.strictEqual(press.progression, "达到次数上限，下次加重");
+  assert.strictEqual(press.progression, "全组达到上限且余力足够，下次加重");
 }());
 
 (function icsContainsTimedEventsAndAlarm() {

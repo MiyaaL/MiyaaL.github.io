@@ -126,6 +126,9 @@ const { JSDOM } = require("jsdom");
   window.document.querySelector("[data-session-id]").click();
   assert(window.document.querySelector("[data-save-log]"));
   assert.strictEqual(window.document.querySelector("[data-log-bodyweight]"), null);
+  assert.strictEqual(window.document.querySelector("[data-log-rpe]").value, "", "actual RPE must not be prefilled with the target");
+  assert.strictEqual(window.document.querySelector("[data-accessory-reps]").value, "");
+  assert.strictEqual(window.document.querySelector("[data-accessory-quality]").value, "no");
   window.document.querySelector("[data-save-log]").click();
   await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -134,6 +137,10 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(Object.keys(stored.state.logs).length, 1);
   const savedLog = stored.state.logs[Object.keys(stored.state.logs)[0]];
   assert.strictEqual(savedLog.accessories.length, 3);
+  assert(savedLog.mainSets.every(set => set.rpe === null));
+  assert(savedLog.accessories.every(set => set.qualityConfirmed === false));
+  assert.strictEqual(stored.state.activeCycle.requestedEndDate, "2026-10-25");
+  assert(stored.state.activeCycle.endDate >= stored.state.activeCycle.requestedEndDate);
   assert.strictEqual(Object.prototype.hasOwnProperty.call(savedLog, "bodyweight"), false);
   assert.deepStrictEqual(
     JSON.parse(JSON.stringify(stored.state.activeCycle.bodyweightEntries)),
@@ -167,6 +174,9 @@ const { JSDOM } = require("jsdom");
 
   window.document.querySelector("[data-plan-edit]").click();
   assert.strictEqual(window.document.querySelector("[data-plan-settings]").open, true);
+  assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="endDate"]').value, "2026-10-25", "editing preserves the requested date, not the projected date");
+  assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value, "bench,squat");
+  window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value = "bench,pullup,squat";
   const settingsBodyweight = window.document.querySelector("[data-plan-settings-bodyweight]");
   assert.strictEqual(settingsBodyweight.hidden, true);
   assert.strictEqual(settingsBodyweight.querySelector("input").disabled, true);
@@ -175,6 +185,11 @@ const { JSDOM } = require("jsdom");
   );
   await new Promise((resolve) => setTimeout(resolve, 50));
   const stateAfterSettings = await memory.loadPrivate();
+  assert.strictEqual(stateAfterSettings.state.activeCycle.requestedEndDate, "2026-10-25");
+  assert.strictEqual(stateAfterSettings.state.activeCycle.priorities.join(","), "bench,pullup,squat");
+  const publicSettings = (await memory.loadPublic()).record.snapshot;
+  assert.strictEqual(publicSettings.cycle.endDate, stateAfterSettings.state.activeCycle.endDate);
+  assert.strictEqual(publicSettings.cycle.requestedEndDate, "2026-10-25");
   assert.deepStrictEqual(
     JSON.parse(JSON.stringify(stateAfterSettings.state.activeCycle.bodyweightEntries)),
     JSON.parse(JSON.stringify(bodyweightState.state.activeCycle.bodyweightEntries))

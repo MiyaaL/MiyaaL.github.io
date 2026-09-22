@@ -11,6 +11,8 @@
   "use strict";
 
   var DAY_MS = 24 * 60 * 60 * 1000;
+  var STATE_SCHEMA_VERSION = 3;
+  var RECOVERY_PHASES = ["deload", "taper", "return"];
   var DEFAULT_TEMPLATE = [
     { id: "push-strength", weekday: 1, type: "push-strength", label: "推 · 强度" },
     { id: "pull", weekday: 2, type: "pull", label: "拉" },
@@ -42,24 +44,24 @@
   };
   var ACCESSORIES = {
     "push-strength": [
-      exercise("站姿推举", 3, "6–8", 7.5, "90–120 秒"),
-      exercise("上斜哑铃卧推", 3, "8–10", 8, "90 秒"),
-      exercise("绳索下压", 3, "10–12", 8, "60–90 秒")
+      exercise("站姿推举", 2, "6–8", 7.5, "2–3 分钟"),
+      exercise("上斜哑铃卧推", 2, "8–10", 8, "2 分钟"),
+      exercise("绳索下压", 2, "10–12", 8, "60–90 秒")
     ],
     pull: [
-      exercise("胸托划船", 4, "6–8", 8, "90–120 秒"),
-      exercise("面拉", 3, "12–15", 8, "60–90 秒"),
-      exercise("哑铃弯举", 3, "8–12", 8, "60–90 秒")
+      exercise("胸托划船", 3, "6–8", 8, "2 分钟"),
+      exercise("面拉", 2, "12–15", 8, "60–90 秒"),
+      exercise("哑铃弯举", 2, "8–12", 8, "60–90 秒")
     ],
     squat: [
-      exercise("罗马尼亚硬拉", 3, "6–8", 7.5, "120 秒"),
-      exercise("保加利亚分腿蹲", 3, "8–10 / 侧", 8, "90 秒"),
-      exercise("核心训练", 3, "8–12", 7.5, "60 秒")
+      exercise("罗马尼亚硬拉", 2, "6–8", 7.5, "2–3 分钟"),
+      exercise("保加利亚分腿蹲", 2, "8–10 / 侧", 8, "2 分钟"),
+      exercise("核心训练", 2, "8–12", 7.5, "60 秒")
     ],
     "push-volume": [
-      exercise("暂停卧推", 3, "5–6", 7.5, "120 秒"),
-      exercise("哑铃肩推", 3, "8–10", 8, "90 秒"),
-      exercise("侧平举", 3, "12–15", 8, "60 秒")
+      exercise("暂停卧推", 2, "5–6", 7, "2–3 分钟"),
+      exercise("胸托划船", 2, "8–10", 7, "2 分钟"),
+      exercise("侧平举", 2, "12–15", 8, "60 秒")
     ]
   };
 
@@ -132,7 +134,7 @@
   function createDefaultState(startDate) {
     var start = startDate || todayInShanghai();
     return {
-      schemaVersion: 2,
+      schemaVersion: STATE_SCHEMA_VERSION,
       version: 0,
       updatedAt: null,
       preferences: {
@@ -152,6 +154,8 @@
         status: "draft",
         startDate: start,
         endDate: addDays(start, 83),
+        requestedEndDate: null,
+        priorities: ["bench", "squat"],
         experience: "advanced",
         bodyweightEntries: [],
         lifts: {
@@ -162,7 +166,7 @@
         template: deepClone(DEFAULT_TEMPLATE),
         holidayOverrides: {},
         sessionOverrides: {},
-        scheduleDeferrals: [],
+        scheduleAdjustments: [],
         loadAdjustments: {},
         createdAt: new Date().toISOString()
       },
@@ -369,8 +373,9 @@
 
   function normalizeState(input) {
     var fallback = createDefaultState();
+    var sourceSchemaVersion = Math.max(1, Math.floor(asNumber(input && input.schemaVersion, 1)));
     var state = deepClone(input || fallback);
-    state.schemaVersion = 2;
+    state.schemaVersion = STATE_SCHEMA_VERSION;
     state.version = Math.max(0, Math.floor(asNumber(state.version, 0)));
     state.preferences = Object.assign({}, fallback.preferences, state.preferences || {});
     state.activeCycle = Object.assign({}, fallback.activeCycle, state.activeCycle || {});
@@ -386,6 +391,13 @@
           !Number.isFinite(Number(state.activeCycle.lifts[key].baseline1rm))) {
         state.activeCycle.lifts[key].baseline1rm = state.activeCycle.lifts[key].current1rm;
       }
+      if (sourceSchemaVersion < STATE_SCHEMA_VERSION &&
+          state.activeCycle.lifts[key].assessed1rm == null &&
+          state.activeCycle.lifts[key].current1rm != null &&
+          state.activeCycle.lifts[key].current1rm !== "" &&
+          Number.isFinite(Number(state.activeCycle.lifts[key].current1rm))) {
+        state.activeCycle.lifts[key].assessed1rm = Number(state.activeCycle.lifts[key].current1rm);
+      }
     });
     state.activeCycle.template = Array.isArray(state.activeCycle.template) && state.activeCycle.template.length
       ? state.activeCycle.template
@@ -395,21 +407,40 @@
       : [];
     state.activeCycle.holidayOverrides = state.activeCycle.holidayOverrides || {};
     state.activeCycle.sessionOverrides = state.activeCycle.sessionOverrides || {};
-    state.activeCycle.scheduleDeferrals = (Array.isArray(state.activeCycle.scheduleDeferrals)
-      ? state.activeCycle.scheduleDeferrals : []).map(function (entry, index) {
+    var legacyDeferrals = Array.isArray(state.activeCycle.scheduleDeferrals)
+      ? state.activeCycle.scheduleDeferrals : [];
+    var hasScheduleAdjustments = Boolean(input && input.activeCycle &&
+      Array.isArray(input.activeCycle.scheduleAdjustments));
+    var adjustmentSource = hasScheduleAdjustments
+      ? state.activeCycle.scheduleAdjustments : legacyDeferrals;
+    state.activeCycle.scheduleAdjustments = adjustmentSource.map(function (entry, index) {
       return {
-        id: String(entry && entry.id || "deferral-" + (index + 1)),
+        id: String(entry && entry.id || "schedule-adjustment-" + (index + 1)),
         sourceId: String(entry && entry.sourceId || ""),
         fromDate: String(entry && entry.fromDate || ""),
-        days: Math.max(0, Math.floor(asNumber(entry && entry.days, 0))),
+        days: Math.trunc(asNumber(entry && entry.days, 0)),
         restoredSkips: Array.isArray(entry && entry.restoredSkips)
           ? deepClone(entry.restoredSkips) : [],
         createdAt: entry && entry.createdAt ? String(entry.createdAt) : null
       };
     }).filter(function (entry) {
-      return isIsoDate(entry.fromDate) && entry.days > 0;
+      return isIsoDate(entry.fromDate) && entry.days !== 0;
     });
+    delete state.activeCycle.scheduleDeferrals;
     state.activeCycle.loadAdjustments = state.activeCycle.loadAdjustments || {};
+    if (!state.activeCycle.requestedEndDate) {
+      var legacyDeferredDays = legacyDeferrals.reduce(function (total, entry) {
+        return total + Math.max(0, Math.floor(asNumber(entry && entry.days, 0)));
+      }, 0);
+      state.activeCycle.requestedEndDate = !hasScheduleAdjustments && legacyDeferredDays
+        ? addDays(state.activeCycle.endDate, -legacyDeferredDays)
+        : state.activeCycle.endDate;
+    }
+    state.activeCycle.priorities = Array.isArray(state.activeCycle.priorities)
+      ? state.activeCycle.priorities.filter(function (key, index, keys) {
+        return Boolean(LIFT_LABELS[key]) && keys.indexOf(key) === index;
+      }) : ["bench", "squat"];
+    if (!state.activeCycle.priorities.length) state.activeCycle.priorities = ["bench", "squat"];
     state.archivedCycles = Array.isArray(state.archivedCycles) ? state.archivedCycles : [];
     state.logs = state.logs || {};
     state.learningPlans = (Array.isArray(state.learningPlans) ? state.learningPlans : [])
@@ -435,9 +466,9 @@
     return state;
   }
 
-  function latestBodyweight(cycle) {
+  function latestBodyweight(cycle, onOrBefore) {
     var entries = (cycle.bodyweightEntries || []).filter(function (entry) {
-      return asNumber(entry.value, 0) > 0;
+      return asNumber(entry.value, 0) > 0 && (!onOrBefore || entry.date <= onOrBefore);
     }).sort(function (left, right) {
       return String(left.date).localeCompare(String(right.date));
     });
@@ -470,6 +501,209 @@
       return String(left.date).localeCompare(String(right.date));
     });
     return state;
+  }
+
+  // These are planning heuristics, not promises of physiological growth. Loads
+  // always use measured capacity; only the review date uses a projected rate.
+  function median(values) {
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function isRecoveryPhase(phaseKey) {
+    return RECOVERY_PHASES.indexOf(phaseKey) !== -1;
+  }
+
+  function suppressesLoadIncrease(phaseKey) {
+    return isRecoveryPhase(phaseKey) || phaseKey === "assessment";
+  }
+
+  function cycleLogs(state, onOrBefore) {
+    return Object.keys(state.logs).filter(function (id) {
+      return id.indexOf(state.activeCycle.id + ":") === 0;
+    }).map(function (id) { return state.logs[id]; }).filter(function (log) {
+      return log.sessionSnapshot && (!onOrBefore || log.sessionSnapshot.date <= onOrBefore);
+    }).sort(function (a, b) {
+      return a.sessionSnapshot.date.localeCompare(b.sessionSnapshot.date) ||
+        String(a.sessionSnapshot.id).localeCompare(String(b.sessionSnapshot.id));
+    });
+  }
+
+  function performanceHistory(state, onOrBefore) {
+    var result = { bench: [], squat: [], pullup: [] };
+    cycleLogs(state, onOrBefore).forEach(function (log) {
+      var session = log.sessionSnapshot;
+      var key = session.workout && session.workout.liftKey;
+      var phase = session.phase && session.phase.key;
+      if (!result[key] || log.status !== "completed" || isRecoveryPhase(phase)) return;
+      var bodyweight = key === "pullup" ? latestBodyweight(state.activeCycle, session.date) : 0;
+      if (bodyweight == null) return;
+      var sets = (log.mainSets || []).filter(function (set) {
+        var weight = asNumber(set.weight, null);
+        var validLoad = key === "pullup" ? weight != null && weight + bodyweight > 0 : weight > 0;
+        return set.completed !== false && validLoad && set.reps >= 1 && set.reps <= 5 &&
+          set.rpeSource === "actual" && set.rpe != null && set.rpe >= 7 && set.rpe <= 10;
+      });
+      if (!sets.length) return;
+      var fewestReps = Math.min.apply(Math, sets.map(function (set) { return set.reps; }));
+      var estimates = sets.filter(function (set) { return set.reps === fewestReps; }).map(function (set) {
+        return estimateOneRepMax(Number(set.weight) + bodyweight, set.reps, set.rpe) - bodyweight;
+      });
+      var value = median(estimates);
+      if (value + bodyweight <= 0) return;
+      result[key].push({ date: session.date, value: value, bodyweight: bodyweight });
+    });
+    // Multiple sessions on one day are one observation, not independent evidence.
+    Object.keys(result).forEach(function (key) {
+      var days = {};
+      result[key].forEach(function (entry) { days[entry.date] = entry; });
+      result[key] = Object.keys(days).sort().map(function (date) { return days[date]; });
+    });
+    return result;
+  }
+
+  function refreshPerformance(state, onOrBefore) {
+    var history = performanceHistory(state, onOrBefore);
+    Object.keys(history).forEach(function (key) {
+      var lift = state.activeCycle.lifts[key];
+      var observations = history[key].filter(function (entry) {
+        return !lift.assessedOn || entry.date > lift.assessedOn;
+      });
+      if (!observations.length) {
+        if (lift.assessed1rm != null) lift.current1rm = Number(lift.assessed1rm);
+        return;
+      }
+      var anchor = asNumber(lift.assessed1rm, asNumber(lift.baseline1rm, lift.current1rm));
+      var recent = observations.slice(-3);
+      var estimate = recent.length === 1
+        ? anchor * 0.7 + recent[0].value * 0.3
+        : median(recent.map(function (entry) { return entry.value; }));
+      lift.current1rm = Math.round(estimate * 10) / 10;
+    });
+    return history;
+  }
+
+  function planningDate(state, options) {
+    var logs = cycleLogs(state);
+    return options && isIsoDate(options.asOfDate) ? options.asOfDate :
+      (logs.length ? logs[logs.length - 1].sessionSnapshot.date : state.activeCycle.startDate);
+  }
+
+  function readyForTarget(state, history, key, asOfDate) {
+    var lift = state.activeCycle.lifts[key];
+    var offset = key === "pullup" ? latestBodyweight(state.activeCycle, asOfDate) : 0;
+    if (offset == null || lift.target1rm == null || Number(lift.current1rm) + offset < (Number(lift.target1rm) + offset) * 0.98) return false;
+    var entries = history[key].filter(function (entry) {
+      return entry.date >= addDays(asOfDate, -28) && (!lift.assessedOn || entry.date > lift.assessedOn);
+    });
+    var logs = cycleLogs(state, asOfDate).filter(function (log) {
+      return log.sessionSnapshot.workout && log.sessionSnapshot.workout.liftKey === key && (log.mainSets || []).length;
+    });
+    var latest = logs[logs.length - 1];
+    if (latest && latest.mainSets.some(function (set) { return set.completed === false; })) return false;
+    return entries.length >= 2 && entries.slice(-2).every(function (entry) {
+      return entry.value + offset >= (Number(lift.target1rm) + offset) * 0.98;
+    });
+  }
+
+  function adaptCycle(state, history, asOfDate) {
+    var cycle = state.activeCycle;
+    if (cycle.status === "archived" || cycle.status === "completed") return;
+    var reference = cycle.requestedEndDate;
+    var anchor = asOfDate < cycle.startDate ? cycle.startDate : asOfDate;
+    var bodyweight = latestBodyweight(cycle, anchor);
+    var readiness = {};
+    var neededWeeks = 0;
+    var configuredPriorities = 0;
+    var allReady = true;
+    cycle.priorities.forEach(function (key) {
+      var lift = cycle.lifts[key];
+      var offset = key === "pullup" ? bodyweight : 0;
+      if (offset == null || lift.current1rm == null || lift.target1rm == null) {
+        readiness[key] = false;
+        allReady = false;
+        return;
+      }
+      var current = Number(lift.current1rm) + offset;
+      var target = Number(lift.target1rm) + offset;
+      if (current <= 0 || target <= 0) {
+        readiness[key] = false;
+        allReady = false;
+        return;
+      }
+      configuredPriorities += 1;
+      var entries = history[key].filter(function (entry) { return entry.date >= addDays(anchor, -28); });
+      var ready = readyForTarget(state, history, key, anchor);
+      readiness[key] = ready;
+      allReady = allReady && ready;
+      var rate = 0.005;
+      if (entries.length >= 2) {
+        var first = entries[0], last = entries[entries.length - 1];
+        var weeks = daysBetween(first.date, last.date) / 7;
+        if (weeks >= 2) rate = clamp(Math.pow((last.value + offset) / (first.value + offset), 1 / weeks) - 1, 0.0025, 0.01);
+      }
+      neededWeeks = Math.max(neededWeeks, ready ? 2 : Math.max(2, Math.ceil(Math.log(Math.max(1, target / current)) / Math.log(1 + rate)) + 2));
+    });
+    if (!configuredPriorities) return;
+    var projected = addDays(anchor, Math.min(52, neededWeeks) * 7);
+    var end = reference;
+    if (allReady && addDays(anchor, 14) <= addDays(reference, -14)) {
+      end = addDays(reference, -14);
+    } else if (projected > reference) {
+      end = addDays(reference, Math.ceil(daysBetween(reference, projected) / 14) * 14);
+    }
+    var adaptiveEnd = end;
+    var adjustmentDays = cycle.scheduleAdjustments.reduce(function (total, entry) {
+      return total + entry.days;
+    }, 0);
+    end = addDays(end, adjustmentDays);
+    // Never move a recorded workout outside its cycle or rewrite its date.
+    cycleLogs(state).forEach(function (log) {
+      if (log.sessionSnapshot.date > end) end = log.sessionSnapshot.date;
+    });
+    var shift = daysBetween(reference, end);
+    cycle.endDate = end;
+    var adaptiveShift = daysBetween(reference, adaptiveEnd);
+    var reason = adaptiveShift < 0 ? "近期两次有效表现支持提前评估，已预留减量时间。" :
+      (adaptiveShift > 0 ? "按当前能力与近期进展延长训练；日期以两周为单位调整，不为赶日期强行加重。" :
+        "保留参考截止日期；每两周结合有效训练表现复评。");
+    if (neededWeeks > 52) {
+      reason += "目标跨度较大，当前仅安排阶段评估，尚不预测达标日期。";
+    }
+    if (adjustmentDays) {
+      reason += adjustmentDays > 0
+        ? " 已手动顺延 " + adjustmentDays + " 天。"
+        : " 已手动提前 " + Math.abs(adjustmentDays) + " 天。";
+    }
+    cycle.schedule = {
+      assessedAt: anchor,
+      shiftDays: shift,
+      readiness: readiness,
+      provisional: !allReady,
+      reason: reason
+    };
+  }
+
+  function accessoriesFor(type, phase, state) {
+    if (phase.key === "test" || phase.key === "assessment") return [];
+    var items = deepClone(ACCESSORIES[type] || []);
+    if (type === "push-volume" && state.activeCycle.priorities.indexOf("squat") !== -1 &&
+        state.activeCycle.lifts.squat.current1rm > 0) {
+      items[0] = Object.assign(exercise("轻深蹲 · 技术练习", 2, "5", 6, "2–3 分钟"), {
+        liftKey: "squat", technique: true,
+        loadKg: prescribedLoad("squat", state.activeCycle.lifts.squat.current1rm, 0.65, 0, state.preferences)
+      });
+    }
+    if (isRecoveryPhase(phase.key)) {
+      items = items.filter(function (item) { return !item.technique; }).map(function (item) {
+        item.sets = Math.max(1, Math.floor(item.sets / 2));
+        item.rpe = 6;
+        item.reduced = true;
+        return item;
+      });
+    }
+    return items;
   }
 
   function compileHolidayCalendar(calendars, overrides) {
@@ -514,10 +748,10 @@
     var missed = {};
     var occupied = {};
     var date = cycle.startDate;
-    var deferredDays = (cycle.scheduleDeferrals || []).reduce(function (total, entry) {
+    var adjustmentDays = (cycle.scheduleAdjustments || []).reduce(function (total, entry) {
       return total + entry.days;
     }, 0);
-    var sourceEndDate = addDays(cycle.endDate, -deferredDays);
+    var sourceEndDate = addDays(cycle.endDate, -adjustmentDays);
 
     while (date <= sourceEndDate) {
       var weekday = isoWeekday(date);
@@ -623,26 +857,28 @@
     return result.sort(byDate);
   }
 
-  function applyScheduleDeferrals(sessions, deferrals, overrides) {
-    var entries = deferrals || [];
+  function applyScheduleAdjustments(sessions, adjustments, overrides) {
+    var entries = adjustments || [];
     return sessions.map(function (session) {
       var next = Object.assign({}, session);
       var override = (overrides || {})[session.id] || {};
-      var firstDeferral = override.action === "move"
-        ? Math.max(0, Math.min(entries.length, Math.floor(asNumber(override.scheduleDeferralCount, 0))))
+      var recordedAdjustmentCount = override.scheduleAdjustmentCount == null
+        ? override.scheduleDeferralCount : override.scheduleAdjustmentCount;
+      var firstAdjustment = override.action === "move"
+        ? Math.max(0, Math.min(entries.length, Math.floor(asNumber(recordedAdjustmentCount, 0))))
         : 0;
-      var deferredDays = 0;
+      var adjustedDays = 0;
       next.programDate = next.date;
-      entries.slice(firstDeferral).forEach(function (entry) {
+      entries.slice(firstAdjustment).forEach(function (entry) {
         if (next.date >= entry.fromDate) {
           if (!next.originalDate) next.originalDate = next.date;
           next.date = addDays(next.date, entry.days);
-          deferredDays += entry.days;
+          adjustedDays += entry.days;
         }
       });
-      if (deferredDays) {
-        next.deferredDays = deferredDays;
-        next.manualDefer = true;
+      if (adjustedDays) {
+        next.adjustedDays = adjustedDays;
+        next.manualScheduleAdjustment = true;
       }
       return next;
     }).sort(byDate);
@@ -661,13 +897,16 @@
   function phaseFor(session, cycle, totalWeeks) {
     var phaseDate = session.programDate || session.date;
     var weekIndex = Math.max(0, Math.floor(daysBetween(cycle.startDate, phaseDate) / 7));
-    if (session.isTest) {
-      return { key: "test", label: "目标测试", weekIndex: weekIndex, blockWeek: null };
+    if (session.isReturn) {
+      return { key: "return", label: "恢复训练", weekIndex: weekIndex, blockWeek: null };
     }
-    if (weekIndex >= totalWeeks - 1) {
+    if (session.isTest || session.isAssessment) {
+      return { key: session.isTest ? "test" : "assessment", label: session.isTest ? "有条件测试" : "阶段评估 · 待确认", weekIndex: weekIndex, blockWeek: null };
+    }
+    if (weekIndex >= totalWeeks - 2) {
       return { key: "taper", label: "减量准备", weekIndex: weekIndex, blockWeek: null };
     }
-    var blockWeek = weekIndex % 4;
+    var blockWeek = session.trainingWeek == null ? weekIndex % 4 : session.trainingWeek % 4;
     if (blockWeek === 3) {
       return { key: "deload", label: "减量周", weekIndex: weekIndex, blockWeek: blockWeek };
     }
@@ -679,10 +918,8 @@
     };
   }
 
-  function plannedOneRepMax(lift, progress) {
-    var current = asNumber(lift.current1rm, 0);
-    var target = asNumber(lift.target1rm, current);
-    return current + (target - current) * clamp(progress, 0, 1);
+  function plannedOneRepMax(lift) {
+    return asNumber(lift.current1rm, 0);
   }
 
   function makeWorkSet(label, sets, reps, loadKg, rpe, rest, percentage) {
@@ -720,9 +957,15 @@
 
     if (phase.key === "test") {
       sets.push(makeWorkSet("尝试 1", 1, 1, load(0.9, true), 8, "4–5 分钟", 0.9));
-      sets.push(makeWorkSet("尝试 2", 1, 1, load(0.975, true), 9, "5 分钟", 0.975));
-      sets.push(makeWorkSet("目标尝试", 1, 1, load(1, true), 10, "5 分钟", 1));
-      return sets;
+      sets.push(makeWorkSet("尝试 2 · 首把稳定后", 1, 1, load(0.95, true), 9, "5 分钟", 0.95));
+      sets.push(makeWorkSet("目标尝试 · 仍有余力时", 1, 1, load(1, true), 10, "5 分钟", 1));
+      return sets.filter(function (set, index) { return !index || set.loadKg > sets[index - 1].loadKg; });
+    }
+    if (phase.key === "assessment") {
+      return [makeWorkSet("评估单次 · 不追求极限", 1, 1, load(0.9), 7.5, "3–5 分钟", 0.9)];
+    }
+    if (phase.key === "return") {
+      return [makeWorkSet("恢复组 · 热身后可再下调", 2, 5, load(0.65), 6, "3 分钟", 0.65)];
     }
 
     if (phase.key === "taper") {
@@ -793,7 +1036,8 @@
       { percentage: 0.4, reps: 5 },
       { percentage: 0.55, reps: 3 },
       { percentage: 0.7, reps: 2 },
-      { percentage: 0.82, reps: 1 }
+      { percentage: 0.82, reps: 1 },
+      { percentage: 0.92, reps: 1 }
     ].forEach(function (step) {
       var load = step.fixed || roundLoad(workingLoad * step.percentage, increment);
       if (load < workingLoad) {
@@ -821,9 +1065,9 @@
     var liftKey = liftKeyForType(session.type);
     var lift = cycle.lifts[liftKey];
     var bodyweight = latestBodyweight(cycle);
-    var configured = asNumber(lift.current1rm, 0) > 0 &&
-      asNumber(lift.target1rm, 0) > 0 &&
-      (liftKey !== "pullup" || bodyweight != null);
+    var offset = liftKey === "pullup" ? bodyweight : 0;
+    var configured = lift.current1rm != null && lift.target1rm != null && offset != null &&
+      Number(lift.current1rm) + offset > 0 && Number(lift.target1rm) + offset > 0;
 
     if (!configured) {
       return {
@@ -832,12 +1076,11 @@
         needsSetup: true,
         warmups: [],
         workSets: [],
-        accessories: deepClone(ACCESSORIES[session.type] || [])
+        accessories: accessoriesFor(session.type, phase, state)
       };
     }
 
-    var progress = clamp((phase.weekIndex + 1) / Math.max(1, totalWeeks), 0, 1);
-    var planned = plannedOneRepMax(lift, progress);
+    var planned = plannedOneRepMax(lift);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -853,20 +1096,26 @@
       mainExercise: LIFT_LABELS[liftKey],
       needsSetup: false,
       planned1rm: roundLoad(planned, 0.1),
+      guidance: phase.key === "test"
+        ? "仅在上一把动作稳定且仍有余力时加重；若出现明显卡顿或失败，结束加重。使用保护杆或可靠保护者。"
+        : (phase.key === "assessment" ? "先记录实际重量和 RPE，达到条件后再安排目标测试；不因到期强行冲极限。"
+          : "重量以当前有效表现为基准；目标 RPE 是上限参考，热身吃力时下调重量，组间未恢复可延长休息。"),
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
-      accessories: deepClone(ACCESSORIES[session.type] || [])
+      accessories: accessoriesFor(session.type, phase, state)
     };
   }
 
-  function markTestSessions(sessions) {
+  function markTestSessions(sessions, state, history, asOfDate) {
     ["push-strength", "pull", "squat"].forEach(function (type) {
-      var candidates = sessions.filter(function (session) {
-        return session.type === type;
-      });
-      if (candidates.length) {
-        candidates[candidates.length - 1].isTest = true;
-      }
+      var candidates = sessions.filter(function (session) { return session.type === type; });
+      if (!candidates.length) return;
+      var last = candidates[candidates.length - 1];
+      var key = liftKeyForType(type);
+      var ready = readyForTarget(state, history, key, asOfDate);
+      // Far-future sessions remain assessments until readiness is reconfirmed.
+      last.isTest = ready && daysBetween(asOfDate, last.date) <= 21 && last.date >= asOfDate;
+      last.isAssessment = !last.isTest;
     });
   }
 
@@ -878,17 +1127,7 @@
       warnings.push("计划超过 24 周，建议中途重新评估一次 1RM。");
     }
 
-    Object.keys(state.activeCycle.lifts).forEach(function (key) {
-      var lift = state.activeCycle.lifts[key];
-      var current = asNumber(lift.current1rm, 0);
-      var target = asNumber(lift.target1rm, 0);
-      if (current > 0 && target > current && totalWeeks > 0) {
-        var weeklyRate = (Math.pow(target / current, 1 / totalWeeks) - 1) * 100;
-        if (weeklyRate > 1) {
-          warnings.push(lift.label + "需要每周约增长 " + weeklyRate.toFixed(2) + "%，目标较激进。");
-        }
-      }
-    });
+    if (state.activeCycle.schedule) warnings.push(state.activeCycle.schedule.reason);
     return warnings;
   }
 
@@ -901,6 +1140,7 @@
         return session.status === "planned" &&
           session.workout &&
           session.workout.liftKey === liftKey &&
+          /^load-/.test(session.phase.key) &&
           session.date > adjustment.afterDate;
       }).sort(byDate)[0];
       if (!candidate || !adjustment.percentage) {
@@ -948,6 +1188,7 @@
         return;
       }
       session.workout.accessories.forEach(function (accessory) {
+        if (accessory.technique) return;
         var previous = null;
         history.forEach(function (log) {
           if (log.sessionSnapshot.date >= session.date) {
@@ -964,21 +1205,26 @@
           return;
         }
         var ceiling = repetitionCeiling(accessory.reps);
-        var increase = ceiling && asNumber(previous.reps, 0) >= ceiling
-          ? state.preferences.accessoryIncrement
-          : 0;
-        accessory.loadKg = roundLoad(
-          asNumber(previous.weight, 0) + increase,
-          state.preferences.accessoryIncrement
-        );
-        accessory.progression = increase > 0 ? "达到次数上限，下次加重" : "保持重量并继续增加次数";
+        var qualityConfirmed = previous.qualityConfirmed === true || previous.allSetsCompleted === true;
+        var qualified = !accessory.reduced && qualityConfirmed &&
+          Number(previous.sets) >= accessory.sets && ceiling && Number(previous.reps) >= ceiling &&
+          previous.rpe != null && Number(previous.rpe) <= accessory.rpe;
+        var weight = Number(previous.weight);
+        var step = Number(previous.incrementKg) > 0 ? Number(previous.incrementKg) : state.preferences.accessoryIncrement;
+        var increase = qualified && step / weight <= 0.1 ? step : 0;
+        accessory.loadKg = accessory.reduced ? Math.round(weight * 0.8 * 10) / 10 : Math.round((weight + increase) * 10) / 10;
+        accessory.progression = accessory.reduced ? "减量：选择可装载的较轻重量，以 RPE 6 为上限" :
+          (increase > 0 ? "全组达到上限且余力足够，下次加重" : "保持重量；全组达标后再按可用最小增量加重");
       });
     });
   }
 
-  function generate(inputState, holidayCalendars) {
+  function generate(inputState, holidayCalendars, options) {
     var state = normalizeState(inputState);
     var cycle = state.activeCycle;
+    var asOfDate = planningDate(state, options);
+    var history = refreshPerformance(state, asOfDate);
+    if (cycle.startDate && cycle.endDate && cycle.endDate >= cycle.startDate) adaptCycle(state, history, asOfDate);
     var warnings = [];
     if (!cycle.startDate || !cycle.endDate || cycle.endDate < cycle.startDate) {
       return { state: state, cycle: cycle, sessions: [], warnings: ["计划起止日期无效。"], totalWeeks: 0 };
@@ -987,8 +1233,8 @@
     var holidays = compileHolidayCalendar(holidayCalendars, cycle.holidayOverrides);
     var sessions = buildBaseSessions(cycle, holidays, warnings);
     sessions = applySessionOverrides(sessions, cycle.sessionOverrides, warnings);
-    sessions = applyScheduleDeferrals(sessions, cycle.scheduleDeferrals, cycle.sessionOverrides);
-    markTestSessions(sessions);
+    sessions = applyScheduleAdjustments(sessions, cycle.scheduleAdjustments, cycle.sessionOverrides);
+    markTestSessions(sessions, state, history, asOfDate);
 
     var sessionMap = sessions.reduce(function (map, session) {
       map[session.id] = session;
@@ -1006,13 +1252,27 @@
     });
     sessions.sort(byDate);
 
-    var deferredDays = (cycle.scheduleDeferrals || []).reduce(function (total, entry) {
+    var adjustmentDays = (cycle.scheduleAdjustments || []).reduce(function (total, entry) {
       return total + entry.days;
     }, 0);
-    var programEndDate = addDays(cycle.endDate, -deferredDays);
+    var programEndDate = addDays(cycle.endDate, -adjustmentDays);
     var totalWeeks = Math.max(1, Math.ceil((daysBetween(cycle.startDate, programEndDate) + 1) / 7));
+    var previousDates = {};
+    var trainingWeeks = {};
     sessions.forEach(function (session) {
       var log = state.logs[session.id];
+      var key = liftKeyForType(session.type);
+      var countsAsTraining = log ? log.status === "completed" : session.date >= asOfDate;
+      if (countsAsTraining) {
+        if (previousDates[key] && daysBetween(previousDates[key], session.date) > 10) {
+          session.isReturn = true;
+          session.isTest = false;
+          trainingWeeks[session.type] = 0;
+        }
+        session.trainingWeek = trainingWeeks[session.type] || 0;
+        trainingWeeks[session.type] = session.isReturn ? 0 : session.trainingWeek + 1;
+        previousDates[key] = session.date;
+      }
       if (log && log.sessionSnapshot) {
         var frozen = deepClone(log.sessionSnapshot);
         Object.keys(frozen).forEach(function (key) {
@@ -1029,6 +1289,11 @@
     applyAccessoryProgression(sessions, state);
 
     warnings = goalWarnings(state, totalWeeks).concat(warnings);
+    for (var year = Number(cycle.startDate.slice(0, 4)); year <= Number(cycle.endDate.slice(0, 4)); year += 1) {
+      if (!(holidayCalendars || []).some(function (calendar) { return Number(calendar.year) === year; })) {
+        warnings.push(year + " 年节假日数据尚未载入，暂按周模板排课；可在设置中覆盖休息日。");
+      }
+    }
     return {
       state: state,
       cycle: cycle,
@@ -1054,13 +1319,14 @@
   function moveSession(inputState, sourceId, targetDate, options) {
     var settings = options || {};
     var state = normalizeState(inputState);
-    var cycle = state.activeCycle;
     var date = String(targetDate || "");
+    var plan = generate(state, settings.holidayCalendars || [], { asOfDate: settings.asOfDate });
+    state = plan.state;
+    var cycle = state.activeCycle;
     if (!isIsoDate(date) || date < cycle.startDate || date > cycle.endDate) {
       throw sessionMoveError("invalid_session_move_date", { date: date });
     }
 
-    var plan = generate(state, settings.holidayCalendars || []);
     var source = plan.sessions.find(function (session) {
       return session.id === sourceId;
     });
@@ -1101,7 +1367,7 @@
     state.activeCycle.sessionOverrides[source.id] = {
       action: "move",
       date: date,
-      scheduleDeferralCount: cycle.scheduleDeferrals.length
+      scheduleAdjustmentCount: cycle.scheduleAdjustments.length
     };
 
     var log = state.logs[source.id];
@@ -1119,10 +1385,10 @@
     return state;
   }
 
-  function deferSessions(inputState, sourceId, targetDate, options) {
+  function adjustSchedule(inputState, sourceId, targetDate, options) {
     var settings = options || {};
     var state = normalizeState(inputState);
-    var plan = generate(state, settings.holidayCalendars || []);
+    var plan = generate(state, settings.holidayCalendars || [], { asOfDate: settings.asOfDate });
     state = plan.state;
     var cycle = state.activeCycle;
     var date = String(targetDate || "");
@@ -1130,10 +1396,11 @@
       return session.id === sourceId;
     });
     if (!source || source.status === "completed") {
-      throw sessionMoveError("invalid_session_defer_source", { sourceId: sourceId });
+      throw sessionMoveError("invalid_schedule_adjust_source", { sourceId: sourceId });
     }
-    if (!isIsoDate(date) || date <= source.date || daysBetween(source.date, date) > 365) {
-      throw sessionMoveError("invalid_session_defer_date", { date: date });
+    var days = isIsoDate(date) ? daysBetween(source.date, date) : 0;
+    if (!isIsoDate(date) || date < cycle.startDate || days === 0 || Math.abs(days) > 365) {
+      throw sessionMoveError("invalid_schedule_adjust_date", { date: date });
     }
 
     var candidates = plan.sessions.filter(function (session) {
@@ -1144,11 +1411,25 @@
       return log && log.status !== "skipped";
     });
     if (recorded.length) {
-      throw sessionMoveError("session_defer_recorded_future", {
+      throw sessionMoveError("schedule_adjust_recorded_future", {
         source: deepClone(source),
         date: date,
         sessions: deepClone(recorded)
       });
+    }
+
+    if (days < 0) {
+      var earlierSessions = plan.sessions.filter(function (session) {
+        return session.date < source.date;
+      });
+      var previousSession = earlierSessions[earlierSessions.length - 1];
+      if (previousSession && date <= previousSession.date) {
+        throw sessionMoveError("schedule_adjust_conflict", {
+          source: deepClone(source),
+          date: date,
+          sessions: [deepClone(previousSession)]
+        });
+      }
     }
 
     var restoredSkips = [];
@@ -1163,9 +1444,8 @@
         delete state.logs[session.id];
       }
     });
-    var days = daysBetween(source.date, date);
-    cycle.scheduleDeferrals.push({
-      id: "deferral-" + Date.now().toString(36) + "-" + (cycle.scheduleDeferrals.length + 1),
+    cycle.scheduleAdjustments.push({
+      id: "schedule-adjustment-" + Date.now().toString(36) + "-" + (cycle.scheduleAdjustments.length + 1),
       sourceId: source.id,
       fromDate: source.date,
       days: days,
@@ -1173,7 +1453,12 @@
       createdAt: new Date().toISOString()
     });
     cycle.endDate = addDays(cycle.endDate, days);
+    cycle.schedule = null;
     return state;
+  }
+
+  function deferSessions(inputState, sourceId, targetDate, options) {
+    return adjustSchedule(inputState, sourceId, targetDate, options);
   }
 
   function estimateOneRepMax(weight, reps, rpe) {
@@ -1238,14 +1523,24 @@
 
   function recordSession(inputState, session, log) {
     var state = normalizeState(inputState);
+    var recordedLift = session.workout && session.workout.liftKey;
+    if (recordedLift && state.activeCycle.lifts[recordedLift].assessed1rm == null) {
+      var hasHistory = cycleLogs(state).some(function (entry) {
+        return entry.sessionSnapshot.workout && entry.sessionSnapshot.workout.liftKey === recordedLift;
+      });
+      state.activeCycle.lifts[recordedLift].assessed1rm = hasHistory
+        ? state.activeCycle.lifts[recordedLift].baseline1rm : state.activeCycle.lifts[recordedLift].current1rm;
+    }
     var nextLog = {
       status: log.status || "completed",
       completedAt: log.completedAt || new Date().toISOString(),
       mainSets: (log.mainSets || []).map(function (set) {
+        var hasActualRpe = set.rpe != null && set.rpe !== "";
         return {
           weight: asNumber(set.weight, null),
           reps: asNumber(set.reps, null),
-          rpe: asNumber(set.rpe, null),
+          rpe: hasActualRpe ? asNumber(set.rpe, null) : null,
+          rpeSource: hasActualRpe ? "actual" : null,
           completed: set.completed !== false
         };
       }),
@@ -1267,42 +1562,28 @@
     state.logs[session.id] = nextLog;
 
     var liftKey = session.workout && session.workout.liftKey;
-    if (liftKey && nextLog.mainSets.length) {
-      var targetRpe = session.workout.workSets.length ? session.workout.workSets[0].rpe : 8;
-      var actualRpe = Math.max.apply(Math, nextLog.mainSets.map(function (set) {
-        return asNumber(set.rpe, targetRpe);
-      }));
-      var adjustment = suggestAdjustment(
-        actualRpe,
-        targetRpe,
-        nextLog.mainSets.every(function (set) { return set.completed; })
-      );
+    var previousAdjustment = state.activeCycle.loadAdjustments[liftKey];
+    if (liftKey && nextLog.mainSets.length && (!previousAdjustment || session.date >= previousAdjustment.afterDate)) {
+      var targets = [];
+      (session.workout.workSets || []).forEach(function (set) {
+        for (var i = 0; i < set.sets; i += 1) targets.push(set.rpe);
+      });
+      var differences = nextLog.mainSets.map(function (set, index) {
+        return set.rpe == null || targets[index] == null ? null : set.rpe - targets[index];
+      });
+      var failed = nextLog.mainSets.some(function (set) { return !set.completed; });
+      var hard = differences.some(function (value) { return value != null && value >= 1; });
+      var easy = differences.length && differences.every(function (value) { return value != null && value <= -1; });
+      var light = suppressesLoadIncrease(session.phase && session.phase.key);
+      var percentage = failed ? -0.05 : (hard ? -0.025 : (easy && !light ? 0.025 : 0));
       state.activeCycle.loadAdjustments[liftKey] = {
-        percentage: adjustment.percentage,
-        reason: adjustment.reason,
+        percentage: percentage,
+        reason: failed ? "未完成规定次数" : (hard ? "实际 RPE 超出对应组目标" : (easy && !light ? "各组均有充足余力" : "保持当前负荷")),
         afterDate: session.date,
         updatedAt: nextLog.completedAt
       };
-      var bodyweight = latestBodyweight(state.activeCycle) || 0;
-      var estimates = nextLog.mainSets.map(function (set) {
-        if (!set.completed) {
-          return null;
-        }
-        var load = set.weight;
-        if (liftKey === "pullup") {
-          load += bodyweight;
-        }
-        var estimate = estimateOneRepMax(load, set.reps, set.rpe);
-        return liftKey === "pullup" && estimate != null ? estimate - bodyweight : estimate;
-      }).filter(function (value) {
-        return value != null && value > 0;
-      });
-      if (estimates.length) {
-        var best = Math.max.apply(Math, estimates);
-        var current = asNumber(state.activeCycle.lifts[liftKey].current1rm, best);
-        state.activeCycle.lifts[liftKey].current1rm = Math.round((current * 0.7 + best * 0.3) * 10) / 10;
-      }
     }
+    refreshPerformance(state);
 
     return state;
   }
@@ -1399,6 +1680,7 @@
       mainExercise: workout.mainExercise,
       needsSetup: workout.needsSetup,
       planned1rm: workout.planned1rm,
+      guidance: workout.guidance,
       warmups: deepClone(workout.warmups),
       workSets: deepClone(workout.workSets),
       accessories: deepClone(workout.accessories)
@@ -1414,9 +1696,9 @@
   function createPublicSnapshot(inputState, generated) {
     var state = normalizeState(inputState);
     var plan = generated || generate(state, []);
-    var cycle = state.activeCycle;
+    var cycle = plan.cycle;
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: state.version,
       updatedAt: state.updatedAt,
       cycle: {
@@ -1425,6 +1707,9 @@
         status: cycle.status,
         startDate: cycle.startDate,
         endDate: cycle.endDate,
+        requestedEndDate: cycle.requestedEndDate,
+        priorities: deepClone(cycle.priorities),
+        schedule: deepClone(cycle.schedule),
         lifts: {
           bench: deepClone(cycle.lifts.bench),
           pullup: deepClone(cycle.lifts.pullup),
@@ -1559,6 +1844,7 @@
     normalizeState: normalizeState,
     generate: generate,
     moveSession: moveSession,
+    adjustSchedule: adjustSchedule,
     deferSessions: deferSessions,
     recordSession: recordSession,
     recordLearningSession: recordLearningSession,

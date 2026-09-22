@@ -85,7 +85,7 @@ function configuredState() {
   assert.strictEqual(bodyweightToday.isCarried, true);
   const bench = model.series.find((series) => series.key === "bench");
   assert(Math.abs(bench.points[0].value - 100) < 0.01);
-  assert.strictEqual(bench.points[bench.points.length - 1].value, 110);
+  assert.strictEqual(bench.points[bench.points.length - 1].value, 100, "future prescriptions must not manufacture target attainment");
 }());
 
 (function futureBodyweightUpdateDoesNotChangeTheCurrentValueEarly() {
