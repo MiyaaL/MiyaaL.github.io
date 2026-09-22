@@ -504,7 +504,8 @@
   }
 
   // These are planning heuristics, not promises of physiological growth. Loads
-  // always use measured capacity; only the review date uses a projected rate.
+  // always use measured capacity; projections only inform warnings and never
+  // rewrite the user-selected cycle boundary.
   function median(values) {
     var sorted = values.slice().sort(function (a, b) { return a - b; });
     var middle = Math.floor(sorted.length / 2);
@@ -645,29 +646,29 @@
       }
       neededWeeks = Math.max(neededWeeks, ready ? 2 : Math.max(2, Math.ceil(Math.log(Math.max(1, target / current)) / Math.log(1 + rate)) + 2));
     });
-    if (!configuredPriorities) return;
-    var projected = addDays(anchor, Math.min(52, neededWeeks) * 7);
+    var projected = configuredPriorities
+      ? addDays(anchor, Math.min(52, neededWeeks) * 7)
+      : null;
     var end = reference;
-    if (allReady && addDays(anchor, 14) <= addDays(reference, -14)) {
-      end = addDays(reference, -14);
-    } else if (projected > reference) {
-      end = addDays(reference, Math.ceil(daysBetween(reference, projected) / 14) * 14);
-    }
-    var adaptiveEnd = end;
     var adjustmentDays = cycle.scheduleAdjustments.reduce(function (total, entry) {
       return total + entry.days;
     }, 0);
     end = addDays(end, adjustmentDays);
     // Never move a recorded workout outside its cycle or rewrite its date.
     cycleLogs(state).forEach(function (log) {
-      if (log.sessionSnapshot.date > end) end = log.sessionSnapshot.date;
+      if (log.status === "completed" && log.sessionSnapshot.date > end) {
+        end = log.sessionSnapshot.date;
+      }
     });
     var shift = daysBetween(reference, end);
     cycle.endDate = end;
-    var adaptiveShift = daysBetween(reference, adaptiveEnd);
-    var reason = adaptiveShift < 0 ? "近期两次有效表现支持提前评估，已预留减量时间。" :
-      (adaptiveShift > 0 ? "按当前能力与近期进展延长训练；日期以两周为单位调整，不为赶日期强行加重。" :
-        "保留参考截止日期；每两周结合有效训练表现复评。");
+    var reason = !configuredPriorities
+      ? "优先目标尚未完整配置；计划仍按设定结束日期执行。"
+      : (allReady
+        ? "近期有效表现支持目标测试；计划仍按设定结束日期执行。"
+        : (projected > reference
+          ? "按当前能力估算，目标可能无法在设定周期内完成；计划仍按设定结束日期执行，不会自动延长。"
+          : "计划按设定结束日期执行；每两周结合有效训练表现复评。"));
     if (neededWeeks > 52) {
       reason += "目标跨度较大，当前仅安排阶段评估，尚不预测达标日期。";
     }
@@ -733,7 +734,7 @@
       if (type === "off") {
         result.off[date] = { name: "自定义休息日", periodId: "override:" + date, source: "override" };
       } else if (type === "work") {
-        result.work[date] = { name: "自定义调休工作日", periodId: "override:" + date, source: "override" };
+        result.work[date] = { name: "自定义训练日", periodId: "override:" + date, source: "override" };
       }
     });
     return result;

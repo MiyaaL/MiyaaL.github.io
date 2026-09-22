@@ -140,7 +140,7 @@ const { JSDOM } = require("jsdom");
   assert(savedLog.mainSets.every(set => set.rpe === null));
   assert(savedLog.accessories.every(set => set.qualityConfirmed === false));
   assert.strictEqual(stored.state.activeCycle.requestedEndDate, "2026-10-25");
-  assert(stored.state.activeCycle.endDate >= stored.state.activeCycle.requestedEndDate);
+  assert.strictEqual(stored.state.activeCycle.endDate, "2026-10-25");
   assert.strictEqual(Object.prototype.hasOwnProperty.call(savedLog, "bodyweight"), false);
   assert.deepStrictEqual(
     JSON.parse(JSON.stringify(stored.state.activeCycle.bodyweightEntries)),
@@ -174,7 +174,7 @@ const { JSDOM } = require("jsdom");
 
   window.document.querySelector("[data-plan-edit]").click();
   assert.strictEqual(window.document.querySelector("[data-plan-settings]").open, true);
-  assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="endDate"]').value, "2026-10-25", "editing preserves the requested date, not the projected date");
+  assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="endDate"]').value, "2026-10-25", "editing preserves the user-selected cycle boundary");
   assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value, "bench,squat");
   window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value = "bench,pullup,squat";
   const settingsBodyweight = window.document.querySelector("[data-plan-settings-bodyweight]");
@@ -190,6 +190,7 @@ const { JSDOM } = require("jsdom");
   const publicSettings = (await memory.loadPublic()).record.snapshot;
   assert.strictEqual(publicSettings.cycle.endDate, stateAfterSettings.state.activeCycle.endDate);
   assert.strictEqual(publicSettings.cycle.requestedEndDate, "2026-10-25");
+  assert.strictEqual(publicSettings.cycle.endDate, "2026-10-25");
   assert.deepStrictEqual(
     JSON.parse(JSON.stringify(stateAfterSettings.state.activeCycle.bodyweightEntries)),
     JSON.parse(JSON.stringify(bodyweightState.state.activeCycle.bodyweightEntries))

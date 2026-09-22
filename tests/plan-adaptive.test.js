@@ -46,17 +46,30 @@ check("calendar progress alone never increases prescribed capacity", () => {
   assert(future.workout.workSets[0].loadKg < 80);
 });
 
-check("an aggressive goal can extend beyond the two-week tolerance", () => {
+check("goal projections never rewrite the user-selected cycle end", () => {
   const state = configured();
-  const plan = core.generate(state, [holidays], { asOfDate: "2026-09-09" });
+  state.activeCycle.requestedEndDate = "2026-10-31";
+  state.activeCycle.endDate = "2027-06-05";
+  Object.assign(state.activeCycle.lifts.bench, { assessed1rm: 85.5, current1rm: 85.5 });
+  Object.assign(state.activeCycle.lifts.squat, { assessed1rm: 105.1, current1rm: 105.1 });
+  state.activeCycle.scheduleAdjustments = [{
+    id: "online-deferral",
+    sourceId: "online-session",
+    fromDate: "2026-09-15",
+    days: 7
+  }];
+  const plan = core.generate(state, [holidays], { asOfDate: "2026-09-22" });
   assert.strictEqual(plan.cycle.requestedEndDate, "2026-10-31");
-  assert(plan.cycle.endDate > "2026-11-14");
+  assert.strictEqual(plan.cycle.endDate, "2026-11-07");
+  assert.strictEqual(plan.cycle.schedule.shiftDays, 7);
+  assert(plan.sessions.every(session => session.date <= plan.cycle.endDate));
+  assert(plan.cycle.schedule.reason.includes("不会自动延长"));
   assert(plan.cycle.schedule.reason);
-  assert.strictEqual(state.activeCycle.endDate, "2026-10-31", "generation must not mutate its input");
-  assert.strictEqual(core.generate(plan.state, [holidays], { asOfDate: "2026-09-09" }).cycle.endDate, plan.cycle.endDate);
+  assert.strictEqual(state.activeCycle.endDate, "2027-06-05", "generation must not mutate its input");
+  assert.strictEqual(core.generate(plan.state, [holidays], { asOfDate: "2026-09-22" }).cycle.endDate, plan.cycle.endDate);
 });
 
-check("reliable readiness may advance the end by at most two weeks", () => {
+check("reliable readiness does not shorten the selected cycle", () => {
   let state = configured();
   const initial = core.generate(state, [holidays]);
   for (const [date, weight] of [["2026-09-07", 95], ["2026-09-14", 95], ["2026-09-09", 115], ["2026-09-16", 115]]) {
@@ -65,7 +78,8 @@ check("reliable readiness may advance the end by at most two weeks", () => {
     });
   }
   const plan = core.generate(state, [holidays], { asOfDate: "2026-09-16" });
-  assert.strictEqual(plan.cycle.endDate, "2026-10-17");
+  assert.strictEqual(plan.cycle.endDate, "2026-10-31");
+  assert(plan.cycle.schedule.reason.includes("仍按设定结束日期执行"));
   assert.deepStrictEqual(plan.cycle.priorities, ["bench", "squat"]);
 });
 
@@ -104,7 +118,7 @@ check("accessories require all sets and controlled effort before increasing", ()
   assert.strictEqual(following.workout.accessories.find(x => x.name === "哑铃弯举").loadKg, 10);
 });
 
-check("ordinary dates remain stable and non-priority goals do not delay them", () => {
+check("priority selection changes readiness without changing the boundary", () => {
   const state = configured();
   state.activeCycle.lifts.bench.target1rm = 84;
   state.activeCycle.lifts.squat.target1rm = 105;
@@ -112,7 +126,9 @@ check("ordinary dates remain stable and non-priority goals do not delay them", (
   const plan = core.generate(state, [holidays], { asOfDate: "2026-08-03" });
   assert.strictEqual(plan.cycle.endDate, "2026-10-31");
   state.activeCycle.priorities = ["pullup"];
-  assert(core.generate(state, [holidays]).cycle.endDate > plan.cycle.endDate);
+  const pullupPriority = core.generate(state, [holidays]);
+  assert.strictEqual(pullupPriority.cycle.endDate, plan.cycle.endDate);
+  assert.deepStrictEqual(Object.keys(pullupPriority.cycle.schedule.readiness), ["pullup"]);
 });
 
 check("removing the only measurement restores its fixed baseline", () => {
@@ -238,24 +254,6 @@ check("an unconfigured selected priority prevents an early finish", () => {
   assert.strictEqual(plan.cycle.endDate, "2026-10-31");
   assert.strictEqual(plan.cycle.schedule.readiness.pullup, false);
   assert.strictEqual(plan.cycle.schedule.provisional, true);
-});
-
-check("moving an adaptively extended tail session uses the same planning date", () => {
-  const state = configured();
-  const plan = core.generate(state, [holidays], { asOfDate: "2026-09-09" });
-  const source = plan.sessions[plan.sessions.length - 1];
-  assert(source.date > state.activeCycle.endDate);
-  const occupied = new Set(plan.sessions.map(session => session.date));
-  const candidates = [core.addDays(source.date, 1), core.addDays(source.date, -1)];
-  const targetDate = candidates.find(date => date <= plan.cycle.endDate && !occupied.has(date));
-  assert(targetDate);
-
-  const moved = core.moveSession(state, source.id, targetDate, {
-    holidayCalendars: [holidays],
-    asOfDate: "2026-09-09"
-  });
-  const movedPlan = core.generate(moved, [holidays], { asOfDate: "2026-09-09" });
-  assert.strictEqual(movedPlan.sessions.find(session => session.id === source.id).date, targetDate);
 });
 
 if (failures.length) process.exitCode = 1;

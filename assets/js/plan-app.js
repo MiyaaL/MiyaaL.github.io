@@ -412,8 +412,9 @@
       (selectedPlanKind === "learning"
         ? " · " + plan.totalDays + " 天 · " + plan.completedDays + " 天已完成"
         : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练" +
-          (plan.cycle.requestedEndDate ? " · 参考截止 " + formatChineseDate(plan.cycle.requestedEndDate, false) +
-            " · 预计结束可调整" : ""));
+          (plan.cycle.requestedEndDate && plan.cycle.requestedEndDate !== plan.cycle.endDate
+            ? " · 原设结束 " + formatChineseDate(plan.cycle.requestedEndDate, false) + " · 已手动调整"
+            : ""));
 
     renderProgress(plan.cycle);
     renderLearningSummary(plan);
@@ -743,7 +744,7 @@
       ? privateState.activeCycle.holidayOverrides || {}
       : {};
     if (overrides[date]) {
-      return { type: overrides[date], name: overrides[date] === "off" ? "自定义休息日" : "自定义调休" };
+      return { type: overrides[date], name: overrides[date] === "off" ? "自定义休息日" : "自定义训练日" };
     }
     for (var calendarIndex = 0; calendarIndex < holidayCalendars.length; calendarIndex += 1) {
       var periods = holidayCalendars[calendarIndex].periods || [];
@@ -1037,7 +1038,7 @@
     dom.moveConfirmTitle.textContent = action + "后续计划？";
     dom.moveConfirmButton.textContent = "确认" + action;
     dom.moveConfirmMessage.textContent = "从“" + request.sourceLabel + "”开始的 " +
-      request.affectedCount + " 次未完成训练将整体" + action + " " + Math.abs(request.days) + " 天，周期预计结束日期变为 " +
+      request.affectedCount + " 次未完成训练将整体" + action + " " + Math.abs(request.days) + " 天，周期结束日期变为 " +
       formatChineseDate(request.newEndDate, false) + "。范围内的“已跳过”会恢复为待训练。";
     dom.moveConfirm.showModal();
   }
@@ -1692,7 +1693,7 @@
     var entries = Object.keys(settingsHolidayOverrides).sort();
     dom.holidayOverrides.innerHTML = entries.length ? entries.map(function (date) {
       return '<div class="plan-holiday-item"><span>' + escapeHtml(date + " · " +
-        (settingsHolidayOverrides[date] === "off" ? "休息日" : "调休工作日")) +
+        (settingsHolidayOverrides[date] === "off" ? "休息日" : "训练日")) +
         '</span><button class="plan-text-button" type="button" data-remove-holiday="' +
         escapeHtml(date) + '">删除</button></div>';
     }).join("") : '<p class="plan-cycle-meta">暂无手动覆盖。</p>';

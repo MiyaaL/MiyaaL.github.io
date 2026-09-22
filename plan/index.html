@@ -154,7 +154,7 @@ plan: true
           <h3>周期</h3>
           <div class="plan-form-grid">
             <label>开始日期<input type="date" name="startDate" required></label>
-            <label>参考截止日期<input type="date" name="endDate" required></label>
+            <label>计划结束日期<input type="date" name="endDate" required></label>
             <label>优先目标<select name="priorities"><option value="bench,squat">卧推与深蹲优先</option><option value="bench">卧推优先</option><option value="squat">深蹲优先</option><option value="pullup">引体优先</option><option value="bench,pullup,squat">三项均衡</option></select></label>
             <label>训练时间<input type="time" name="trainingTime" required></label>
             <label data-plan-settings-bodyweight>初始体重（kg）<input type="number" name="bodyweight" min="30" max="300" step="0.1" required></label>
@@ -162,7 +162,7 @@ plan: true
         </div>
 
         <div class="plan-form-section">
-          <p class="plan-cycle-meta">截止日期是参考：通常可提前或延后两周；进展不足时延长更多。每次记录后复评，训练重量按实际能力安排。</p>
+          <p class="plan-cycle-meta">结束日期按你的设置执行，不会因目标预测自动延长。需要改变排期时，可编辑日期或从训练详情整体提前 / 顺延。</p>
           <h3>当前估算与目标 1RM</h3>
           <div class="plan-lift-inputs">
             <div><span>杠铃卧推</span><label>当前<input type="number" name="benchCurrent" min="1" step="0.1" required></label><label>目标<input type="number" name="benchTarget" min="1" step="0.1" required></label></div>
@@ -181,11 +181,11 @@ plan: true
 
         <div class="plan-form-section">
           <div class="plan-form-section-heading">
-            <div><h3>节假日覆盖</h3><p>仅在官方年度数据不适用时手动覆盖。</p></div>
+            <div><h3>节假日覆盖</h3><p>假期照常训练时，把周模板对应日期设为训练日。</p></div>
           </div>
           <div class="plan-holiday-editor">
             <label>日期<input type="date" data-plan-holiday-date></label>
-            <label>类型<select data-plan-holiday-type><option value="off">休息日</option><option value="work">调休工作日</option></select></label>
+            <label>类型<select data-plan-holiday-type><option value="off">休息日</option><option value="work">训练日（覆盖休假）</option></select></label>
             <button class="plan-button" type="button" data-plan-add-holiday>添加</button>
           </div>
           <div class="plan-holiday-overrides" data-plan-holiday-overrides></div>

@@ -49,6 +49,16 @@ function configuredState(start, end) {
   assert(!plan.sessions.some((session) => session.holiday && session.holiday.kind === "makeup"));
 }());
 
+(function customTrainingDayRestoresTheWeeklyTemplateDuringAnOfficialHoliday() {
+  const state = configuredState("2026-09-01", "2026-10-20");
+  state.activeCycle.holidayOverrides = { "2026-10-02": "work" };
+  const plan = PlanCore.generate(state, [holidays2026]);
+  const session = plan.sessions.find((candidate) => candidate.date === "2026-10-02");
+  assert(session, "an explicit training-day override must restore the holiday workout");
+  assert.strictEqual(session.type, "push-volume");
+  assert.strictEqual(session.sourceDate, "2026-10-02");
+}());
+
 (function manualMoveOfOfficialHolidaySessionStillApplies() {
   const state = configuredState("2026-09-01", "2026-10-20");
   const sessionId = state.activeCycle.id + ":push-volume:2026-10-02";
