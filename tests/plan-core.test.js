@@ -48,15 +48,15 @@ function configuredState(start, end) {
   const state = configuredState("2026-08-03", "2026-10-31");
   state.activeCycle.priorities = ["bench", "squat"];
   const sessionId = state.activeCycle.id + ":push-volume:2026-09-18";
-  const original = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-22" })
+  const original = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-17" })
     .sessions.find((candidate) => candidate.id === sessionId);
-  state.activeCycle.sessionOverrides[sessionId] = { action: "move", date: "2026-09-22" };
+  state.activeCycle.sessionOverrides[sessionId] = { action: "move", date: "2026-09-17" };
 
-  const session = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-22" })
+  const session = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-17" })
     .sessions.find((candidate) => candidate.id === sessionId);
   const accessoryNames = session.workout.accessories.map((accessory) => accessory.name);
 
-  assert.strictEqual(session.date, "2026-09-22");
+  assert.strictEqual(session.date, "2026-09-17");
   assert.strictEqual(session.type, "push-volume");
   assert.strictEqual(session.workout.mainExercise, "杠铃卧推");
   assert.deepStrictEqual(accessoryNames, [
@@ -128,15 +128,10 @@ function configuredState(start, end) {
   assert.strictEqual(pull.workout.workSets[0].loadKg % 2.5, 0);
 }());
 
-(function e1rmEstimationAndAdjustment() {
+(function e1rmEstimationRemainsAvailableWithoutAutomaticAdjustment() {
   const estimate = PlanCore.estimateOneRepMax(100, 1, 8);
   assert(Math.abs(estimate - 108.46) < 0.1);
-  assert.deepStrictEqual(
-    PlanCore.suggestAdjustment(9, 8, true),
-    { percentage: -0.025, reason: "实际 RPE 高于目标" }
-  );
-  assert.strictEqual(PlanCore.suggestAdjustment(7, 8, true).percentage, 0.025);
-  assert.strictEqual(PlanCore.suggestAdjustment(8, 8, false).percentage, -0.05);
+  assert.strictEqual(PlanCore.suggestAdjustment, undefined);
 }());
 
 (function publicSnapshotRemovesPrivateFields() {
@@ -346,26 +341,24 @@ function configuredState(start, end) {
   assert.deepStrictEqual(PlanCore.filterLegacyOfficialMakeups([legacyPlanned], []), [legacyPlanned]);
 }());
 
-(function nextSessionReceivesOneAdaptiveAdjustment() {
+(function highRpeDoesNotAutomaticallyAdjustTheNextSession() {
   let state = configuredState("2026-08-03", "2026-08-30");
-  let plan = PlanCore.generate(state, [holidays2026]);
-  const completed = plan.sessions.find((session) => session.type === "push-strength");
-  state = PlanCore.recordSession(state, completed, {
+  const original = PlanCore.generate(state, [holidays2026]);
+  const completed = original.sessions.find((session) => session.type === "push-strength");
+  state = PlanCore.recordSession(original.state, completed, {
     status: "completed",
     mainSets: [{ weight: 92.5, reps: 1, rpe: 9, completed: true }]
   });
-  plan = PlanCore.generate(state, [holidays2026]);
-  const adjusted = plan.sessions.find((session) =>
-    session.date > completed.date &&
-    session.workout.liftKey === "bench" &&
-    session.status === "planned"
+  const plan = PlanCore.generate(state, [holidays2026]);
+  const next = plan.sessions.find((session) =>
+    session.date > completed.date && session.workout.liftKey === "bench" && session.status === "planned"
   );
-  assert.strictEqual(adjusted.workout.adjustment.percentage, -0.025);
-  assert.strictEqual(adjusted.workout.adjustment.reason, "实际 RPE 超出对应组目标");
-  assert(adjusted.workout.warmups.every((set) => set.loadKg < adjusted.workout.workSets[0].loadKg));
+  assert.strictEqual(next.workout.adjustment, undefined);
+  assert.deepStrictEqual(next.workout, original.sessions.find((session) => session.id === next.id).workout);
+  assert(next.workout.warmups.every((set) => set.loadKg < next.workout.workSets[0].loadKg));
 }());
 
-(function accessoriesUseDoubleProgression() {
+(function accessoryRecordsDoNotAutomaticallyRewriteLaterPrescriptions() {
   let state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
   const completed = plan.sessions.find((session) => session.type === "push-strength");
@@ -379,8 +372,11 @@ function configuredState(start, end) {
     session.date > completed.date && session.type === "push-strength"
   );
   const press = nextPush.workout.accessories.find((accessory) => accessory.name === "站姿推举");
-  assert.strictEqual(press.loadKg, 42.5);
-  assert.strictEqual(press.progression, "全组达到上限且余力足够，下次加重");
+  assert.strictEqual(press.loadKg, undefined);
+  assert.strictEqual(press.progression, undefined);
+  assert.deepStrictEqual(state.logs[completed.id].accessories, [{
+    name: "站姿推举", weight: 40, reps: 8, sets: 2, rpe: 7.5, qualityConfirmed: true, completed: true
+  }]);
 }());
 
 (function icsContainsTimedEventsAndAlarm() {
@@ -452,7 +448,7 @@ function configuredState(start, end) {
   assert.strictEqual(originalSnapshotDate, "2026-08-24");
   assert.strictEqual(state.logs[source.id].sessionSnapshot.date, "2026-08-24", "input log must stay immutable");
   assert.strictEqual(movedState.logs[source.id].sessionSnapshot.date, "2026-08-27");
-  assert.strictEqual(movedState.activeCycle.loadAdjustments.bench.afterDate, "2026-08-27");
+  assert.strictEqual(movedState.activeCycle.loadAdjustments.bench, undefined);
   assert.strictEqual(moved.date, "2026-08-27");
   assert.strictEqual(moved.status, "completed");
 }());

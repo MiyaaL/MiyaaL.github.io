@@ -12,7 +12,6 @@
 
   var DAY_MS = 24 * 60 * 60 * 1000;
   var STATE_SCHEMA_VERSION = 3;
-  var RECOVERY_PHASES = ["deload", "taper", "return"];
   var DEFAULT_TEMPLATE = [
     { id: "push-strength", weekday: 1, type: "push-strength", label: "推 · 强度" },
     { id: "pull", weekday: 2, type: "pull", label: "拉" },
@@ -509,21 +508,12 @@
     return state;
   }
 
-  // These are planning heuristics, not promises of physiological growth.
-  // Measured capacity only changes from evidence. Goals never stand in for
-  // demonstrated capacity when prescribing ordinary or recovery work.
+  // Measured capacity only changes from evidence; the fixed linear training
+  // reference is a separate planning value and never updates current1rm.
   function median(values) {
     var sorted = values.slice().sort(function (a, b) { return a - b; });
     var middle = Math.floor(sorted.length / 2);
     return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-  }
-
-  function isRecoveryPhase(phaseKey) {
-    return RECOVERY_PHASES.indexOf(phaseKey) !== -1;
-  }
-
-  function suppressesLoadIncrease(phaseKey) {
-    return isRecoveryPhase(phaseKey) || phaseKey === "assessment";
   }
 
   function cycleLogs(state, onOrBefore) {
@@ -597,103 +587,34 @@
       (logs.length ? logs[logs.length - 1].sessionSnapshot.date : state.activeCycle.startDate);
   }
 
-  function readyForTarget(state, history, key, asOfDate) {
-    var lift = state.activeCycle.lifts[key];
-    var offset = key === "pullup" ? latestBodyweight(state.activeCycle, asOfDate) : 0;
-    if (offset == null || lift.target1rm == null || Number(lift.current1rm) + offset < (Number(lift.target1rm) + offset) * 0.98) return false;
-    var entries = history[key].filter(function (entry) {
-      return entry.date >= addDays(asOfDate, -28) && (!lift.assessedOn || entry.date > lift.assessedOn);
-    });
-    var logs = cycleLogs(state, asOfDate).filter(function (log) {
-      return log.sessionSnapshot.workout && log.sessionSnapshot.workout.liftKey === key && (log.mainSets || []).length;
-    });
-    var latest = logs[logs.length - 1];
-    if (latest && latest.mainSets.some(function (set) { return set.completed === false; })) return false;
-    return entries.length >= 2 && entries.slice(-2).every(function (entry) {
-      return entry.value + offset >= (Number(lift.target1rm) + offset) * 0.98;
-    });
-  }
-
-  function adaptCycle(state, history, asOfDate) {
+  function applyCycleDates(state, asOfDate) {
     var cycle = state.activeCycle;
     if (cycle.status === "archived" || cycle.status === "completed") return;
     var reference = cycle.requestedEndDate;
-    var anchor = asOfDate < cycle.startDate ? cycle.startDate : asOfDate;
-    var bodyweight = latestBodyweight(cycle, anchor);
-    var readiness = {};
-    var neededWeeks = 0;
-    var configuredPriorities = 0;
-    var allReady = true;
-    cycle.priorities.forEach(function (key) {
-      var lift = cycle.lifts[key];
-      var offset = key === "pullup" ? bodyweight : 0;
-      if (offset == null || lift.current1rm == null || lift.target1rm == null) {
-        readiness[key] = false;
-        allReady = false;
-        return;
-      }
-      var current = Number(lift.current1rm) + offset;
-      var target = Number(lift.target1rm) + offset;
-      if (current <= 0 || target <= 0) {
-        readiness[key] = false;
-        allReady = false;
-        return;
-      }
-      configuredPriorities += 1;
-      var entries = history[key].filter(function (entry) { return entry.date >= addDays(anchor, -28); });
-      var ready = readyForTarget(state, history, key, anchor);
-      readiness[key] = ready;
-      allReady = allReady && ready;
-      var rate = 0.005;
-      if (entries.length >= 2) {
-        var first = entries[0], last = entries[entries.length - 1];
-        var weeks = daysBetween(first.date, last.date) / 7;
-        if (weeks >= 2) rate = clamp(Math.pow((last.value + offset) / (first.value + offset), 1 / weeks) - 1, 0.0025, 0.01);
-      }
-      neededWeeks = Math.max(neededWeeks, ready ? 2 : Math.max(2, Math.ceil(Math.log(Math.max(1, target / current)) / Math.log(1 + rate)) + 2));
-    });
-    var projected = configuredPriorities
-      ? addDays(anchor, Math.min(52, neededWeeks) * 7)
-      : null;
-    var end = reference;
     var adjustmentDays = cycle.scheduleAdjustments.reduce(function (total, entry) {
       return total + entry.days;
     }, 0);
-    end = addDays(end, adjustmentDays);
-    // Never move a recorded workout outside its cycle or rewrite its date.
+    var end = addDays(reference, adjustmentDays);
+    // Retain recorded sessions when importing older manually shifted cycles.
     cycleLogs(state).forEach(function (log) {
-      if (log.status === "completed" && log.sessionSnapshot.date > end) {
-        end = log.sessionSnapshot.date;
-      }
+      if (log.status === "completed" && log.sessionSnapshot.date > end) end = log.sessionSnapshot.date;
     });
-    var shift = daysBetween(reference, end);
     cycle.endDate = end;
-    var reason = !configuredPriorities
-      ? "优先目标尚未完整配置；计划仍按设定结束日期执行。"
-      : (allReady
-        ? "近期有效表现支持目标测试；计划仍按设定结束日期执行。"
-        : (projected > reference
-          ? "按当前能力估算，目标可能无法在设定周期内完成；计划仍按设定结束日期执行，不会自动延长。"
-          : "计划按设定结束日期执行；每两周结合有效训练表现复评。"));
-    if (neededWeeks > 52) {
-      reason += "目标跨度较大，当前仅安排阶段评估，尚不预测达标日期。";
-    }
+    var reason = "按日历周执行三周递进、一周减量；训练参考重量线性朝目标推进，实测能力单独记录。";
     if (adjustmentDays) {
       reason += adjustmentDays > 0
         ? " 已手动顺延 " + adjustmentDays + " 天。"
         : " 已手动提前 " + Math.abs(adjustmentDays) + " 天。";
     }
     cycle.schedule = {
-      assessedAt: anchor,
-      shiftDays: shift,
-      readiness: readiness,
-      provisional: !allReady,
+      assessedAt: asOfDate < cycle.startDate ? cycle.startDate : asOfDate,
+      shiftDays: daysBetween(reference, end),
       reason: reason
     };
   }
 
   function accessoriesFor(liftKey, type, phase) {
-    if (phase.key === "test" || phase.key === "assessment" || isRecoveryPhase(phase.key)) return [];
+    if (phase.key === "test" || phase.key === "deload") return [];
     var templates = ACCESSORIES_BY_LIFT[liftKey] || {};
     var items = deepClone(templates[type] || []);
     items.forEach(function (item) { item.liftKey = liftKey; });
@@ -889,38 +810,37 @@
     return "bench";
   }
 
-  function phaseFor(session, cycle, totalWeeks, asOfDate) {
-    var phaseDate = session.programDate || session.date;
-    var weekIndex = Math.max(0, Math.floor(daysBetween(cycle.startDate, phaseDate) / 7));
-    if (session.isReturn) {
-      return { key: "return", label: "恢复训练", weekIndex: weekIndex, blockWeek: null };
-    }
-    if (session.isTest || session.isAssessment) {
-      var plannedTest = daysBetween(asOfDate, session.date) > 21;
-      return {
-        key: session.isTest || plannedTest ? "test" : "assessment",
-        label: session.isTest ? "目标测试" : (plannedTest ? "目标测试 · 计划" : "阶段评估 · 未就绪"),
-        weekIndex: weekIndex, blockWeek: null
-      };
-    }
-    var daysToTest = session.testDate ? daysBetween(session.date, session.testDate) : null;
-    if (daysToTest != null && daysToTest > 0 && daysToTest <= 7) {
-      return { key: "taper", label: "减量准备", weekIndex: weekIndex, blockWeek: null };
-    }
-    var blockWeek = session.trainingWeek == null ? weekIndex % 4 : session.trainingWeek % 4;
-    if (blockWeek === 3) {
-      return { key: "deload", label: "减量周", weekIndex: weekIndex, blockWeek: blockWeek };
+  function progressionAnchor(cycle) {
+    var progression = cycle.progression || {};
+    return isIsoDate(progression.anchorDate) ? progression.anchorDate : cycle.startDate;
+  }
+
+  function phaseFor(session, cycle) {
+    var weekIndex = Math.floor(daysBetween(progressionAnchor(cycle), session.date) / 7);
+    var blockWeek = ((weekIndex % 4) + 4) % 4;
+    if (session.isTest) {
+      return { key: "test", label: "目标测试", weekIndex: weekIndex, blockWeek: blockWeek };
     }
     return {
-      key: "load-" + (blockWeek + 1),
-      label: "递进第 " + (blockWeek + 1) + " 周",
+      key: blockWeek === 3 ? "deload" : "load-" + (blockWeek + 1),
+      label: blockWeek === 3 ? "减量周" : "递进第 " + (blockWeek + 1) + " 周",
       weekIndex: weekIndex,
       blockWeek: blockWeek
     };
   }
 
-  function programmedOneRepMax(lift) {
-    return asNumber(lift.current1rm, 0);
+  function programmedOneRepMax(lift, liftKey, cycle, date) {
+    var progression = cycle.progression || {};
+    var anchors = progression.anchor1rm || {};
+    var initial = anchors[liftKey] == null
+      ? asNumber(lift.baseline1rm, asNumber(lift.current1rm, 0))
+      : asNumber(anchors[liftKey], asNumber(lift.baseline1rm, 0));
+    var target = asNumber(lift.target1rm, initial);
+    var anchorDate = progressionAnchor(cycle);
+    var steps = Math.max(0, Math.floor(daysBetween(anchorDate, cycle.endDate) / 7));
+    var week = Math.max(0, Math.floor(daysBetween(anchorDate, date) / 7));
+    var progress = steps > 0 ? clamp(week / steps, 0, 1) : 0;
+    return initial + (target - initial) * progress;
   }
 
   function makeWorkSet(label, sets, reps, loadKg, rpe, rest, percentage) {
@@ -944,7 +864,6 @@
   }
 
   function workingSets(type, liftKey, phase, oneRepMax, targetOneRepMax, bodyweight, preferences) {
-    var strength = type === "push-strength" || type === "squat";
     var load = function (percentage, useTarget) {
       return prescribedLoad(
         liftKey,
@@ -963,49 +882,36 @@
       ];
       return attempts.filter(function (set, index) { return !index || set.loadKg > attempts[index - 1].loadKg; });
     }
-    if (phase.key === "assessment") {
-      return [makeWorkSet("评估组 · 不追求极限", 2, 3, load(0.8), 7, "3 分钟", 0.8)];
-    }
-    if (phase.key === "return") {
-      return [makeWorkSet("恢复组 · 热身后可再下调", 2, 5, load(0.65), 6, "3 分钟", 0.65)];
-    }
-
-    if (phase.key === "taper") {
-      if (type === "push-volume") {
-        return [makeWorkSet("减量组", 3, 3, load(0.6), 6, "2 分钟", 0.6)];
-      }
-      return [makeWorkSet(strength ? "校准单次" : "校准三次", 1, strength ? 1 : 3, load(0.85), 7, "3 分钟", 0.85)];
-    }
-
     if (phase.key === "deload") {
-      return [makeWorkSet("减量组", 3, 5, load(0.625), 6, "2 分钟", 0.625)];
+      var percentage = liftKey === "pullup" ? 0.7 : 0.625;
+      return [makeWorkSet("减量组", 3, liftKey === "pullup" ? 4 : 5, load(percentage), 6, "2–3 分钟", percentage)];
     }
 
     var week = phase.blockWeek;
     if (type === "push-volume") {
       var volume = [
-        { sets: 4, reps: 8, percentage: 0.65, rpe: 7 },
-        { sets: 5, reps: 6, percentage: 0.7, rpe: 7.5 },
-        { sets: 5, reps: 5, percentage: 0.75, rpe: 8 }
+        { sets: 4, reps: 6, percentage: 0.7, rpe: 7 },
+        { sets: 4, reps: 5, percentage: 0.725, rpe: 7.5 },
+        { sets: 4, reps: 4, percentage: 0.75, rpe: 8 }
       ][week];
       return [makeWorkSet("容量组", volume.sets, volume.reps, load(volume.percentage), volume.rpe, "2–3 分钟", volume.percentage)];
     }
 
     if (type === "pull") {
       var pullMain = [
-        { sets: 4, reps: 6, percentage: 0.7 },
-        { sets: 5, reps: 5, percentage: 0.75 },
-        { sets: 5, reps: 4, percentage: 0.8 }
+        { sets: 4, reps: 4, percentage: 0.825 },
+        { sets: 4, reps: 3, percentage: 0.85 },
+        { sets: 4, reps: 2, percentage: 0.875 }
       ][week];
       return [makeWorkSet("主训练组", pullMain.sets, pullMain.reps, load(pullMain.percentage), 8, "2–3 分钟", pullMain.percentage)];
     }
 
     var main = [
-      { sets: 4, reps: 5, percentage: 0.725 },
-      { sets: 4, reps: 4, percentage: 0.775 },
-      { sets: 5, reps: 3, percentage: 0.825 }
+      { sets: 4, reps: 5, percentage: 0.8, rpe: 8 },
+      { sets: 4, reps: 4, percentage: 0.825, rpe: 8 },
+      { sets: 4, reps: 3, percentage: 0.85, rpe: 8.5 }
     ][week];
-    return [makeWorkSet("主训练组", main.sets, main.reps, load(main.percentage), 8, "2–3 分钟", main.percentage)];
+    return [makeWorkSet("主训练组", main.sets, main.reps, load(main.percentage), main.rpe, "3–5 分钟", main.percentage)];
   }
 
   function warmupsFor(liftKey, workSets, preferences) {
@@ -1055,7 +961,7 @@
     });
   }
 
-  function workoutFor(session, state, phase, totalWeeks) {
+  function workoutFor(session, state, phase) {
     var cycle = state.activeCycle;
     var preferences = state.preferences;
     var liftKey = liftKeyForType(session.type);
@@ -1076,7 +982,7 @@
       };
     }
 
-    var planned = programmedOneRepMax(lift);
+    var planned = programmedOneRepMax(lift, liftKey, cycle, session.date);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -1094,27 +1000,22 @@
       planned1rm: Math.round(planned * 10) / 10,
       guidance: phase.key === "test"
         ? "计划按 90% → 95% → 目标逐级尝试，临近测试须确认近期表现；热身吃力时降重，任何卡顿或失败都结束加重。使用保护杆或可靠保护者。"
-        : (phase.key === "assessment" ? "近期表现尚不支持目标测试，先按当前能力完成评估组；目标保持不变，待有效记录确认后再尝试。"
-          : "训练重量依据当前估算 1RM，能力只由实际记录更新；目标 RPE 是上限，热身吃力时降重，未恢复时延长组间休息。"),
+        : "训练参考重量按周线性朝目标推进，三周递进后仅在第四周减量；计划参考值不代表实测能力。目标 RPE 是执行上限，热身吃力时现场调整并记录，系统不会自动改写后续重量。",
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
       accessories: accessoriesFor(liftKey, session.type, phase)
     };
   }
 
-  function markTestSessions(sessions, state, history, asOfDate) {
+  function markTestSessions(sessions) {
     ["bench", "pullup", "squat"].forEach(function (key) {
       var candidates = sessions.filter(function (session) {
         return liftKeyForType(session.type) === key;
       });
       if (!candidates.length) return;
       var last = candidates[candidates.length - 1];
-      candidates.forEach(function (session) { session.testDate = last.date; });
-      var ready = readyForTarget(state, history, key, asOfDate);
       last.label = LIFT_LABELS[key] + " · 周期目标";
-      // Goal attempts more than 21 days away are provisional, not confirmed tests.
-      last.isTest = ready && daysBetween(asOfDate, last.date) <= 21 && last.date >= asOfDate;
-      last.isAssessment = !last.isTest;
+      last.isTest = true;
     });
   }
 
@@ -1130,100 +1031,12 @@
     return warnings;
   }
 
-  function applyNextAdjustments(sessions, state) {
-    var cycle = state.activeCycle;
-    var bodyweight = latestBodyweight(cycle) || 0;
-    Object.keys(cycle.loadAdjustments || {}).forEach(function (liftKey) {
-      var adjustment = cycle.loadAdjustments[liftKey];
-      var candidate = sessions.filter(function (session) {
-        return session.status === "planned" &&
-          (!cycle.replannedSchedule || session.date >= cycle.replannedSchedule.fromDate) &&
-          session.workout &&
-          session.workout.liftKey === liftKey &&
-          (adjustment.percentage < 0 || /^load-/.test(session.phase.key)) &&
-          session.date > adjustment.afterDate;
-      }).sort(byDate)[0];
-      if (!candidate || !adjustment.percentage) {
-        return;
-      }
-      var increment = liftKey === "pullup"
-        ? state.preferences.pullupIncrement
-        : state.preferences.barbellIncrement;
-      candidate.workout.workSets.forEach(function (set) {
-        if (liftKey === "pullup") {
-          set.loadKg = roundLoad(
-            (bodyweight + set.loadKg) * (1 + adjustment.percentage) - bodyweight,
-            increment
-          );
-        } else {
-          set.loadKg = Math.max(20, roundLoad(set.loadKg * (1 + adjustment.percentage), increment));
-        }
-      });
-      candidate.workout.warmups = warmupsFor(liftKey, candidate.workout.workSets, state.preferences);
-      candidate.workout.adjustment = deepClone(adjustment);
-    });
-  }
-
-  function repetitionCeiling(value) {
-    var matches = String(value || "").match(/\d+/g);
-    if (!matches || !matches.length) {
-      return null;
-    }
-    return Math.max.apply(Math, matches.map(Number));
-  }
-
-  function applyAccessoryProgression(sessions, state) {
-    var history = Object.keys(state.logs).map(function (id) {
-      return state.logs[id];
-    }).filter(function (log) {
-      return log.status === "completed" &&
-        log.sessionSnapshot &&
-        Array.isArray(log.accessories);
-    }).sort(function (left, right) {
-      return left.sessionSnapshot.date.localeCompare(right.sessionSnapshot.date);
-    });
-
-    sessions.forEach(function (session) {
-      if (session.status !== "planned" || !session.workout || !session.workout.accessories ||
-          (state.activeCycle.replannedSchedule && session.date < state.activeCycle.replannedSchedule.fromDate)) {
-        return;
-      }
-      session.workout.accessories.forEach(function (accessory) {
-        var previous = null;
-        history.forEach(function (log) {
-          if (log.sessionSnapshot.date >= session.date) {
-            return;
-          }
-          var match = log.accessories.find(function (entry) {
-            return entry.name === accessory.name && entry.completed !== false;
-          });
-          if (match) {
-            previous = match;
-          }
-        });
-        if (!previous || asNumber(previous.weight, 0) <= 0) {
-          return;
-        }
-        var ceiling = repetitionCeiling(accessory.reps);
-        var qualityConfirmed = previous.qualityConfirmed === true || previous.allSetsCompleted === true;
-        var qualified = qualityConfirmed &&
-          Number(previous.sets) >= accessory.sets && ceiling && Number(previous.reps) >= ceiling &&
-          previous.rpe != null && Number(previous.rpe) <= accessory.rpe;
-        var weight = Number(previous.weight);
-        var step = Number(previous.incrementKg) > 0 ? Number(previous.incrementKg) : state.preferences.accessoryIncrement;
-        var increase = qualified && step / weight <= 0.1 ? step : 0;
-        accessory.loadKg = Math.round((weight + increase) * 10) / 10;
-        accessory.progression = increase > 0 ? "全组达到上限且余力足够，下次加重" : "保持重量；全组达标后再按可用最小增量加重";
-      });
-    });
-  }
-
   function generate(inputState, holidayCalendars, options) {
     var state = normalizeState(inputState);
     var cycle = state.activeCycle;
     var asOfDate = planningDate(state, options);
-    var history = refreshPerformance(state, asOfDate);
-    if (cycle.startDate && cycle.endDate && cycle.endDate >= cycle.startDate) adaptCycle(state, history, asOfDate);
+    refreshPerformance(state, asOfDate);
+    if (cycle.startDate && cycle.endDate && cycle.endDate >= cycle.startDate) applyCycleDates(state, asOfDate);
     var warnings = [];
     if (!cycle.startDate || !cycle.endDate || cycle.endDate < cycle.startDate) {
       return { state: state, cycle: cycle, sessions: [], warnings: ["计划起止日期无效。"], totalWeeks: 0 };
@@ -1258,56 +1071,27 @@
       sessionMap[id].status = log.status;
     });
     sessions.sort(byDate);
-    markTestSessions(sessions, state, history, asOfDate);
+    markTestSessions(sessions);
 
     var adjustmentDays = (cycle.scheduleAdjustments || []).reduce(function (total, entry) {
       return total + entry.days;
     }, 0);
     var programEndDate = addDays(cycle.endDate, -adjustmentDays);
     var totalWeeks = Math.max(1, Math.ceil((daysBetween(cycle.startDate, programEndDate) + 1) / 7));
-    var previousDates = {};
-    var trainingWeeks = {};
     sessions.forEach(function (session) {
       var log = state.logs[session.id];
-      var key = liftKeyForType(session.type);
-      var countsAsTraining = log ? log.status === "completed" : session.date >= asOfDate;
-      if (countsAsTraining) {
-        if (previousDates[key] && daysBetween(previousDates[key], session.date) > 10) {
-          session.isReturn = true;
-          session.isTest = false;
-          trainingWeeks[session.type] = 0;
-        }
-        session.trainingWeek = trainingWeeks[session.type] || 0;
-        trainingWeeks[session.type] = session.isReturn ? 0 : session.trainingWeek + 1;
-        previousDates[key] = session.date;
-        // A replan starts from the work actually performed, including a recent
-        // recovery session, rather than replaying a wave from sparse log counts.
-        if (cycle.replannedSchedule && log && log.status === "completed" &&
-            session.date < cycle.replannedSchedule.fromDate) {
-          var recordedPhase = log.sessionSnapshot.phase || {};
-          if (recordedPhase.key === "deload" || recordedPhase.key === "return") {
-            Object.keys(TYPE_LABELS).forEach(function (type) {
-              if (liftKeyForType(type) === key) trainingWeeks[type] = 0;
-            });
-          } else if (/^load-[123]$/.test(recordedPhase.key)) {
-            trainingWeeks[session.type] = Number(recordedPhase.key.slice(-1));
-          }
-        }
-      }
       if (log && log.sessionSnapshot) {
         var frozen = deepClone(log.sessionSnapshot);
         Object.keys(frozen).forEach(function (key) {
           session[key] = frozen[key];
         });
       } else if (!(cycle.replannedSchedule && session.date < cycle.replannedSchedule.fromDate && session.workout)) {
-        session.phase = phaseFor(session, cycle, totalWeeks, asOfDate);
-        session.workout = workoutFor(session, state, session.phase, totalWeeks);
+        session.phase = phaseFor(session, cycle);
+        session.workout = workoutFor(session, state, session.phase);
       }
       session.status = log && log.status ? log.status : "planned";
       delete session.programDate;
     });
-    applyNextAdjustments(sessions, state);
-    applyAccessoryProgression(sessions, state);
 
     warnings = goalWarnings(state, totalWeeks).concat(warnings);
     for (var year = Number(cycle.startDate.slice(0, 4)); year <= Number(cycle.endDate.slice(0, 4)); year += 1) {
@@ -1446,14 +1230,7 @@
 
     var log = state.logs[source.id];
     if (log && log.sessionSnapshot) {
-      var previousDate = log.sessionSnapshot.date;
       log.sessionSnapshot.date = date;
-      var liftKey = log.sessionSnapshot.workout && log.sessionSnapshot.workout.liftKey;
-      var adjustment = liftKey && state.activeCycle.loadAdjustments[liftKey];
-      if (adjustment && adjustment.afterDate === previousDate &&
-          (!adjustment.updatedAt || !log.completedAt || adjustment.updatedAt === log.completedAt)) {
-        adjustment.afterDate = date;
-      }
     }
 
     return state;
@@ -1555,20 +1332,6 @@
     return load / row[repetitions - 1];
   }
 
-  function suggestAdjustment(actualRpe, targetRpe, completed) {
-    if (!completed) {
-      return { percentage: -0.05, reason: "未完成规定次数" };
-    }
-    var difference = asNumber(actualRpe, targetRpe) - asNumber(targetRpe, 8);
-    if (difference >= 1) {
-      return { percentage: -0.025, reason: "实际 RPE 高于目标" };
-    }
-    if (difference <= -1) {
-      return { percentage: 0.025, reason: "实际 RPE 低于目标" };
-    }
-    return { percentage: 0, reason: "表现符合计划" };
-  }
-
   function restoreSkippedSession(inputState, sessionId) {
     var state = normalizeState(inputState);
     var id = String(sessionId || "");
@@ -1638,28 +1401,6 @@
     };
     state.logs[session.id] = nextLog;
 
-    var liftKey = session.workout && session.workout.liftKey;
-    var previousAdjustment = state.activeCycle.loadAdjustments[liftKey];
-    if (liftKey && nextLog.mainSets.length && (!previousAdjustment || session.date >= previousAdjustment.afterDate)) {
-      var targets = [];
-      (session.workout.workSets || []).forEach(function (set) {
-        for (var i = 0; i < set.sets; i += 1) targets.push(set.rpe);
-      });
-      var differences = nextLog.mainSets.map(function (set, index) {
-        return set.rpe == null || targets[index] == null ? null : set.rpe - targets[index];
-      });
-      var failed = nextLog.mainSets.some(function (set) { return !set.completed; });
-      var hard = differences.some(function (value) { return value != null && value >= 1; });
-      var easy = differences.length && differences.every(function (value) { return value != null && value <= -1; });
-      var light = suppressesLoadIncrease(session.phase && session.phase.key);
-      var percentage = failed ? -0.05 : (hard ? -0.025 : (easy && !light ? 0.025 : 0));
-      state.activeCycle.loadAdjustments[liftKey] = {
-        percentage: percentage,
-        reason: failed ? "未完成规定次数" : (hard ? "实际 RPE 超出对应组目标" : (easy && !light ? "各组均有充足余力" : "保持当前负荷")),
-        afterDate: session.date,
-        updatedAt: nextLog.completedAt
-      };
-    }
     refreshPerformance(state);
 
     return state;
@@ -1785,6 +1526,7 @@
         startDate: cycle.startDate,
         endDate: cycle.endDate,
         requestedEndDate: cycle.requestedEndDate,
+        scheduleRevision: typeof cycle.scheduleRevision === "string" ? cycle.scheduleRevision : null,
         priorities: deepClone(cycle.priorities),
         schedule: deepClone(cycle.schedule),
         lifts: {
@@ -1930,7 +1672,6 @@
     restoreSkippedLearningSession: restoreSkippedLearningSession,
     recordBodyweight: recordBodyweight,
     estimateOneRepMax: estimateOneRepMax,
-    suggestAdjustment: suggestAdjustment,
     createPublicSnapshot: createPublicSnapshot,
     createLearningPublicSnapshot: createLearningPublicSnapshot,
     filterLegacyOfficialMakeups: filterLegacyOfficialMakeups,

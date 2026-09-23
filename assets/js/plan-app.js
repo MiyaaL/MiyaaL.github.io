@@ -80,8 +80,15 @@
     redirectTo: window.location.origin + "/plan/"
   };
   var store = window.PlanStore.createSupabaseAdapter(config);
+  var scheduleRevision = null;
+  try {
+    scheduleRevision = JSON.parse(app.dataset.scheduleRevision || "null");
+  } catch (_) {
+    // A missing or malformed rollout configuration never changes saved plans.
+  }
   var holidayCalendars = [];
   var privateState = null;
+  var ownerLoadPromise = null;
   var publicSnapshot = null;
   var previewState = null;
   var isOwner = false;
@@ -196,10 +203,77 @@
     render();
     if (result.error) {
       showMessage("网络不可用，正在显示最近一次公开缓存。", "offline");
+    } else if (publicSnapshot && needsScheduleRevision(publicSnapshot.cycle)) {
+      showMessage("当前公开日历仍是旧计划；本人登录后会自动应用并同步已确认的三周递进、一周减量计划。", "notice");
     }
   }
 
-  async function loadOwnerPlan() {
+  function needsScheduleRevision(cycle) {
+    if (!scheduleRevision || !cycle || !scheduleRevision.id ||
+        cycle.id !== scheduleRevision.cycleId || cycle.status !== "active" ||
+        cycle.scheduleRevision === scheduleRevision.id ||
+        cycle.requestedEndDate !== scheduleRevision.endDate ||
+        todayInShanghai() > scheduleRevision.endDate) return false;
+    return Object.keys(scheduleRevision.targets || {}).every(function (key) {
+      return cycle.lifts && cycle.lifts[key] && Number(cycle.lifts[key].target1rm) === Number(scheduleRevision.targets[key]);
+    });
+  }
+
+  async function applyScheduleRevision() {
+    var today = todayInShanghai();
+    var fromDate = today > scheduleRevision.fromDate ? today : scheduleRevision.fromDate;
+    for (var year = Number(fromDate.slice(0, 4)); year <= Number(scheduleRevision.endDate.slice(0, 4)); year += 1) {
+      if (!holidayCalendars.some(function (calendar) { return Number(calendar.year) === year; })) {
+        showMessage("节假日日历尚未载入，线性计划尚未同步。请刷新重试；原计划与记录已保留。", "error");
+        return false;
+      }
+    }
+    try {
+      var candidate = core.replanRemaining(privateState, holidayCalendars, {
+        fromDate: fromDate,
+        endDate: scheduleRevision.endDate,
+        asOfDate: today,
+        trainOnHolidays: true
+      });
+      var cycle = candidate.activeCycle;
+      // Keep earlier dates, but replace any pending legacy recovery prescription
+      // from today onward before the revision is marked as applied.
+      cycle.replannedSchedule.retainedSessions.forEach(function (session) {
+        if (session.date < today || candidate.logs[session.id]) return;
+        ["phase", "workout", "isReturn", "trainingWeek", "testReady", "testProvisional", "isTest"].forEach(function (key) {
+          delete session[key];
+        });
+      });
+      cycle.progression = {
+        kind: "linear-wave",
+        anchorDate: scheduleRevision.anchorDate,
+        anchor1rm: {}
+      };
+      Object.keys(cycle.lifts).forEach(function (key) {
+        var current = cycle.lifts[key].current1rm;
+        if (current === null || current === "" || !Number.isFinite(Number(current))) {
+          throw new Error("缺少 " + key + " 的有效当前能力值");
+        }
+        cycle.progression.anchor1rm[key] = Number(current);
+      });
+      cycle.scheduleRevision = scheduleRevision.id;
+      return await persist("线性计划已自动同步：三周递进、一周减量，截止日期 " + scheduleRevision.endDate + "。", candidate);
+    } catch (error) {
+      showMessage("线性计划未能自动同步，原计划与记录已保留：" + error.message, "error");
+      return false;
+    }
+  }
+
+  function loadOwnerPlan() {
+    if (!ownerLoadPromise) {
+      ownerLoadPromise = loadOwnerPlanOnce().finally(function () {
+        ownerLoadPromise = null;
+      });
+    }
+    return ownerLoadPromise;
+  }
+
+  async function loadOwnerPlanOnce() {
     try {
       var record = await store.loadPrivate();
       privateState = record && record.state
@@ -218,6 +292,10 @@
       publicSnapshot = null;
       previewState = null;
       viewingChartArchive = -1;
+      if (record && needsScheduleRevision(privateState.activeCycle)) {
+        var applied = await applyScheduleRevision();
+        if (applied === true) return;
+      }
       render();
       if (!record) {
         openSettings(false);
@@ -737,7 +815,10 @@
       return "待设置重量";
     }
     var goalAttempt = session.phase && session.phase.key === "test";
-    var set = workout.workSets[goalAttempt ? workout.workSets.length - 1 : 0];
+    var set = goalAttempt ? workout.workSets[workout.workSets.length - 1] : workout.workSets.reduce(function (main, candidate) {
+      return candidate.sets > main.sets ||
+        (candidate.sets === main.sets && candidate.reps > main.reps) ? candidate : main;
+    });
     var load = Object.prototype.hasOwnProperty.call(set, "loadKg")
       ? " · " + core.formatLoad(set.loadKg, workout.liftKey)
       : " · RPE " + set.rpe;

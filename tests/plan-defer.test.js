@@ -41,7 +41,7 @@ function activeState() {
   assert.strictEqual(after.sessions.find((session) => session.id === priorPull.id).date, "2026-09-08");
   assert.strictEqual(after.sessions.find((session) => session.id === source.id).status, "planned");
   assert.strictEqual(after.sessions.find((session) => session.id === next.id).status, "planned");
-  assert.strictEqual(after.sessions.find((session) => session.id === source.id).phase.key, "return");
+  assert.strictEqual(after.sessions.find((session) => session.id === source.id).phase.key, "deload");
   assert.strictEqual(after.sessions.find((session) => session.id === followingPull.id).phase.key, "load-1");
   assert.deepStrictEqual(after.sessions.find((session) => session.id === untouched.id).phase, untouched.phase);
   assert.deepStrictEqual(after.sessions.find((session) => session.id === untouched.id).workout, untouched.workout);

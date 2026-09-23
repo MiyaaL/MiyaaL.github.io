@@ -116,16 +116,15 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
   assert.strictEqual(plan.sessions.filter((session) => session.date === "2026-09-24").length, 1);
 }());
 
-(function aRecordedDeloadResetsBothBenchVariantsAtTheReplanBoundary() {
+(function aRecordedDeloadDoesNotRestartTheCalendarWave() {
   const state = fixture();
   const recorded = Object.values(state.logs)[0];
   recorded.sessionSnapshot.phase = { key: "deload", label: "减量周", blockWeek: 3, weekIndex: 7 };
   const revised = core.replanRemaining(state, [holidays], options);
   const plan = core.generate(revised, [holidays], { asOfDate: options.asOfDate });
-  for (const date of ["2026-09-25", "2026-09-28"]) {
-    assert.strictEqual(plan.sessions.find((session) => session.date === date).phase.key, "load-1",
-      "a completed bench deload must not be immediately followed by another deload: " + date);
-  }
+  assert.strictEqual(plan.sessions.find((session) => session.date === "2026-09-25").phase.key, "deload",
+    "a recorded session cannot restart the wave halfway through a calendar week");
+  assert.strictEqual(plan.sessions.find((session) => session.date === "2026-09-28").phase.key, "load-1");
   assert.deepStrictEqual(plan.state.logs, core.normalizeState(state).logs);
 }());
 
