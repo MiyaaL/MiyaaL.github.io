@@ -91,13 +91,14 @@ check("holiday return reduces intensity and does not test immediately", () => {
   assert(!session.isTest);
 });
 
-check("deload reduces accessories and includes a second light squat exposure", () => {
+check("deload reduces accessories without crossing main lift types", () => {
   const plan = core.generate(configured(), [holidays]);
   const regular = plan.sessions.find(x => x.date === "2026-08-03");
   const light = plan.sessions.find(x => x.date === "2026-08-24");
   assert(light.workout.accessories.reduce((sum, x) => sum + x.sets, 0) <= regular.workout.accessories.reduce((sum, x) => sum + x.sets, 0) / 2);
   assert(light.workout.accessories.every(x => x.rpe <= 6));
-  assert(plan.sessions.find(x => x.date === "2026-08-07").workout.accessories.some(x => x.liftKey === "squat"));
+  const volumePush = plan.sessions.find(x => x.date === "2026-08-07");
+  assert(volumePush.workout.accessories.every(x => x.liftKey === volumePush.workout.liftKey));
 });
 
 check("RPE compares every set with its own prescription", () => {

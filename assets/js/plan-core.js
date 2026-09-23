@@ -42,27 +42,33 @@
     "6.5": [0.878, 0.85, 0.824, 0.799, 0.774, 0.751, 0.723, 0.694, 0.667, 0.64],
     "6": [0.863, 0.837, 0.811, 0.786, 0.762, 0.739, 0.707, 0.68, 0.653, 0.626]
   };
-  var ACCESSORIES = {
-    "push-strength": [
-      exercise("站姿推举", 2, "6–8", 7.5, "2–3 分钟"),
-      exercise("上斜哑铃卧推", 2, "8–10", 8, "2 分钟"),
-      exercise("绳索下压", 2, "10–12", 8, "60–90 秒")
-    ],
-    pull: [
-      exercise("胸托划船", 3, "6–8", 8, "2 分钟"),
-      exercise("面拉", 2, "12–15", 8, "60–90 秒"),
-      exercise("哑铃弯举", 2, "8–12", 8, "60–90 秒")
-    ],
-    squat: [
-      exercise("罗马尼亚硬拉", 2, "6–8", 7.5, "2–3 分钟"),
-      exercise("保加利亚分腿蹲", 2, "8–10 / 侧", 8, "2 分钟"),
-      exercise("核心训练", 2, "8–12", 7.5, "60 秒")
-    ],
-    "push-volume": [
-      exercise("暂停卧推", 2, "5–6", 7, "2–3 分钟"),
-      exercise("胸托划船", 2, "8–10", 7, "2 分钟"),
-      exercise("侧平举", 2, "12–15", 8, "60 秒")
-    ]
+  var ACCESSORIES_BY_LIFT = {
+    bench: {
+      "push-strength": [
+        exercise("站姿推举", 2, "6–8", 7.5, "2–3 分钟"),
+        exercise("上斜哑铃卧推", 2, "8–10", 8, "2 分钟"),
+        exercise("绳索下压", 2, "10–12", 8, "60–90 秒")
+      ],
+      "push-volume": [
+        exercise("暂停卧推", 2, "5–6", 7, "2–3 分钟"),
+        exercise("绳索下压", 2, "10–12", 8, "60–90 秒"),
+        exercise("侧平举", 2, "12–15", 8, "60 秒")
+      ]
+    },
+    pullup: {
+      pull: [
+        exercise("胸托划船", 3, "6–8", 8, "2 分钟"),
+        exercise("面拉", 2, "12–15", 8, "60–90 秒"),
+        exercise("哑铃弯举", 2, "8–12", 8, "60–90 秒")
+      ]
+    },
+    squat: {
+      squat: [
+        exercise("罗马尼亚硬拉", 2, "6–8", 7.5, "2–3 分钟"),
+        exercise("保加利亚分腿蹲", 2, "8–10 / 侧", 8, "2 分钟"),
+        exercise("核心训练", 2, "8–12", 7.5, "60 秒")
+      ]
+    }
   };
 
   function exercise(name, sets, reps, rpe, rest) {
@@ -686,16 +692,11 @@
     };
   }
 
-  function accessoriesFor(type, phase, state) {
+  function accessoriesFor(liftKey, type, phase) {
     if (phase.key === "test" || phase.key === "assessment") return [];
-    var items = deepClone(ACCESSORIES[type] || []);
-    if (type === "push-volume" && state.activeCycle.priorities.indexOf("squat") !== -1 &&
-        state.activeCycle.lifts.squat.current1rm > 0) {
-      items[items.length - 1] = Object.assign(exercise("轻深蹲 · 技术练习", 2, "5", 6, "2–3 分钟"), {
-        liftKey: "squat", technique: true,
-        loadKg: prescribedLoad("squat", state.activeCycle.lifts.squat.current1rm, 0.65, 0, state.preferences)
-      });
-    }
+    var templates = ACCESSORIES_BY_LIFT[liftKey] || {};
+    var items = deepClone(templates[type] || []);
+    items.forEach(function (item) { item.liftKey = liftKey; });
     if (isRecoveryPhase(phase.key)) {
       items = items.filter(function (item) { return !item.technique; }).map(function (item) {
         item.sets = Math.max(1, Math.floor(item.sets / 2));
@@ -1077,7 +1078,7 @@
         needsSetup: true,
         warmups: [],
         workSets: [],
-        accessories: accessoriesFor(session.type, phase, state)
+        accessories: accessoriesFor(liftKey, session.type, phase)
       };
     }
 
@@ -1103,7 +1104,7 @@
           : "重量以当前有效表现为基准；目标 RPE 是上限参考，热身吃力时下调重量，组间未恢复可延长休息。"),
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
-      accessories: accessoriesFor(session.type, phase, state)
+      accessories: accessoriesFor(liftKey, session.type, phase)
     };
   }
 

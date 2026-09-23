@@ -34,13 +34,22 @@ function configuredState(start, end) {
     session.workout.workSets.forEach((set) => {
       assert.strictEqual(Math.abs(set.loadKg % 2.5), 0, session.id + " must use 2.5 kg increments");
     });
+    session.workout.accessories.forEach((accessory) => {
+      assert.strictEqual(
+        accessory.liftKey,
+        session.workout.liftKey,
+        session.id + " accessory must match its main lift type"
+      );
+    });
   });
 }());
 
-(function benchPriorityKeepsBenchAccessoryOnMovedPushVolumeDay() {
+(function movedPushVolumeDayUsesOnlyPushAccessories() {
   const state = configuredState("2026-08-03", "2026-10-31");
   state.activeCycle.priorities = ["bench", "squat"];
   const sessionId = state.activeCycle.id + ":push-volume:2026-09-18";
+  const original = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-22" })
+    .sessions.find((candidate) => candidate.id === sessionId);
   state.activeCycle.sessionOverrides[sessionId] = { action: "move", date: "2026-09-22" };
 
   const session = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-22" })
@@ -52,9 +61,15 @@ function configuredState(start, end) {
   assert.strictEqual(session.workout.mainExercise, "杠铃卧推");
   assert.deepStrictEqual(accessoryNames, [
     "暂停卧推",
-    "胸托划船",
-    "轻深蹲 · 技术练习"
-  ], "keep the bench accessory and replace only the lower-priority lateral raise");
+    "绳索下压",
+    "侧平举"
+  ], "a push workout must not borrow pull or squat accessories");
+  assert(session.workout.accessories.every((accessory) => accessory.liftKey === "bench"));
+  assert.deepStrictEqual(
+    session.workout.accessories,
+    original.workout.accessories,
+    "moving a workout to another weekday must not change its accessories"
+  );
 }());
 
 (function officialMakeupWorkdaysDoNotCreateTrainingSessions() {
