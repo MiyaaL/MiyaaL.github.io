@@ -39,11 +39,25 @@ check("deload and missing RPE do not lower the strength estimate", () => {
   assert.strictEqual(core.recordSession(state, first, { mainSets: [{ weight: 60, reps: 1, rpe: null }] }).activeCycle.lifts.bench.current1rm, 80);
 });
 
-check("calendar progress alone never increases prescribed capacity", () => {
-  const plan = core.generate(configured(), [holidays]);
-  const future = plan.sessions.find(x => x.date === "2026-09-14");
-  assert.strictEqual(future.workout.planned1rm, 80);
-  assert(future.workout.workSets[0].loadKg < 80);
+check("goals guide loads, a late failure reduces assessment, and measured capacity stays unchanged", () => {
+  const state = configured();
+  state.activeCycle.requestedEndDate = "2026-10-31";
+  Object.assign(state.activeCycle.lifts.bench, { current1rm: 85.5, assessed1rm: 85.5 });
+  Object.assign(state.activeCycle.lifts.squat, { current1rm: 105.1, assessed1rm: 105.1 });
+  state.activeCycle.scheduleAdjustments = [{ fromDate: "2026-09-15", days: 7 }];
+  state.activeCycle.loadAdjustments.bench = { percentage: -0.05, afterDate: "2026-10-30" };
+
+  const plan = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
+  const benchAssessment = plan.sessions.find(x => x.date === "2026-11-02" && x.type === "push-strength");
+  const squatAssessment = plan.sessions.find(x => x.date === "2026-11-04" && x.type === "squat");
+  assert.deepStrictEqual([
+    [benchAssessment.workout.planned1rm, benchAssessment.workout.workSets[0].loadKg],
+    [squatAssessment.workout.planned1rm, squatAssessment.workout.workSets[0].loadKg]
+  ], [[100, 85], [120, 107.5]]);
+  assert.deepStrictEqual([
+    plan.state.activeCycle.lifts.bench.current1rm,
+    plan.state.activeCycle.lifts.squat.current1rm
+  ], [85.5, 105.1]);
 });
 
 check("goal projections never rewrite the user-selected cycle end", () => {

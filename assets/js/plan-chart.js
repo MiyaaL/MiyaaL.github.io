@@ -13,9 +13,9 @@
   var DAY_MS = 24 * 60 * 60 * 1000;
   var SERIES = [
     { key: "bodyweight", label: "Bodyweight", metric: "Logged weight", kind: "actual" },
-    { key: "bench", label: "Bench Press", metric: "Planned 1RM", kind: "planned" },
-    { key: "pullup", label: "Weighted Pull-up", metric: "Planned added 1RM", kind: "planned" },
-    { key: "squat", label: "Back Squat", metric: "Planned 1RM", kind: "planned" }
+    { key: "bench", label: "Bench Press", metric: "Programmed 1RM", kind: "planned" },
+    { key: "pullup", label: "Weighted Pull-up", metric: "Programmed added 1RM", kind: "planned" },
+    { key: "squat", label: "Back Squat", metric: "Programmed 1RM", kind: "planned" }
   ];
 
   function readNumber(value) {
@@ -165,7 +165,7 @@
       points.push({
         date: session.date,
         value: value,
-        detail: (session.status === "completed" ? "Historical prescription" : "Capacity used for prescription") +
+        detail: (session.status === "completed" ? "Historical programming reference" : "Programming reference") +
           (session.phase && session.phase.label ? " · " + session.phase.label : "")
       });
     });

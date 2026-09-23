@@ -509,9 +509,9 @@
     return state;
   }
 
-  // These are planning heuristics, not promises of physiological growth. Loads
-  // always use measured capacity; projections only inform warnings and never
-  // rewrite the user-selected cycle boundary.
+  // These are planning heuristics, not promises of physiological growth.
+  // Measured capacity only changes from evidence; the separate programming
+  // reference progresses toward the goal without rewriting the cycle boundary.
   function median(values) {
     var sorted = values.slice().sort(function (a, b) { return a - b; });
     var middle = Math.floor(sorted.length / 2);
@@ -920,8 +920,12 @@
     };
   }
 
-  function plannedOneRepMax(lift) {
-    return asNumber(lift.current1rm, 0);
+  function programmedOneRepMax(lift, progress) {
+    var current = asNumber(lift.current1rm, 0);
+    var baseline = asNumber(lift.baseline1rm, current);
+    var target = asNumber(lift.target1rm, current);
+    if (target <= current) return current;
+    return clamp(baseline + (target - baseline) * progress, current, target);
   }
 
   function makeWorkSet(label, sets, reps, loadKg, rpe, rest, percentage) {
@@ -1082,7 +1086,8 @@
       };
     }
 
-    var planned = plannedOneRepMax(lift);
+    var progress = clamp(phase.weekIndex / Math.max(1, totalWeeks - 1), 0, 1);
+    var planned = programmedOneRepMax(lift, progress);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -1101,7 +1106,7 @@
       guidance: phase.key === "test"
         ? "仅在上一把动作稳定且仍有余力时加重；若出现明显卡顿或失败，结束加重。使用保护杆或可靠保护者。"
         : (phase.key === "assessment" ? "先记录实际重量和 RPE，达到条件后再安排目标测试；不因到期强行冲极限。"
-          : "重量以当前有效表现为基准；目标 RPE 是上限参考，热身吃力时下调重量，组间未恢复可延长休息。"),
+          : "训练基准逐步向目标推进，当前估算 1RM 只由实际记录更新；目标 RPE 是上限，热身吃力时降重，未恢复时延长组间休息。"),
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
       accessories: accessoriesFor(liftKey, session.type, phase)
@@ -1142,7 +1147,7 @@
         return session.status === "planned" &&
           session.workout &&
           session.workout.liftKey === liftKey &&
-          /^load-/.test(session.phase.key) &&
+          (adjustment.percentage < 0 || /^load-/.test(session.phase.key)) &&
           session.date > adjustment.afterDate;
       }).sort(byDate)[0];
       if (!candidate || !adjustment.percentage) {
