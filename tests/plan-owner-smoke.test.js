@@ -127,7 +127,7 @@ const { JSDOM } = require("jsdom");
   assert(window.document.querySelector("[data-save-log]"));
   assert.strictEqual(window.document.querySelector("[data-log-bodyweight]"), null);
   assert.strictEqual(window.document.querySelector("[data-log-rpe]").value, "", "actual RPE must not be prefilled with the target");
-  ["reps", "increment", "quality"].forEach(field => {
+  ["rpe", "increment", "quality"].forEach(field => {
     assert.strictEqual(window.document.querySelector("[data-accessory-" + field + "]"), null);
   });
   assert.strictEqual(window.document.querySelector("[data-plan-detail-body] .plan-session-section").querySelector("p"), null,
@@ -135,7 +135,13 @@ const { JSDOM } = require("jsdom");
   const firstAccessory = window.document.querySelector("[data-accessory-log]");
   firstAccessory.querySelector("[data-accessory-weight]").value = "30";
   firstAccessory.querySelector("[data-accessory-sets]").value = "2";
-  firstAccessory.querySelector("[data-accessory-rpe]").value = "7.5";
+  firstAccessory.querySelector("[data-accessory-reps]").value = "8";
+  const otherAccessories = [...window.document.querySelectorAll("[data-accessory-log]")].slice(1);
+  otherAccessories.forEach(accessory => {
+    accessory.querySelector("[data-accessory-sets]").value = "2";
+  });
+  otherAccessories[0].querySelector("[data-accessory-reps]").value = "";
+  otherAccessories[1].querySelector("[data-accessory-reps]").value = "0";
   window.document.querySelector("[data-save-log]").click();
   await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -146,16 +152,17 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(savedLog.accessories.length, 3);
   assert(savedLog.mainSets.every(set => set.rpe === null));
   savedLog.accessories.forEach(accessory => {
-    ["reps", "incrementKg", "qualityConfirmed"].forEach(field => {
+    ["rpe", "incrementKg", "qualityConfirmed"].forEach(field => {
       assert.strictEqual(Object.prototype.hasOwnProperty.call(accessory, field), false,
         "new accessory logs must not fabricate removed fields");
     });
   });
   assert.strictEqual(savedLog.accessories[0].weight, 30);
   assert.strictEqual(savedLog.accessories[0].sets, 2);
-  assert.strictEqual(savedLog.accessories[0].rpe, 7.5);
-  assert.strictEqual(savedLog.accessories[0].completed, true, "completed sets suffice without a removed reps input");
-  assert(savedLog.accessories.slice(1).every(accessory => accessory.completed === false));
+  assert.strictEqual(savedLog.accessories[0].reps, 8);
+  assert.strictEqual(savedLog.accessories[0].completed, true, "positive sets and per-set reps mark an accessory completed");
+  assert(savedLog.accessories.slice(1).every(accessory => accessory.completed === false),
+    "missing or zero reps must not mark an accessory completed even with positive sets");
   assert.strictEqual(stored.state.activeCycle.requestedEndDate, "2026-10-25");
   assert.strictEqual(stored.state.activeCycle.endDate, "2026-10-25");
   assert.strictEqual(Object.prototype.hasOwnProperty.call(savedLog, "bodyweight"), false);
@@ -192,7 +199,7 @@ const { JSDOM } = require("jsdom");
   const legacyState = JSON.parse(JSON.stringify(bodyweightState.state));
   const recordedSessionId = Object.keys(legacyState.logs)[0];
   const legacyAccessory = legacyState.logs[recordedSessionId].accessories[0];
-  Object.assign(legacyAccessory, { reps: 8, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true });
+  Object.assign(legacyAccessory, { rpe: 7.5, reps: 8, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true });
   legacyState.logs[recordedSessionId].sessionSnapshot.workout.guidance = "不应再显示的旧版训练算法说明";
   const legacyPlan = window.PlanCore.generate(legacyState, [holidays]);
   await memory.save(bodyweightState.version, legacyState, window.PlanCore.createPublicSnapshot(legacyState, legacyPlan));
@@ -203,20 +210,22 @@ const { JSDOM } = require("jsdom");
   window.document.querySelector('[data-session-id="' + recordedSessionId + '"]').click();
   assert(!window.document.querySelector("[data-plan-detail-body]").textContent.includes("不应再显示的旧版训练算法说明"),
     "stored guidance must also be hidden on ordinary historical sessions");
-  ["reps", "increment", "quality"].forEach(field => {
+  ["rpe", "increment", "quality"].forEach(field => {
     assert.strictEqual(window.document.querySelector("[data-accessory-" + field + "]"), null);
   });
   const editedAccessory = window.document.querySelector("[data-accessory-log]");
   assert.strictEqual(editedAccessory.querySelector("[data-accessory-weight]").value, "30");
+  assert.strictEqual(editedAccessory.querySelector("[data-accessory-reps]").value, "8",
+    "per-set reps restore the saved accessory value");
   editedAccessory.querySelector("[data-accessory-weight]").value = "32.5";
   editedAccessory.querySelector("[data-accessory-sets]").value = "3";
-  editedAccessory.querySelector("[data-accessory-rpe]").value = "8";
+  editedAccessory.querySelector("[data-accessory-reps]").value = "10";
   window.document.querySelector("[data-save-log]").click();
   await new Promise(resolve => setTimeout(resolve, 50));
   const editedState = await memory.loadPrivate();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(editedState.state.logs[recordedSessionId].accessories[0])), {
-    name: legacyAccessory.name, weight: 32.5, sets: 3, rpe: 8, completed: true,
-    reps: 8, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true
+    name: legacyAccessory.name, weight: 32.5, sets: 3, reps: 10, completed: true,
+    rpe: 7.5, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true
   }, "editing the reduced form preserves historical fields while updating visible values");
 
   const testSession = window.PlanCore.generate(editedState.state, [holidays]).sessions.find(session => session.phase.key === "test");

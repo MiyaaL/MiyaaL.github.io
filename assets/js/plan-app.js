@@ -1010,8 +1010,8 @@
         escapeHtml(saved.weight != null ? saved.weight : (accessory.loadKg != null ? accessory.loadKg : "")) + '"></label>' +
         '<label>完成组数<input class="plan-log-input" data-accessory-sets type="number" min="0" max="20" value="' +
         escapeHtml(saved.sets != null ? saved.sets : "") + '"></label>' +
-        '<label>最高实际 RPE<input class="plan-log-input" data-accessory-rpe type="number" min="1" max="10" step="0.5" value="' +
-        escapeHtml(saved.rpe != null ? saved.rpe : "") + '"></label></div>';
+        '<label>每组次数<input class="plan-log-input" data-accessory-reps type="number" min="0" max="200" step="1" value="' +
+        escapeHtml(saved.reps != null ? saved.reps : "") + '"></label></div>';
     }).join("");
 
     var scheduleButton = session.status !== "completed"
@@ -1467,8 +1467,9 @@
         name: row.dataset.accessoryName,
         weight: Number(row.querySelector("[data-accessory-weight]").value),
         sets: Number(row.querySelector("[data-accessory-sets]").value),
-        rpe: row.querySelector("[data-accessory-rpe]").value === "" ? null : Number(row.querySelector("[data-accessory-rpe]").value),
-        completed: Number(row.querySelector("[data-accessory-sets]").value) > 0
+        reps: Number(row.querySelector("[data-accessory-reps]").value),
+        completed: Number(row.querySelector("[data-accessory-sets]").value) > 0 &&
+          Number(row.querySelector("[data-accessory-reps]").value) > 0
       });
     });
     privateState = core.recordSession(privateState, session, {
