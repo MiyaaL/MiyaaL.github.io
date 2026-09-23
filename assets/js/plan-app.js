@@ -203,10 +203,10 @@
         : core.createDefaultState(todayInShanghai());
       privateState.version = record ? Number(record.version || 0) : 0;
       privateState.updatedAt = record ? record.updatedAt : null;
+      selectedPlanKind = "fitness";
       if (privateState.activePlanId && privateState.learningPlans.some(function (plan) {
         return plan.id === privateState.activePlanId;
       })) {
-        selectedPlanKind = "learning";
         selectedLearningPlanId = privateState.activePlanId;
       }
       isOwner = true;

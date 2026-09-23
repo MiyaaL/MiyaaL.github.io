@@ -691,7 +691,7 @@
     var items = deepClone(ACCESSORIES[type] || []);
     if (type === "push-volume" && state.activeCycle.priorities.indexOf("squat") !== -1 &&
         state.activeCycle.lifts.squat.current1rm > 0) {
-      items[0] = Object.assign(exercise("轻深蹲 · 技术练习", 2, "5", 6, "2–3 分钟"), {
+      items[items.length - 1] = Object.assign(exercise("轻深蹲 · 技术练习", 2, "5", 6, "2–3 分钟"), {
         liftKey: "squat", technique: true,
         loadKg: prescribedLoad("squat", state.activeCycle.lifts.squat.current1rm, 0.65, 0, state.preferences)
       });

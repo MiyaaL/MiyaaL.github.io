@@ -37,6 +37,26 @@ function configuredState(start, end) {
   });
 }());
 
+(function benchPriorityKeepsBenchAccessoryOnMovedPushVolumeDay() {
+  const state = configuredState("2026-08-03", "2026-10-31");
+  state.activeCycle.priorities = ["bench", "squat"];
+  const sessionId = state.activeCycle.id + ":push-volume:2026-09-18";
+  state.activeCycle.sessionOverrides[sessionId] = { action: "move", date: "2026-09-22" };
+
+  const session = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-22" })
+    .sessions.find((candidate) => candidate.id === sessionId);
+  const accessoryNames = session.workout.accessories.map((accessory) => accessory.name);
+
+  assert.strictEqual(session.date, "2026-09-22");
+  assert.strictEqual(session.type, "push-volume");
+  assert.strictEqual(session.workout.mainExercise, "杠铃卧推");
+  assert.deepStrictEqual(accessoryNames, [
+    "暂停卧推",
+    "胸托划船",
+    "轻深蹲 · 技术练习"
+  ], "keep the bench accessory and replace only the lower-priority lateral raise");
+}());
+
 (function officialMakeupWorkdaysDoNotCreateTrainingSessions() {
   const state = configuredState("2026-09-01", "2026-10-20");
   const plan = PlanCore.generate(state, [holidays2026]);
