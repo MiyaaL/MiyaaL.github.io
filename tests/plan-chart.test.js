@@ -85,7 +85,9 @@ function configuredState() {
   assert.strictEqual(bodyweightToday.isCarried, true);
   const bench = model.series.find((series) => series.key === "bench");
   assert(Math.abs(bench.points[0].value - 100) < 0.01);
-  assert.strictEqual(bench.points[bench.points.length - 1].value, 110, "the programmed trajectory should reach the cycle target");
+  assert.strictEqual(bench.points[bench.points.length - 1].value, 100, "the programming reference must not grow without performance evidence");
+  assert(bench.points.every((point) => point.value <= 100));
+  assert.strictEqual(plan.cycle.lifts.bench.target1rm, 110, "the goal remains separate from the training reference");
   assert.strictEqual(bench.metric, "Programmed 1RM");
 }());
 

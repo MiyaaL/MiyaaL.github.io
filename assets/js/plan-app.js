@@ -51,6 +51,9 @@
     settingsForm: app.querySelector("[data-plan-settings-form]"),
     settingsTitle: app.querySelector("[data-plan-settings-title]"),
     settingsBodyweight: app.querySelector("[data-plan-settings-bodyweight]"),
+    settingsReplanFrom: app.querySelector("[data-plan-settings-replan-from]"),
+    settingsReplanHolidays: app.querySelector("[data-plan-settings-replan-holidays]"),
+    settingsScheduleHelp: app.querySelector("[data-plan-settings-schedule-help]"),
     formError: app.querySelector("[data-plan-form-error]"),
     learningSettings: app.querySelector("[data-plan-learning-settings]"),
     learningSettingsForm: app.querySelector("[data-plan-learning-settings-form]"),
@@ -89,6 +92,7 @@
   var settingsNewCycle = false;
   var settingsDraftCycle = null;
   var settingsHolidayOverrides = {};
+  var settingsInitialSchedule = null;
   var pendingConflictState = null;
   var pendingSessionMove = null;
   var pendingScheduleAdjustment = null;
@@ -1017,7 +1021,9 @@
   }
 
   function showScheduleAdjustmentError(error) {
-    if (error.code === "schedule_adjust_recorded_future") {
+    if (error.code === "schedule_deadline_locked") {
+      showMessage("当前周期已固定截止日期，请在截止日内逐次改期，或在设置中重新指定截止日。", "error");
+    } else if (error.code === "schedule_adjust_recorded_future") {
       showMessage("调整范围内已有训练记录，无法整体移动。请从更晚的训练开始，或仅移动本次。", "error");
     } else if (error.code === "schedule_adjust_conflict") {
       showMessage("提前日期不能早于或等于此前最后一场训练，请选择更接近本次的日期，或先单独调整此前训练。", "error");
@@ -1389,26 +1395,29 @@
     persist("训练记录已保存。");
   }
 
-  async function persist(successMessage) {
+  async function persist(successMessage, candidateState) {
     if (!isOwner || isOffline || !store.configured) {
       showMessage("当前为只读状态，无法保存。", "error");
       return false;
     }
-    privateState.updatedAt = new Date().toISOString();
-    var generated = core.generate(privateState, holidayCalendars, { asOfDate: todayInShanghai() });
-    privateState = generated.state;
-    var snapshot = core.createPublicSnapshot(privateState, generated);
+    var nextState = candidateState || privateState;
+    nextState.updatedAt = new Date().toISOString();
+    var generated = core.generate(nextState, holidayCalendars, { asOfDate: todayInShanghai() });
+    nextState = generated.state;
+    if (!candidateState) privateState = nextState;
+    var snapshot = core.createPublicSnapshot(nextState, generated);
     try {
-      var record = await store.save(privateState.version, privateState, snapshot);
-      privateState.version = record.version;
-      privateState.updatedAt = record.updatedAt;
+      var record = await store.save(nextState.version, nextState, snapshot);
+      nextState.version = record.version;
+      nextState.updatedAt = record.updatedAt;
+      privateState = nextState;
       closeDetails();
       render();
       showMessage(successMessage, "success");
       return true;
     } catch (error) {
       if (error.code === "version_conflict") {
-        pendingConflictState = deepClone(privateState);
+        pendingConflictState = deepClone(nextState);
         dom.conflict.showModal();
         return "conflict";
       }
@@ -1593,6 +1602,9 @@
     dom.settingsTitle.textContent = settingsNewCycle ? "开始新周期" : "编辑计划";
     inputValue("startDate", settingsDraftCycle.startDate);
     inputValue("endDate", settingsDraftCycle.requestedEndDate || settingsDraftCycle.endDate);
+    inputValue("replanFromDate", todayInShanghai());
+    inputValue("trainOnHolidays", "yes");
+    updateSettingsScheduleFields();
     inputValue("priorities", (settingsDraftCycle.priorities || ["bench", "squat"]).join(","));
     inputValue("trainingTime", privateState.preferences.trainingTime || "19:00");
     var bootstrapsBodyweight = !settingsNewCycle && settingsDraftCycle.status === "draft";
@@ -1609,7 +1621,38 @@
     dom.formError.textContent = "";
     renderTemplateEditor(settingsDraftCycle.template);
     renderHolidayOverrides();
+    settingsInitialSchedule = settingsScheduleSignature();
     dom.settings.showModal();
+  }
+
+  function settingsScheduleSignature() {
+    var fields = dom.settingsForm.elements;
+    return JSON.stringify({
+      endDate: fields.endDate.value,
+      fromDate: fields.replanFromDate.value,
+      trainOnHolidays: fields.trainOnHolidays.value,
+      template: readTemplateEditor().map(function (item) {
+        return [item.id, item.type, item.weekday];
+      }),
+      holidays: Object.keys(settingsHolidayOverrides).sort().map(function (date) {
+        return [date, settingsHolidayOverrides[date]];
+      })
+    });
+  }
+
+  function updateSettingsScheduleFields() {
+    var fields = dom.settingsForm.elements;
+    var replanning = !settingsNewCycle && settingsDraftCycle.status !== "draft";
+    dom.settingsReplanFrom.hidden = !replanning;
+    dom.settingsReplanHolidays.hidden = !replanning;
+    fields.replanFromDate.disabled = !replanning;
+    fields.replanFromDate.required = replanning;
+    fields.trainOnHolidays.disabled = !replanning;
+    fields.startDate.readOnly = replanning;
+    if (replanning) fields.startDate.value = settingsDraftCycle.startDate;
+    dom.settingsScheduleHelp.textContent = replanning
+      ? "默认固定截止日期。首次保存或修改排期参数时，保留此前排期与所有训练记录，取消剩余课次的改期和原整体提前 / 顺延，按周模板重排；之后仅改重量或训练时间会保留手动改期。"
+      : "结束日期按你的设置执行，不会因目标预测自动延长。";
   }
 
   function templateTypeOptions(selected) {
@@ -1726,6 +1769,8 @@
     };
     var template = readTemplateEditor();
     var weekdays = template.map(function (item) { return item.weekday; });
+    var replanning = !settingsNewCycle && privateState.activeCycle.status !== "draft" &&
+      (!privateState.activeCycle.replannedSchedule || settingsScheduleSignature() !== settingsInitialSchedule);
 
     if (!startDate || !endDate || endDate < startDate) {
       dom.formError.textContent = "目标日期必须晚于开始日期。";
@@ -1753,23 +1798,46 @@
       return;
     }
 
-    if (settingsNewCycle && privateState.activeCycle.status !== "draft") {
+    var nextState = deepClone(privateState);
+    if (replanning) {
+      try {
+        nextState = core.replanRemaining(privateState, holidayCalendars, {
+          fromDate: String(form.get("replanFromDate") || ""),
+          endDate: endDate,
+          asOfDate: todayInShanghai(),
+          template: template,
+          holidayOverrides: deepClone(settingsHolidayOverrides),
+          trainOnHolidays: form.get("trainOnHolidays") === "yes"
+        });
+      } catch (error) {
+        dom.formError.textContent = error.code === "invalid_replan_dates"
+          ? "重排起始日期必须位于周期开始与截止日期之间。"
+          : (error.code === "replan_recorded_after_deadline"
+            ? "截止日期之后已有训练记录，请将截止日期设在这些记录之后。"
+            : (error.code === "invalid_replan_template"
+              ? "请检查周模板：至少需要一个训练日，且同一天只能安排一次训练。"
+              : "无法重排：" + error.message));
+        return;
+      }
+    }
+
+    if (settingsNewCycle && nextState.activeCycle.status !== "draft") {
       var archivedLogs = {};
-      var archivedCycle = deepClone(privateState.activeCycle);
+      var archivedCycle = deepClone(nextState.activeCycle);
       var archivedOverview = snapshotProgressOverview(core.generate(
-        privateState,
+        nextState,
         holidayCalendars,
         { asOfDate: todayInShanghai() }
       ));
       archivedCycle.status = "archived";
       archivedOverview.cycle.status = "archived";
-      Object.keys(privateState.logs).forEach(function (id) {
-        if (id.indexOf(privateState.activeCycle.id + ":") === 0) {
-          archivedLogs[id] = privateState.logs[id];
-          delete privateState.logs[id];
+      Object.keys(nextState.logs).forEach(function (id) {
+        if (id.indexOf(nextState.activeCycle.id + ":") === 0) {
+          archivedLogs[id] = nextState.logs[id];
+          delete nextState.logs[id];
         }
       });
-      privateState.archivedCycles.unshift({
+      nextState.archivedCycles.unshift({
         cycle: archivedCycle,
         logs: archivedLogs,
         overview: archivedOverview,
@@ -1777,7 +1845,7 @@
       });
     }
 
-    var cycle = settingsNewCycle ? core.createDefaultState(startDate).activeCycle : privateState.activeCycle;
+    var cycle = settingsNewCycle ? core.createDefaultState(startDate).activeCycle : nextState.activeCycle;
     cycle.startDate = startDate;
     cycle.requestedEndDate = endDate;
     cycle.endDate = endDate;
@@ -1786,7 +1854,7 @@
     cycle.id = settingsNewCycle ? "cycle-" + startDate + "-" + Date.now().toString(36) : cycle.id;
     cycle.status = "active";
     cycle.template = template;
-    cycle.holidayOverrides = deepClone(settingsHolidayOverrides);
+    if (!replanning) cycle.holidayOverrides = deepClone(settingsHolidayOverrides);
     cycle.sessionOverrides = settingsNewCycle ? {} : cycle.sessionOverrides || {};
     if (settingsNewCycle) {
       cycle.bodyweightEntries = [];
@@ -1814,11 +1882,20 @@
       lift.target1rm = lifts[key].target;
       if (settingsNewCycle || lift.baseline1rm == null || lift.baseline1rm === "") lift.baseline1rm = lift.current1rm;
     });
-    privateState.activeCycle = cycle;
-    privateState.preferences.trainingTime = form.get("trainingTime") || "19:00";
+    nextState.activeCycle = cycle;
+    nextState.preferences.trainingTime = form.get("trainingTime") || "19:00";
+    var previousChartArchive = viewingChartArchive;
     viewingChartArchive = -1;
-    dom.settings.close();
-    await persist(settingsNewCycle ? "新周期已创建，旧周期已归档。" : "计划已重新生成。");
+    var saved = await persist(settingsNewCycle ? "新周期已创建，旧周期已归档。" :
+      (replanning ? "剩余训练已按固定截止日期重新安排。" : "计划已重新生成。"), nextState);
+    if (saved !== true) viewingChartArchive = previousChartArchive;
+    if (saved === true) {
+      dom.settings.close();
+    } else if (saved === false) {
+      dom.formError.textContent = "保存失败，当前计划未更改。请稍后重试。";
+    } else {
+      dom.settings.close();
+    }
   }
 
   function download(name, content, type) {

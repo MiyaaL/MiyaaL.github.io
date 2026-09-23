@@ -510,8 +510,8 @@
   }
 
   // These are planning heuristics, not promises of physiological growth.
-  // Measured capacity only changes from evidence; the separate programming
-  // reference progresses toward the goal without rewriting the cycle boundary.
+  // Measured capacity only changes from evidence. Goals never stand in for
+  // demonstrated capacity when prescribing ordinary or recovery work.
   function median(values) {
     var sorted = values.slice().sort(function (a, b) { return a - b; });
     var middle = Math.floor(sorted.length / 2);
@@ -543,7 +543,7 @@
       var session = log.sessionSnapshot;
       var key = session.workout && session.workout.liftKey;
       var phase = session.phase && session.phase.key;
-      if (!result[key] || log.status !== "completed" || isRecoveryPhase(phase)) return;
+      if (!result[key] || log.status !== "completed" || phase === "deload" || phase === "return") return;
       var bodyweight = key === "pullup" ? latestBodyweight(state.activeCycle, session.date) : 0;
       if (bodyweight == null) return;
       var sets = (log.mainSets || []).filter(function (set) {
@@ -734,14 +734,15 @@
   }
 
   function sessionId(cycle, template, date) {
-    return cycle.id + ":" + template.id + ":" + date;
+    var revision = cycle.replannedSchedule ? ":replan-" + cycle.replannedSchedule.revision : "";
+    return cycle.id + ":" + template.id + revision + ":" + date;
   }
 
   function buildBaseSessions(cycle, holidays, warnings) {
     var sessions = [];
     var missed = {};
     var occupied = {};
-    var date = cycle.startDate;
+    var date = cycle.replannedSchedule ? cycle.replannedSchedule.fromDate : cycle.startDate;
     var adjustmentDays = (cycle.scheduleAdjustments || []).reduce(function (total, entry) {
       return total + entry.days;
     }, 0);
@@ -798,7 +799,7 @@
     customQueue.sort(byDate);
     var customWorkdays = Object.keys(holidays.work).filter(function (workday) {
       return holidays.work[workday].source === "override" &&
-        workday >= cycle.startDate &&
+        workday >= (cycle.replannedSchedule ? cycle.replannedSchedule.fromDate : cycle.startDate) &&
         workday <= sourceEndDate &&
         !occupied[workday];
     }).sort();
@@ -902,7 +903,8 @@
         weekIndex: weekIndex, blockWeek: null
       };
     }
-    if (weekIndex >= totalWeeks - 2) {
+    var daysToTest = session.testDate ? daysBetween(session.date, session.testDate) : null;
+    if (daysToTest != null && daysToTest > 0 && daysToTest <= 7) {
       return { key: "taper", label: "减量准备", weekIndex: weekIndex, blockWeek: null };
     }
     var blockWeek = session.trainingWeek == null ? weekIndex % 4 : session.trainingWeek % 4;
@@ -917,12 +919,8 @@
     };
   }
 
-  function programmedOneRepMax(lift, progress) {
-    var current = asNumber(lift.current1rm, 0);
-    var baseline = asNumber(lift.baseline1rm, current);
-    var target = asNumber(lift.target1rm, current);
-    if (target <= current) return current;
-    return clamp(baseline + (target - baseline) * progress, current, target);
+  function programmedOneRepMax(lift) {
+    return asNumber(lift.current1rm, 0);
   }
 
   function makeWorkSet(label, sets, reps, loadKg, rpe, rest, percentage) {
@@ -1078,8 +1076,7 @@
       };
     }
 
-    var progress = clamp(phase.weekIndex / Math.max(1, totalWeeks - 1), 0, 1);
-    var planned = phase.key === "assessment" ? Number(lift.current1rm) : programmedOneRepMax(lift, progress);
+    var planned = programmedOneRepMax(lift);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -1094,11 +1091,11 @@
       liftKey: liftKey,
       mainExercise: LIFT_LABELS[liftKey],
       needsSetup: false,
-      planned1rm: roundLoad(planned, 0.1),
+      planned1rm: Math.round(planned * 10) / 10,
       guidance: phase.key === "test"
         ? "计划按 90% → 95% → 目标逐级尝试，临近测试须确认近期表现；热身吃力时降重，任何卡顿或失败都结束加重。使用保护杆或可靠保护者。"
         : (phase.key === "assessment" ? "近期表现尚不支持目标测试，先按当前能力完成评估组；目标保持不变，待有效记录确认后再尝试。"
-          : "训练基准逐步向目标推进，当前估算 1RM 只由实际记录更新；目标 RPE 是上限，热身吃力时降重，未恢复时延长组间休息。"),
+          : "训练重量依据当前估算 1RM，能力只由实际记录更新；目标 RPE 是上限，热身吃力时降重，未恢复时延长组间休息。"),
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
       accessories: accessoriesFor(liftKey, session.type, phase)
@@ -1112,6 +1109,7 @@
       });
       if (!candidates.length) return;
       var last = candidates[candidates.length - 1];
+      candidates.forEach(function (session) { session.testDate = last.date; });
       var ready = readyForTarget(state, history, key, asOfDate);
       last.label = LIFT_LABELS[key] + " · 周期目标";
       // Goal attempts more than 21 days away are provisional, not confirmed tests.
@@ -1139,6 +1137,7 @@
       var adjustment = cycle.loadAdjustments[liftKey];
       var candidate = sessions.filter(function (session) {
         return session.status === "planned" &&
+          (!cycle.replannedSchedule || session.date >= cycle.replannedSchedule.fromDate) &&
           session.workout &&
           session.workout.liftKey === liftKey &&
           (adjustment.percentage < 0 || /^load-/.test(session.phase.key)) &&
@@ -1185,7 +1184,8 @@
     });
 
     sessions.forEach(function (session) {
-      if (session.status !== "planned" || !session.workout || !session.workout.accessories) {
+      if (session.status !== "planned" || !session.workout || !session.workout.accessories ||
+          (state.activeCycle.replannedSchedule && session.date < state.activeCycle.replannedSchedule.fromDate)) {
         return;
       }
       session.workout.accessories.forEach(function (accessory) {
@@ -1231,10 +1231,15 @@
 
     var holidays = compileHolidayCalendar(holidayCalendars, cycle.holidayOverrides);
     var sessions = buildBaseSessions(cycle, holidays, warnings);
+    if (cycle.replannedSchedule) {
+      var recordedDates = {};
+      cycleLogs(state).forEach(function (log) { recordedDates[log.sessionSnapshot.date] = true; });
+      sessions = sessions.filter(function (session) {
+        return !recordedDates[session.date] || Boolean(state.logs[session.id]);
+      }).concat(deepClone(cycle.replannedSchedule.retainedSessions));
+    }
     sessions = applySessionOverrides(sessions, cycle.sessionOverrides, warnings);
     sessions = applyScheduleAdjustments(sessions, cycle.scheduleAdjustments, cycle.sessionOverrides);
-    markTestSessions(sessions, state, history, asOfDate);
-
     var sessionMap = sessions.reduce(function (map, session) {
       map[session.id] = session;
       return map;
@@ -1247,9 +1252,13 @@
       if (!sessionMap[id]) {
         sessionMap[id] = deepClone(log.sessionSnapshot);
         sessions.push(sessionMap[id]);
+      } else {
+        Object.assign(sessionMap[id], deepClone(log.sessionSnapshot));
       }
+      sessionMap[id].status = log.status;
     });
     sessions.sort(byDate);
+    markTestSessions(sessions, state, history, asOfDate);
 
     var adjustmentDays = (cycle.scheduleAdjustments || []).reduce(function (total, entry) {
       return total + entry.days;
@@ -1271,13 +1280,26 @@
         session.trainingWeek = trainingWeeks[session.type] || 0;
         trainingWeeks[session.type] = session.isReturn ? 0 : session.trainingWeek + 1;
         previousDates[key] = session.date;
+        // A replan starts from the work actually performed, including a recent
+        // recovery session, rather than replaying a wave from sparse log counts.
+        if (cycle.replannedSchedule && log && log.status === "completed" &&
+            session.date < cycle.replannedSchedule.fromDate) {
+          var recordedPhase = log.sessionSnapshot.phase || {};
+          if (recordedPhase.key === "deload" || recordedPhase.key === "return") {
+            Object.keys(TYPE_LABELS).forEach(function (type) {
+              if (liftKeyForType(type) === key) trainingWeeks[type] = 0;
+            });
+          } else if (/^load-[123]$/.test(recordedPhase.key)) {
+            trainingWeeks[session.type] = Number(recordedPhase.key.slice(-1));
+          }
+        }
       }
       if (log && log.sessionSnapshot) {
         var frozen = deepClone(log.sessionSnapshot);
         Object.keys(frozen).forEach(function (key) {
           session[key] = frozen[key];
         });
-      } else {
+      } else if (!(cycle.replannedSchedule && session.date < cycle.replannedSchedule.fromDate && session.workout)) {
         session.phase = phaseFor(session, cycle, totalWeeks, asOfDate);
         session.workout = workoutFor(session, state, session.phase, totalWeeks);
       }
@@ -1313,6 +1335,59 @@
       error[key] = details[key];
     });
     return error;
+  }
+
+  function replanRemaining(inputState, holidayCalendars, options) {
+    var settings = options || {};
+    var fromDate = String(settings.fromDate || "");
+    var endDate = String(settings.endDate || "");
+    var state = normalizeState(inputState);
+    var cycle = state.activeCycle;
+    if (!isIsoDate(fromDate) || !isIsoDate(endDate) || fromDate < cycle.startDate || endDate < fromDate) {
+      throw sessionMoveError("invalid_replan_dates");
+    }
+    var template = deepClone(settings.template || cycle.template);
+    var weekdays = {};
+    if (!template.length || template.some(function (item) {
+      var day = Number(item.weekday);
+      if (!TYPE_LABELS[item.type] || day < 1 || day > 7 || day % 1 || weekdays[day]) return true;
+      weekdays[day] = true;
+      return false;
+    })) throw sessionMoveError("invalid_replan_template");
+    if (cycleLogs(state).some(function (log) { return log.sessionSnapshot.date > endDate; })) {
+      throw sessionMoveError("replan_recorded_after_deadline");
+    }
+
+    var previous = generate(state, holidayCalendars, { asOfDate: settings.asOfDate });
+    state = previous.state;
+    cycle = state.activeCycle;
+    var revision = cycle.replannedSchedule ? Number(cycle.replannedSchedule.revision) + 1 : 1;
+    cycle.replannedSchedule = {
+      fromDate: fromDate,
+      revision: revision,
+      retainedSessions: previous.sessions.filter(function (session) {
+        return session.date < fromDate && !state.logs[session.id];
+      }).map(deepClone)
+    };
+    cycle.requestedEndDate = endDate;
+    cycle.endDate = endDate;
+    cycle.scheduleAdjustments = [];
+    cycle.sessionOverrides = {};
+    cycle.schedule = null;
+    cycle.template = template;
+    cycle.holidayOverrides = deepClone(settings.holidayOverrides || cycle.holidayOverrides);
+    if (settings.trainOnHolidays) {
+      (holidayCalendars || []).forEach(function (calendar) {
+        (calendar.periods || []).forEach(function (period) {
+          (period.daysOff || []).forEach(function (date) {
+            if (date >= fromDate && date <= endDate && cycle.holidayOverrides[date] !== "off") {
+              cycle.holidayOverrides[date] = "work";
+            }
+          });
+        });
+      });
+    }
+    return state;
   }
 
   function moveSession(inputState, sourceId, targetDate, options) {
@@ -1385,6 +1460,9 @@
   }
 
   function adjustSchedule(inputState, sourceId, targetDate, options) {
+    if (inputState.activeCycle && inputState.activeCycle.replannedSchedule) {
+      throw sessionMoveError("schedule_deadline_locked");
+    }
     var settings = options || {};
     var state = normalizeState(inputState);
     var plan = generate(state, settings.holidayCalendars || [], { asOfDate: settings.asOfDate });
@@ -1842,6 +1920,7 @@
     generateLearningPlan: generateLearningPlan,
     normalizeState: normalizeState,
     generate: generate,
+    replanRemaining: replanRemaining,
     moveSession: moveSession,
     adjustSchedule: adjustSchedule,
     deferSessions: deferSessions,
