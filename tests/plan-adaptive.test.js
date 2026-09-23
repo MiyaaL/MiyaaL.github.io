@@ -39,25 +39,37 @@ check("deload and missing RPE do not lower the strength estimate", () => {
   assert.strictEqual(core.recordSession(state, first, { mainSets: [{ weight: 60, reps: 1, rpe: null }] }).activeCycle.lifts.bench.current1rm, 80);
 });
 
-check("goals guide loads, a late failure reduces assessment, and measured capacity stays unchanged", () => {
+check("the cycle ends with goal attempts and routine work has no single-set filler", () => {
   const state = configured();
   state.activeCycle.requestedEndDate = "2026-10-31";
   Object.assign(state.activeCycle.lifts.bench, { current1rm: 85.5, assessed1rm: 85.5 });
   Object.assign(state.activeCycle.lifts.squat, { current1rm: 105.1, assessed1rm: 105.1 });
   state.activeCycle.scheduleAdjustments = [{ fromDate: "2026-09-15", days: 7 }];
-  state.activeCycle.loadAdjustments.bench = { percentage: -0.05, afterDate: "2026-10-30" };
 
   const plan = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
-  const benchAssessment = plan.sessions.find(x => x.date === "2026-11-02" && x.type === "push-strength");
+  const benchAssessment = plan.sessions.find(x => x.date === "2026-11-06" && x.workout.liftKey === "bench");
   const squatAssessment = plan.sessions.find(x => x.date === "2026-11-04" && x.type === "squat");
+  assert.strictEqual(benchAssessment.label, "杠铃卧推 · 周期目标");
   assert.deepStrictEqual([
-    [benchAssessment.workout.planned1rm, benchAssessment.workout.workSets[0].loadKg],
-    [squatAssessment.workout.planned1rm, squatAssessment.workout.workSets[0].loadKg]
-  ], [[100, 85], [120, 107.5]]);
+    benchAssessment.workout.workSets.map(x => x.loadKg),
+    squatAssessment.workout.workSets.map(x => x.loadKg)
+  ], [[90, 95, 100], [107.5, 115, 120]]);
+  const future = plan.sessions.filter(x => x.date >= "2026-09-23");
+  assert(future.filter(x => /^load-/.test(x.phase.key)).every(x => x.workout.workSets.every(set => set.sets > 1)));
+  assert(future.filter(x => ["return", "deload", "taper"].includes(x.phase.key)).every(x => !x.workout.accessories.length));
   assert.deepStrictEqual([
     plan.state.activeCycle.lifts.bench.current1rm,
     plan.state.activeCycle.lifts.squat.current1rm
   ], [85.5, 105.1]);
+
+  const due = core.generate(state, [holidays], { asOfDate: "2026-11-06" }).sessions.find(x => x.id === benchAssessment.id);
+  assert.strictEqual(due.phase.key, "assessment");
+  assert(due.workout.workSets.every(x => x.loadKg < 85.5), "an unready test must use measured capacity, not the target");
+
+  state.activeCycle.loadAdjustments.bench = { percentage: -0.05, afterDate: "2026-11-02" };
+  const reduced = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
+  const reducedBench = reduced.sessions.find(x => x.date === "2026-11-06" && x.workout.liftKey === "bench");
+  assert.deepStrictEqual(reducedBench.workout.workSets.map(x => x.loadKg), [85, 90, 95]);
 });
 
 check("goal projections never rewrite the user-selected cycle end", () => {
@@ -105,12 +117,10 @@ check("holiday return reduces intensity and does not test immediately", () => {
   assert(!session.isTest);
 });
 
-check("deload reduces accessories without crossing main lift types", () => {
+check("deload removes accessories without crossing main lift types", () => {
   const plan = core.generate(configured(), [holidays]);
-  const regular = plan.sessions.find(x => x.date === "2026-08-03");
   const light = plan.sessions.find(x => x.date === "2026-08-24");
-  assert(light.workout.accessories.reduce((sum, x) => sum + x.sets, 0) <= regular.workout.accessories.reduce((sum, x) => sum + x.sets, 0) / 2);
-  assert(light.workout.accessories.every(x => x.rpe <= 6));
+  assert.strictEqual(light.workout.accessories.length, 0);
   const volumePush = plan.sessions.find(x => x.date === "2026-08-07");
   assert(volumePush.workout.accessories.every(x => x.liftKey === volumePush.workout.liftKey));
 });
@@ -172,7 +182,10 @@ check("valid readiness schedules conditional attempts; failure revokes them", ()
   assert.strictEqual(test.workout.accessories.length, 0);
   const failedSession = original.sessions.find(x => x.date === "2026-09-18");
   state = core.recordSession(state, failedSession, { mainSets: [{ weight: 90, reps: 0, rpe: 10, completed: false }] });
-  assert(!core.generate(state, [holidays], { asOfDate: "2026-09-18" }).sessions.some(x => x.isTest && x.type === "push-strength"));
+  const deferred = core.generate(state, [holidays], { asOfDate: "2026-09-18" }).sessions.find(x => x.id === test.id);
+  assert(!deferred.isTest);
+  assert.strictEqual(deferred.phase.key, "assessment");
+  assert(deferred.workout.workSets.every(x => x.loadKg < 100), "failure must remove the target attempt, not just its label");
 });
 
 check("editing a measurement is independent of input order", () => {

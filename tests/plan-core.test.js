@@ -123,7 +123,8 @@ function configuredState(start, end) {
   const plan = PlanCore.generate(state, [holidays2026]);
   const pull = plan.sessions.find((session) => session.type === "pull");
   assert.strictEqual(pull.workout.liftKey, "pullup");
-  assert(pull.workout.workSets[0].loadKg > 0);
+  const mainSet = pull.workout.workSets[0];
+  assert.strictEqual(mainSet.loadKg, PlanCore.roundLoad((70 + 30) * mainSet.percentage - 70, 2.5));
   assert.strictEqual(pull.workout.workSets[0].loadKg % 2.5, 0);
 }());
 

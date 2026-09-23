@@ -732,11 +732,12 @@
     if (workout.needsSetup || !workout.workSets || !workout.workSets.length) {
       return "待设置重量";
     }
-    var set = workout.workSets[0];
+    var goalAttempt = session.phase && session.phase.key === "test";
+    var set = workout.workSets[goalAttempt ? workout.workSets.length - 1 : 0];
     var load = Object.prototype.hasOwnProperty.call(set, "loadKg")
       ? " · " + core.formatLoad(set.loadKg, workout.liftKey)
       : " · RPE " + set.rpe;
-    return set.sets + "×" + set.reps + load;
+    return (goalAttempt ? "尝试 " : "") + set.sets + "×" + set.reps + load;
   }
 
   function holidayForDate(date) {

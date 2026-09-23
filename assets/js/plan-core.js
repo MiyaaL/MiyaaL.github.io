@@ -693,18 +693,10 @@
   }
 
   function accessoriesFor(liftKey, type, phase) {
-    if (phase.key === "test" || phase.key === "assessment") return [];
+    if (phase.key === "test" || phase.key === "assessment" || isRecoveryPhase(phase.key)) return [];
     var templates = ACCESSORIES_BY_LIFT[liftKey] || {};
     var items = deepClone(templates[type] || []);
     items.forEach(function (item) { item.liftKey = liftKey; });
-    if (isRecoveryPhase(phase.key)) {
-      items = items.filter(function (item) { return !item.technique; }).map(function (item) {
-        item.sets = Math.max(1, Math.floor(item.sets / 2));
-        item.rpe = 6;
-        item.reduced = true;
-        return item;
-      });
-    }
     return items;
   }
 
@@ -896,14 +888,19 @@
     return "bench";
   }
 
-  function phaseFor(session, cycle, totalWeeks) {
+  function phaseFor(session, cycle, totalWeeks, asOfDate) {
     var phaseDate = session.programDate || session.date;
     var weekIndex = Math.max(0, Math.floor(daysBetween(cycle.startDate, phaseDate) / 7));
     if (session.isReturn) {
       return { key: "return", label: "恢复训练", weekIndex: weekIndex, blockWeek: null };
     }
     if (session.isTest || session.isAssessment) {
-      return { key: session.isTest ? "test" : "assessment", label: session.isTest ? "有条件测试" : "阶段评估 · 待确认", weekIndex: weekIndex, blockWeek: null };
+      var plannedTest = daysBetween(asOfDate, session.date) > 21;
+      return {
+        key: session.isTest || plannedTest ? "test" : "assessment",
+        label: session.isTest ? "目标测试" : (plannedTest ? "目标测试 · 计划" : "阶段评估 · 未就绪"),
+        weekIndex: weekIndex, blockWeek: null
+      };
     }
     if (weekIndex >= totalWeeks - 2) {
       return { key: "taper", label: "减量准备", weekIndex: weekIndex, blockWeek: null };
@@ -950,7 +947,6 @@
 
   function workingSets(type, liftKey, phase, oneRepMax, targetOneRepMax, bodyweight, preferences) {
     var strength = type === "push-strength" || type === "squat";
-    var sets = [];
     var load = function (percentage, useTarget) {
       return prescribedLoad(
         liftKey,
@@ -962,13 +958,15 @@
     };
 
     if (phase.key === "test") {
-      sets.push(makeWorkSet("尝试 1", 1, 1, load(0.9, true), 8, "4–5 分钟", 0.9));
-      sets.push(makeWorkSet("尝试 2 · 首把稳定后", 1, 1, load(0.95, true), 9, "5 分钟", 0.95));
-      sets.push(makeWorkSet("目标尝试 · 仍有余力时", 1, 1, load(1, true), 10, "5 分钟", 1));
-      return sets.filter(function (set, index) { return !index || set.loadKg > sets[index - 1].loadKg; });
+      var attempts = [
+        makeWorkSet("尝试 1", 1, 1, load(0.9, true), 8, "4–5 分钟", 0.9),
+        makeWorkSet("尝试 2 · 首把稳定后", 1, 1, load(0.95, true), 9, "5 分钟", 0.95),
+        makeWorkSet("目标尝试 · 仍有余力时", 1, 1, load(1, true), 10, "5 分钟", 1)
+      ];
+      return attempts.filter(function (set, index) { return !index || set.loadKg > attempts[index - 1].loadKg; });
     }
     if (phase.key === "assessment") {
-      return [makeWorkSet("评估单次 · 不追求极限", 1, 1, load(0.9), 7.5, "3–5 分钟", 0.9)];
+      return [makeWorkSet("评估组 · 不追求极限", 2, 3, load(0.8), 7, "3 分钟", 0.8)];
     }
     if (phase.key === "return") {
       return [makeWorkSet("恢复组 · 热身后可再下调", 2, 5, load(0.65), 6, "3 分钟", 0.65)];
@@ -996,26 +994,20 @@
     }
 
     if (type === "pull") {
-      var pullTop = [0.825, 0.85, 0.875][week];
-      var pullBackoff = [
+      var pullMain = [
         { sets: 4, reps: 6, percentage: 0.7 },
         { sets: 5, reps: 5, percentage: 0.75 },
         { sets: 5, reps: 4, percentage: 0.8 }
       ][week];
-      sets.push(makeWorkSet("顶组三次", 1, 3, load(pullTop), 8, "3–4 分钟", pullTop));
-      sets.push(makeWorkSet("回退组", pullBackoff.sets, pullBackoff.reps, load(pullBackoff.percentage), 8, "2–3 分钟", pullBackoff.percentage));
-      return sets;
+      return [makeWorkSet("主训练组", pullMain.sets, pullMain.reps, load(pullMain.percentage), 8, "2–3 分钟", pullMain.percentage)];
     }
 
-    var top = [0.88, 0.9, 0.92][week];
-    var backoff = [
+    var main = [
       { sets: 4, reps: 5, percentage: 0.725 },
       { sets: 4, reps: 4, percentage: 0.775 },
       { sets: 5, reps: 3, percentage: 0.825 }
     ][week];
-    sets.push(makeWorkSet("非极限顶组", 1, 1, load(top), week === 2 ? 8 : 7.5, "3–5 分钟", top));
-    sets.push(makeWorkSet("回退组", backoff.sets, backoff.reps, load(backoff.percentage), 8, "2–3 分钟", backoff.percentage));
-    return sets;
+    return [makeWorkSet("主训练组", main.sets, main.reps, load(main.percentage), 8, "2–3 分钟", main.percentage)];
   }
 
   function warmupsFor(liftKey, workSets, preferences) {
@@ -1087,7 +1079,7 @@
     }
 
     var progress = clamp(phase.weekIndex / Math.max(1, totalWeeks - 1), 0, 1);
-    var planned = programmedOneRepMax(lift, progress);
+    var planned = phase.key === "assessment" ? Number(lift.current1rm) : programmedOneRepMax(lift, progress);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -1104,8 +1096,8 @@
       needsSetup: false,
       planned1rm: roundLoad(planned, 0.1),
       guidance: phase.key === "test"
-        ? "仅在上一把动作稳定且仍有余力时加重；若出现明显卡顿或失败，结束加重。使用保护杆或可靠保护者。"
-        : (phase.key === "assessment" ? "先记录实际重量和 RPE，达到条件后再安排目标测试；不因到期强行冲极限。"
+        ? "计划按 90% → 95% → 目标逐级尝试，临近测试须确认近期表现；热身吃力时降重，任何卡顿或失败都结束加重。使用保护杆或可靠保护者。"
+        : (phase.key === "assessment" ? "近期表现尚不支持目标测试，先按当前能力完成评估组；目标保持不变，待有效记录确认后再尝试。"
           : "训练基准逐步向目标推进，当前估算 1RM 只由实际记录更新；目标 RPE 是上限，热身吃力时降重，未恢复时延长组间休息。"),
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
@@ -1114,13 +1106,15 @@
   }
 
   function markTestSessions(sessions, state, history, asOfDate) {
-    ["push-strength", "pull", "squat"].forEach(function (type) {
-      var candidates = sessions.filter(function (session) { return session.type === type; });
+    ["bench", "pullup", "squat"].forEach(function (key) {
+      var candidates = sessions.filter(function (session) {
+        return liftKeyForType(session.type) === key;
+      });
       if (!candidates.length) return;
       var last = candidates[candidates.length - 1];
-      var key = liftKeyForType(type);
       var ready = readyForTarget(state, history, key, asOfDate);
-      // Far-future sessions remain assessments until readiness is reconfirmed.
+      last.label = LIFT_LABELS[key] + " · 周期目标";
+      // Goal attempts more than 21 days away are provisional, not confirmed tests.
       last.isTest = ready && daysBetween(asOfDate, last.date) <= 21 && last.date >= asOfDate;
       last.isAssessment = !last.isTest;
     });
@@ -1195,7 +1189,6 @@
         return;
       }
       session.workout.accessories.forEach(function (accessory) {
-        if (accessory.technique) return;
         var previous = null;
         history.forEach(function (log) {
           if (log.sessionSnapshot.date >= session.date) {
@@ -1213,15 +1206,14 @@
         }
         var ceiling = repetitionCeiling(accessory.reps);
         var qualityConfirmed = previous.qualityConfirmed === true || previous.allSetsCompleted === true;
-        var qualified = !accessory.reduced && qualityConfirmed &&
+        var qualified = qualityConfirmed &&
           Number(previous.sets) >= accessory.sets && ceiling && Number(previous.reps) >= ceiling &&
           previous.rpe != null && Number(previous.rpe) <= accessory.rpe;
         var weight = Number(previous.weight);
         var step = Number(previous.incrementKg) > 0 ? Number(previous.incrementKg) : state.preferences.accessoryIncrement;
         var increase = qualified && step / weight <= 0.1 ? step : 0;
-        accessory.loadKg = accessory.reduced ? Math.round(weight * 0.8 * 10) / 10 : Math.round((weight + increase) * 10) / 10;
-        accessory.progression = accessory.reduced ? "减量：选择可装载的较轻重量，以 RPE 6 为上限" :
-          (increase > 0 ? "全组达到上限且余力足够，下次加重" : "保持重量；全组达标后再按可用最小增量加重");
+        accessory.loadKg = Math.round((weight + increase) * 10) / 10;
+        accessory.progression = increase > 0 ? "全组达到上限且余力足够，下次加重" : "保持重量；全组达标后再按可用最小增量加重";
       });
     });
   }
@@ -1286,7 +1278,7 @@
           session[key] = frozen[key];
         });
       } else {
-        session.phase = phaseFor(session, cycle, totalWeeks);
+        session.phase = phaseFor(session, cycle, totalWeeks, asOfDate);
         session.workout = workoutFor(session, state, session.phase, totalWeeks);
       }
       session.status = log && log.status ? log.status : "planned";
