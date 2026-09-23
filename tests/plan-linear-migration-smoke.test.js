@@ -9,7 +9,8 @@ const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
 const revision = {
-  id: "linear-wave-2026-09-23",
+  id: "linear-wave-top-set-2026-09-23",
+  previousId: "linear-wave-2026-09-23",
   cycleId: "cycle-2026-08-03",
   fromDate: "2026-09-25",
   anchorDate: "2026-09-28",
@@ -91,8 +92,15 @@ async function boot(options = {}) {
   if (options.changeState) options.changeState(state, core);
   state.version = 74;
   const snapshot = core.createPublicSnapshot(state, core.generate(state, [holidays], { asOfDate: "2026-09-23" }));
+  if (options.changeSnapshot) options.changeSnapshot(snapshot);
   const originalState = plain(state);
   const originalSnapshot = plain(snapshot);
+  const replanCalls = [];
+  const replan = core.replanRemaining;
+  core.replanRemaining = (...args) => {
+    replanCalls.push(plain(args));
+    return replan(...args);
+  };
   const memory = window.PlanStore.createMemoryAdapter({
     version: 74, state, snapshot, signedIn: options.signedIn !== false
   });
@@ -115,7 +123,7 @@ async function boot(options = {}) {
   window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
   await waitForRender();
   return {
-    window, core, memory, calls, originalState, originalSnapshot,
+    window, core, memory, calls, replanCalls, originalState, originalSnapshot,
     clearSaveError() { saveError = null; },
     holdNextSave() {
       let started;
@@ -212,6 +220,81 @@ async function check(name, options, run) {
     assert.deepStrictEqual(plain(stored.state.activeCycle.progression), firstProgression);
     assert.deepStrictEqual(plain(stored.state.activeCycle.replannedSchedule), firstSchedule);
     assert.strictEqual(published.cycle.scheduleRevision, revision.id);
+  });
+
+  await check("adding top sets to an applied linear plan preserves its anchor and moved sessions", {
+    changeState: (state, core) => {
+      Object.assign(state, core.replanRemaining(state, [holidays], {
+        fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays: true, asOfDate: "2026-09-23"
+      }));
+      state.activeCycle.scheduleRevision = revision.previousId;
+      state.activeCycle.progression = {
+        kind: "linear-wave", anchorDate: "2026-09-28",
+        anchor1rm: { bench: 85.5, squat: 105.1, pullup: 15.6 }
+      };
+      for (const [key, current] of [["bench", 90], ["squat", 110], ["pullup", 17.5]]) {
+        Object.assign(state.activeCycle.lifts[key], { assessed1rm: current, current1rm: current });
+      }
+      const session = core.generate(state, [holidays], { asOfDate: "2026-09-23" }).sessions
+        .find((candidate) => candidate.date === "2026-10-05");
+      Object.assign(state, core.moveSession(state, session.id, "2026-10-08", {
+        holidayCalendars: [holidays], asOfDate: "2026-09-23"
+      }));
+    },
+    changeSnapshot: (snapshot) => {
+      for (const session of snapshot.sessions.filter((candidate) => candidate.date >= "2026-09-25" && !candidate.isTest)) {
+        session.workout.workSets = session.workout.workSets.filter((set) => set.sets !== 1 || set.reps !== 1);
+      }
+    }
+  }, async (app) => {
+    let stored = await app.memory.loadPrivate();
+    const originalCycle = app.originalState.activeCycle;
+    assert.strictEqual(stored.version, 75);
+    assert.strictEqual(app.calls.length, 1, "the top-set revision publishes automatically once");
+    assert.strictEqual(app.replanCalls.length, 0, "a previously applied linear plan must not be replanned");
+    assert.strictEqual(stored.state.activeCycle.scheduleRevision, revision.id);
+    assert.deepStrictEqual(plain(stored.state.activeCycle.progression), originalCycle.progression,
+      "updated performance estimates must not rebase the fixed linear reference");
+    assert.deepStrictEqual(plain(stored.state.activeCycle.sessionOverrides), originalCycle.sessionOverrides,
+      "an explicit single-session move survives the prescription update");
+    const retainedSchedule = stored.state.activeCycle.replannedSchedule;
+    assert.strictEqual(retainedSchedule.revision, originalCycle.replannedSchedule.revision);
+    assert.strictEqual(retainedSchedule.fromDate, originalCycle.replannedSchedule.fromDate);
+    assert.deepStrictEqual(plain(retainedSchedule.retainedSessions.map((session) => [session.id, session.date])),
+      originalCycle.replannedSchedule.retainedSessions.map((session) => [session.id, session.date]));
+    assert.deepStrictEqual(plain(retainedSchedule.retainedSessions.filter((session) => session.date < "2026-09-23")),
+      originalCycle.replannedSchedule.retainedSessions.filter((session) => session.date < "2026-09-23"),
+      "retained history remains unchanged while pending prescriptions can refresh");
+    assert.strictEqual(stored.state.activeCycle.endDate, "2026-10-31");
+    assert.strictEqual(stored.state.activeCycle.requestedEndDate, "2026-10-31");
+    assert.deepStrictEqual(preservedState(stored.state), preservedState(app.originalState));
+    const published = (await app.memory.loadPublic()).record.snapshot;
+    assert.strictEqual(published.cycle.scheduleRevision, revision.id);
+    assert.deepStrictEqual(plain(published.sessions.map((session) => [session.id, session.date])),
+      app.originalSnapshot.sessions.map((session) => [session.id, session.date]),
+      "publishing the top sets must preserve every session's ID and date");
+    assert(published.sessions.some((session) => session.date === "2026-10-08" && session.type === "push-strength"));
+    assert(!published.sessions.some((session) => session.date === "2026-10-05"));
+    const before = app.originalSnapshot.sessions.find((session) => session.date === "2026-09-28");
+    const after = published.sessions.find((session) => session.date === "2026-09-28");
+    assert.strictEqual(before.workout.workSets.length, 1);
+    assert.strictEqual(after.workout.workSets.length, 2, "the owner boot updates the public prescription too");
+    assert.deepStrictEqual(plain(after.workout.workSets.slice(1)), before.workout.workSets,
+      "the main work stays intact when the nonmaximal top set is restored");
+    assert.strictEqual(after.workout.workSets[0].sets, 1);
+    assert.strictEqual(after.workout.workSets[0].reps, 1);
+    assert.strictEqual(after.workout.workSets[0].loadKg, 77.5, "the top set uses the fixed 85.5 kg anchor, not the newer 90 kg estimate");
+    assert.strictEqual(after.workout.workSets[0].rpe, 8);
+
+    const firstState = plain(stored.state);
+    app.setToday("2026-09-29");
+    await app.reload();
+    await app.reload();
+    stored = await app.memory.loadPrivate();
+    assert.strictEqual(stored.version, 75);
+    assert.strictEqual(app.calls.length, 1);
+    assert.strictEqual(app.replanCalls.length, 0);
+    assert.deepStrictEqual(plain(stored.state), firstState, "reloading cannot rebase or save the applied top-set revision again");
   });
 
   await check("an older replan cannot freeze pending recovery sessions after the revision", { changeState: (state, core) => {

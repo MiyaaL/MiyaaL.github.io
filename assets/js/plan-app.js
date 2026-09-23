@@ -204,7 +204,7 @@
     if (result.error) {
       showMessage("网络不可用，正在显示最近一次公开缓存。", "offline");
     } else if (publicSnapshot && needsScheduleRevision(publicSnapshot.cycle)) {
-      showMessage("当前公开日历仍是旧计划；本人登录后会自动应用并同步已确认的三周递进、一周减量计划。", "notice");
+      showMessage("训练计划有更新；本人登录后会自动同步。", "notice");
     }
   }
 
@@ -229,12 +229,18 @@
       }
     }
     try {
-      var candidate = core.replanRemaining(privateState, holidayCalendars, {
-        fromDate: fromDate,
-        endDate: scheduleRevision.endDate,
-        asOfDate: today,
-        trainOnHolidays: true
-      });
+      var existingCycle = privateState.activeCycle;
+      var prescriptionUpdate = existingCycle.scheduleRevision === scheduleRevision.previousId &&
+        existingCycle.progression && existingCycle.progression.kind === "linear-wave" &&
+        existingCycle.replannedSchedule;
+      var candidate = prescriptionUpdate
+        ? core.normalizeState(privateState)
+        : core.replanRemaining(privateState, holidayCalendars, {
+          fromDate: fromDate,
+          endDate: scheduleRevision.endDate,
+          asOfDate: today,
+          trainOnHolidays: true
+        });
       var cycle = candidate.activeCycle;
       // Keep earlier dates, but replace any pending legacy recovery prescription
       // from today onward before the revision is marked as applied.
@@ -244,20 +250,22 @@
           delete session[key];
         });
       });
-      cycle.progression = {
-        kind: "linear-wave",
-        anchorDate: scheduleRevision.anchorDate,
-        anchor1rm: {}
-      };
-      Object.keys(cycle.lifts).forEach(function (key) {
-        var current = cycle.lifts[key].current1rm;
-        if (current === null || current === "" || !Number.isFinite(Number(current))) {
-          throw new Error("缺少 " + key + " 的有效当前能力值");
-        }
-        cycle.progression.anchor1rm[key] = Number(current);
-      });
+      if (!prescriptionUpdate) {
+        cycle.progression = {
+          kind: "linear-wave",
+          anchorDate: scheduleRevision.anchorDate,
+          anchor1rm: {}
+        };
+        Object.keys(cycle.lifts).forEach(function (key) {
+          var current = cycle.lifts[key].current1rm;
+          if (current === null || current === "" || !Number.isFinite(Number(current))) {
+            throw new Error("缺少 " + key + " 的有效当前能力值");
+          }
+          cycle.progression.anchor1rm[key] = Number(current);
+        });
+      }
       cycle.scheduleRevision = scheduleRevision.id;
-      return await persist("线性计划已自动同步：三周递进、一周减量，截止日期 " + scheduleRevision.endDate + "。", candidate);
+      return await persist("训练计划已同步，递进周已加入非极限顶组。", candidate);
     } catch (error) {
       showMessage("线性计划未能自动同步，原计划与记录已保留：" + error.message, "error");
       return false;
@@ -906,7 +914,7 @@
       escapeHtml(workout.mainExercise || session.label) + "</h3>" +
       (workout.needsSetup ? "<p>尚未填写当前与目标 1RM。</p>" : "") +
       setListHtml(workout.workSets, workout.liftKey) +
-      (workout.guidance ? "<p>" + escapeHtml(workout.guidance) + "</p>" : "") + "</section>";
+      (session.phase.key === "test" && workout.guidance ? "<p>" + escapeHtml(workout.guidance) + "</p>" : "") + "</section>";
     html += '<section class="plan-session-section"><h3>热身组</h3>' +
       setListHtml(workout.warmups, workout.liftKey) + "</section>";
     html += '<section class="plan-session-section"><h3>辅助动作</h3>' +
@@ -1000,16 +1008,10 @@
         escapeHtml(accessory.name) + '" data-accessory-planned-sets="' + accessory.sets + '"><strong>' + escapeHtml(accessory.name) + '</strong>' +
         '<label>重量<input class="plan-log-input" data-accessory-weight type="number" min="0" step="0.1" value="' +
         escapeHtml(saved.weight != null ? saved.weight : (accessory.loadKg != null ? accessory.loadKg : "")) + '"></label>' +
-        '<label>各组最少次数<input class="plan-log-input" data-accessory-reps type="number" min="0" max="200" value="' +
-        escapeHtml(saved.reps != null ? saved.reps : "") + '"></label>' +
         '<label>完成组数<input class="plan-log-input" data-accessory-sets type="number" min="0" max="20" value="' +
         escapeHtml(saved.sets != null ? saved.sets : "") + '"></label>' +
         '<label>最高实际 RPE<input class="plan-log-input" data-accessory-rpe type="number" min="1" max="10" step="0.5" value="' +
-        escapeHtml(saved.rpe != null ? saved.rpe : "") + '"></label>' +
-        '<label>可用加重步幅（kg）<input class="plan-log-input" data-accessory-increment type="number" min="0.25" step="0.25" value="' +
-        escapeHtml(saved.incrementKg != null ? saved.incrementKg : privateState.preferences.accessoryIncrement) + '"></label>' +
-        '<label>全组动作稳定<select class="plan-log-input" data-accessory-quality><option value="no">未确认</option>' +
-        '<option value="yes"' + (saved.qualityConfirmed === true || saved.allSetsCompleted === true ? ' selected' : '') + '>已确认</option></select></label></div>';
+        escapeHtml(saved.rpe != null ? saved.rpe : "") + '"></label></div>';
     }).join("");
 
     var scheduleButton = session.status !== "completed"
@@ -1455,17 +1457,19 @@
         completed: Number(row.querySelector("[data-log-reps]").value) >= Number(row.dataset.plannedReps)
       };
     });
+    var previousAccessories = (privateState.logs[session.id] || {}).accessories || [];
     var accessories = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-accessory-log]")).map(function (row) {
-      return {
+      var previous = previousAccessories.find(function (entry) {
+        return entry.name === row.dataset.accessoryName;
+      });
+      // Editing the simplified form preserves fields from older records.
+      return Object.assign({}, previous, {
         name: row.dataset.accessoryName,
         weight: Number(row.querySelector("[data-accessory-weight]").value),
-        reps: Number(row.querySelector("[data-accessory-reps]").value),
         sets: Number(row.querySelector("[data-accessory-sets]").value),
         rpe: row.querySelector("[data-accessory-rpe]").value === "" ? null : Number(row.querySelector("[data-accessory-rpe]").value),
-        incrementKg: Number(row.querySelector("[data-accessory-increment]").value),
-        qualityConfirmed: row.querySelector("[data-accessory-quality]").value === "yes",
-        completed: Number(row.querySelector("[data-accessory-reps]").value) > 0 && Number(row.querySelector("[data-accessory-sets]").value) > 0
-      };
+        completed: Number(row.querySelector("[data-accessory-sets]").value) > 0
+      });
     });
     privateState = core.recordSession(privateState, session, {
       status: "completed",

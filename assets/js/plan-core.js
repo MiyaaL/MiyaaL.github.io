@@ -897,13 +897,14 @@
       return [makeWorkSet("容量组", volume.sets, volume.reps, load(volume.percentage), volume.rpe, "2–3 分钟", volume.percentage)];
     }
 
+    var topSet = makeWorkSet("非极限顶组", 1, 1, load(0.9), 8, "3–5 分钟", 0.9);
     if (type === "pull") {
       var pullMain = [
         { sets: 4, reps: 4, percentage: 0.825 },
         { sets: 4, reps: 3, percentage: 0.85 },
         { sets: 4, reps: 2, percentage: 0.875 }
       ][week];
-      return [makeWorkSet("主训练组", pullMain.sets, pullMain.reps, load(pullMain.percentage), 8, "2–3 分钟", pullMain.percentage)];
+      return [topSet, makeWorkSet("主训练组", pullMain.sets, pullMain.reps, load(pullMain.percentage), 8, "2–3 分钟", pullMain.percentage)];
     }
 
     var main = [
@@ -911,7 +912,7 @@
       { sets: 4, reps: 4, percentage: 0.825, rpe: 8 },
       { sets: 4, reps: 3, percentage: 0.85, rpe: 8.5 }
     ][week];
-    return [makeWorkSet("主训练组", main.sets, main.reps, load(main.percentage), main.rpe, "3–5 分钟", main.percentage)];
+    return [topSet, makeWorkSet("主训练组", main.sets, main.reps, load(main.percentage), main.rpe, "3–5 分钟", main.percentage)];
   }
 
   function warmupsFor(liftKey, workSets, preferences) {
@@ -993,18 +994,19 @@
       bodyweight || 0,
       preferences
     );
-    return {
+    var workout = {
       liftKey: liftKey,
       mainExercise: LIFT_LABELS[liftKey],
       needsSetup: false,
       planned1rm: Math.round(planned * 10) / 10,
-      guidance: phase.key === "test"
-        ? "计划按 90% → 95% → 目标逐级尝试，临近测试须确认近期表现；热身吃力时降重，任何卡顿或失败都结束加重。使用保护杆或可靠保护者。"
-        : "训练参考重量按周线性朝目标推进，三周递进后仅在第四周减量；计划参考值不代表实测能力。目标 RPE 是执行上限，热身吃力时现场调整并记录，系统不会自动改写后续重量。",
       warmups: warmupsFor(liftKey, workSets, preferences),
       workSets: workSets,
       accessories: accessoriesFor(liftKey, session.type, phase)
     };
+    if (phase.key === "test") {
+      workout.guidance = "计划按 90% → 95% → 目标逐级尝试，临近测试须确认近期表现；热身吃力时降重，任何卡顿或失败都结束加重。使用保护杆或可靠保护者。";
+    }
+    return workout;
   }
 
   function markTestSessions(sessions) {

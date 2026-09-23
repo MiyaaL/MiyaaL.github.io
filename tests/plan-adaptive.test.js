@@ -39,7 +39,7 @@ check("deload and missing RPE do not lower the strength estimate", () => {
   assert.strictEqual(core.recordSession(state, first, { mainSets: [{ weight: 60, reps: 1, rpe: null }] }).activeCycle.lifts.bench.current1rm, 80);
 });
 
-check("the cycle ends with goal attempts and routine work has no single-set filler", () => {
+check("the cycle ends with goal attempts and routine strength work includes a non-maximal top set", () => {
   const state = configured();
   state.activeCycle.requestedEndDate = "2026-10-31";
   Object.assign(state.activeCycle.lifts.bench, { current1rm: 85.5, assessed1rm: 85.5 });
@@ -55,7 +55,11 @@ check("the cycle ends with goal attempts and routine work has no single-set fill
     squatTest.workout.workSets.map(x => x.loadKg)
   ], [[90, 95, 100], [107.5, 115, 120]]);
   const future = plan.sessions.filter(x => x.date >= "2026-09-23");
-  assert(future.filter(x => /^load-/.test(x.phase.key)).every(x => x.workout.workSets.every(set => set.sets > 1)));
+  assert(future.filter(x => /^load-/.test(x.phase.key)).every(x => {
+    const work = x.workout.workSets;
+    if (x.type === "push-volume") return work.length === 1 && work[0].sets > 1;
+    return work.length === 2 && work[0].label === "非极限顶组" && work[0].sets === 1 && work[0].reps === 1 && work[0].rpe === 8 && work[1].sets > 1;
+  }));
   assert(future.filter(x => x.phase.key === "deload").every(x => !x.workout.accessories.length));
   assert.deepStrictEqual([
     plan.state.activeCycle.lifts.bench.current1rm,

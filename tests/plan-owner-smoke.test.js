@@ -127,8 +127,15 @@ const { JSDOM } = require("jsdom");
   assert(window.document.querySelector("[data-save-log]"));
   assert.strictEqual(window.document.querySelector("[data-log-bodyweight]"), null);
   assert.strictEqual(window.document.querySelector("[data-log-rpe]").value, "", "actual RPE must not be prefilled with the target");
-  assert.strictEqual(window.document.querySelector("[data-accessory-reps]").value, "");
-  assert.strictEqual(window.document.querySelector("[data-accessory-quality]").value, "no");
+  ["reps", "increment", "quality"].forEach(field => {
+    assert.strictEqual(window.document.querySelector("[data-accessory-" + field + "]"), null);
+  });
+  assert.strictEqual(window.document.querySelector("[data-plan-detail-body] .plan-session-section").querySelector("p"), null,
+    "ordinary workouts omit the explanatory paragraph");
+  const firstAccessory = window.document.querySelector("[data-accessory-log]");
+  firstAccessory.querySelector("[data-accessory-weight]").value = "30";
+  firstAccessory.querySelector("[data-accessory-sets]").value = "2";
+  firstAccessory.querySelector("[data-accessory-rpe]").value = "7.5";
   window.document.querySelector("[data-save-log]").click();
   await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -138,7 +145,17 @@ const { JSDOM } = require("jsdom");
   const savedLog = stored.state.logs[Object.keys(stored.state.logs)[0]];
   assert.strictEqual(savedLog.accessories.length, 3);
   assert(savedLog.mainSets.every(set => set.rpe === null));
-  assert(savedLog.accessories.every(set => set.qualityConfirmed === false));
+  savedLog.accessories.forEach(accessory => {
+    ["reps", "incrementKg", "qualityConfirmed"].forEach(field => {
+      assert.strictEqual(Object.prototype.hasOwnProperty.call(accessory, field), false,
+        "new accessory logs must not fabricate removed fields");
+    });
+  });
+  assert.strictEqual(savedLog.accessories[0].weight, 30);
+  assert.strictEqual(savedLog.accessories[0].sets, 2);
+  assert.strictEqual(savedLog.accessories[0].rpe, 7.5);
+  assert.strictEqual(savedLog.accessories[0].completed, true, "completed sets suffice without a removed reps input");
+  assert(savedLog.accessories.slice(1).every(accessory => accessory.completed === false));
   assert.strictEqual(stored.state.activeCycle.requestedEndDate, "2026-10-25");
   assert.strictEqual(stored.state.activeCycle.endDate, "2026-10-25");
   assert.strictEqual(Object.prototype.hasOwnProperty.call(savedLog, "bodyweight"), false);
@@ -171,6 +188,48 @@ const { JSDOM } = require("jsdom");
   const publicAfterBodyweight = await memory.loadPublic();
   assert(!JSON.stringify(publicAfterBodyweight.record.snapshot).includes("bodyweightEntries"));
   assert.strictEqual(bodyweightDialog.open, false);
+
+  const legacyState = JSON.parse(JSON.stringify(bodyweightState.state));
+  const recordedSessionId = Object.keys(legacyState.logs)[0];
+  const legacyAccessory = legacyState.logs[recordedSessionId].accessories[0];
+  Object.assign(legacyAccessory, { reps: 8, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true });
+  legacyState.logs[recordedSessionId].sessionSnapshot.workout.guidance = "不应再显示的旧版训练算法说明";
+  const legacyPlan = window.PlanCore.generate(legacyState, [holidays]);
+  await memory.save(bodyweightState.version, legacyState, window.PlanCore.createPublicSnapshot(legacyState, legacyPlan));
+  await memory.signOut();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  await memory.signIn();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  window.document.querySelector('[data-session-id="' + recordedSessionId + '"]').click();
+  assert(!window.document.querySelector("[data-plan-detail-body]").textContent.includes("不应再显示的旧版训练算法说明"),
+    "stored guidance must also be hidden on ordinary historical sessions");
+  ["reps", "increment", "quality"].forEach(field => {
+    assert.strictEqual(window.document.querySelector("[data-accessory-" + field + "]"), null);
+  });
+  const editedAccessory = window.document.querySelector("[data-accessory-log]");
+  assert.strictEqual(editedAccessory.querySelector("[data-accessory-weight]").value, "30");
+  editedAccessory.querySelector("[data-accessory-weight]").value = "32.5";
+  editedAccessory.querySelector("[data-accessory-sets]").value = "3";
+  editedAccessory.querySelector("[data-accessory-rpe]").value = "8";
+  window.document.querySelector("[data-save-log]").click();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const editedState = await memory.loadPrivate();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(editedState.state.logs[recordedSessionId].accessories[0])), {
+    name: legacyAccessory.name, weight: 32.5, sets: 3, rpe: 8, completed: true,
+    reps: 8, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true
+  }, "editing the reduced form preserves historical fields while updating visible values");
+
+  const testSession = window.PlanCore.generate(editedState.state, [holidays]).sessions.find(session => session.phase.key === "test");
+  let navigatedMonths = 0;
+  while (!window.document.querySelector('[data-session-id="' + testSession.id + '"]') && navigatedMonths < 12) {
+    window.document.querySelector("[data-plan-next]").click();
+    navigatedMonths += 1;
+  }
+  window.document.querySelector('[data-session-id="' + testSession.id + '"]').click();
+  assert(window.document.querySelector("[data-plan-detail-body]").textContent.includes(testSession.workout.guidance),
+    "goal tests retain their specific attempt instructions");
+  window.document.querySelector("[data-plan-close-details]").click();
+  for (let index = 0; index < navigatedMonths; index += 1) window.document.querySelector("[data-plan-previous]").click();
 
   window.document.querySelector("[data-plan-edit]").click();
   assert.strictEqual(window.document.querySelector("[data-plan-settings]").open, true);
@@ -214,7 +273,7 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(stateAfterNewCycle.state.archivedCycles[0].cycle.status, "archived");
   assert.strictEqual(stateAfterNewCycle.state.archivedCycles[0].overview.cycle.status, "archived");
 
-  console.log("PASS: bodyweight changes only through dedicated updates and carries exactly across cycles");
+  console.log("PASS: simplified accessory logs preserve legacy data, workout guidance stays focused, and bodyweight carries across cycles");
   window.close();
 }()).catch((error) => {
   console.error(error);
