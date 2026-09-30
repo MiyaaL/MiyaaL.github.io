@@ -43,10 +43,10 @@ function configured() {
   assert.strictEqual(plan.cycle.requestedEndDate, "2026-10-31");
   assert.strictEqual(plan.cycle.endDate, "2026-11-07");
   assert(plan.sessions.every(session => session.date <= plan.cycle.endDate));
-  const allowed = new Set(["load-1", "load-2", "load-3", "deload", "test"]);
+  const allowed = new Set(["load-1", "load-2", "load-3", "deload", "opener", "test"]);
   for (const session of plan.sessions) {
     assert(allowed.has(session.phase.key), session.date + " has an unexpected training phase");
-    if (session.phase.key === "test") continue;
+    if (session.phase.key === "test" || session.phase.key === "opener") continue;
     assert.strictEqual(session.phase.key, session.phase.blockWeek === 3 ? "deload" : "load-" + (session.phase.blockWeek + 1));
   }
   for (const liftKey of ["bench", "pullup", "squat"]) {

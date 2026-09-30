@@ -56,17 +56,20 @@ function sessionAt(plan, date) {
   assert.strictEqual(JSON.stringify(state), before, "generation must not mutate its input");
   assert.deepStrictEqual(plan.cycle.lifts, state.activeCycle.lifts, "calendar progress is not measured strength");
   const bench = ["2026-09-28", "2026-10-05", "2026-10-12"].map((date) => sessionAt(plan, date));
-  assert.deepStrictEqual(bench.map((session) => mainSet(session).loadKg), [67.5, 72.5, 80]);
+  assert.deepStrictEqual(bench.map((session) => mainSet(session).loadKg), [67.5, 70, 75]);
   assert.deepStrictEqual(bench.map((session) => [mainSet(session).sets, mainSet(session).reps]), [[4, 5], [4, 4], [4, 3]]);
   for (const dates of [["2026-09-29", "2026-10-06", "2026-10-13"], ["2026-09-30", "2026-10-07", "2026-10-14"], ["2026-10-02", "2026-10-09", "2026-10-16"]]) {
     const loads = dates.map((date) => mainSet(sessionAt(plan, date)).loadKg);
     assert(loads[1] > loads[0] && loads[2] > loads[1], "weekly peaks must increase: " + dates);
   }
-  assert.strictEqual(sessionAt(plan, "2026-10-19").workout.workSets[0].loadKg, 60);
-  assert.strictEqual(sessionAt(plan, "2026-10-20").workout.workSets[0].reps, 4);
-  assert.strictEqual(sessionAt(plan, "2026-10-20").workout.workSets[0].percentage, 0.7);
-  assert.strictEqual(sessionAt(plan, "2026-10-26").workout.planned1rm, 100);
-  assert.strictEqual(mainSet(sessionAt(plan, "2026-10-26")).loadKg, 80, "test week does not add another reduction");
+  assert.strictEqual(sessionAt(plan, "2026-10-19").workout.workSets[0].loadKg, 55);
+  const pullDeload = sessionAt(plan, "2026-10-20").workout;
+  assert.strictEqual(pullDeload.workSets[0].reps, 4);
+  assert.strictEqual(pullDeload.workSets[0].loadKg, 0, "a pull-up deload never demands a band or an assist machine");
+  assert.deepStrictEqual(pullDeload.warmups.map((set) => set.loadKg), [0], "bodyweight preparation survives a bodyweight work set");
+  assert.strictEqual(sessionAt(plan, "2026-10-26").workout.planned1rm, 88.9,
+    "the reference is capped to a reachable weekly gain, while the goal still stands on the test days");
+  assert.strictEqual(mainSet(sessionAt(plan, "2026-10-26")).loadKg, 67.5, "the testing week opens rather than loads");
   assert.deepStrictEqual(plan.sessions.filter((session) => session.isTest).map((session) => [session.workout.liftKey, session.date]),
     [["pullup", "2026-10-27"], ["squat", "2026-10-28"], ["bench", "2026-10-30"]]);
   const again = core.generate(JSON.parse(JSON.stringify(plan.state)), [holidays], { asOfDate });
@@ -84,7 +87,8 @@ function sessionAt(plan, date) {
     if (needsTop) {
       const top = sets[0];
       assert.strictEqual(sets.length, 2);
-      assert.deepStrictEqual([top.label, top.sets, top.reps, top.rpe, top.percentage], ["非极限顶组", 1, 1, 8, 0.9]);
+      assert.deepStrictEqual([top.label, top.sets, top.reps, top.rpe, top.percentage],
+        ["非极限顶组", 1, 1, 8, [0.88, 0.9, 0.92][session.phase.blockWeek]]);
       assert.strictEqual(sets[1].label, "主训练组");
       assert(top.loadKg >= sets[1].loadKg, "the top set must not be lighter than the main work");
       assert(session.workout.warmups.every((set) => set.loadKg < top.loadKg));
@@ -92,13 +96,21 @@ function sessionAt(plan, date) {
     if (session.phase.key === "test") assert(session.workout.guidance);
     else assert.strictEqual(session.workout.guidance, undefined, "routine sessions omit the removed explanatory paragraph");
   }
+  const opener = sessionAt(plan, "2026-10-26");
+  assert.strictEqual(opener.phase.key, "opener", "the week holding the first attempt opens instead of loading");
+  assert.deepStrictEqual(opener.workout.workSets.map((set) => [set.label, set.sets, set.reps]),
+    [["开把单次", 1, 1], ["确认组", 2, 3]]);
+  assert.strictEqual(opener.workout.accessories.length, 0, "no accessory fatigue before the attempts");
+  assert(plan.sessions.filter((session) => session.date >= "2026-09-25" && session.phase.key === "opener")
+    .every((session) => session.date > "2026-10-23" && session.date < "2026-10-27"),
+    "only the testing week opens");
   const benchDates = ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-26"];
-  assert.deepStrictEqual(benchDates.map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [77.5, 80, 82.5, 90]);
-  assert.deepStrictEqual(["2026-09-30", "2026-10-07", "2026-10-14"].map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [95, 97.5, 102.5]);
-  assert.deepStrictEqual(["2026-09-29", "2026-10-06", "2026-10-13"].map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [7.5, 7.5, 10],
+  assert.deepStrictEqual(benchDates.map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [75, 77.5, 80, 80]);
+  assert.deepStrictEqual(["2026-09-30", "2026-10-07", "2026-10-14"].map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [92.5, 95, 97.5]);
+  assert.deepStrictEqual(["2026-09-29", "2026-10-06", "2026-10-13"].map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [5, 7.5, 10],
     "pull-up percentages apply to bodyweight plus added load");
   const benchWarmups = sessionAt(plan, "2026-09-28").workout.warmups;
-  assert.strictEqual(benchWarmups[benchWarmups.length - 1].loadKg, 72.5, "warmups build toward the top set, not the lighter main work");
+  assert.strictEqual(benchWarmups[benchWarmups.length - 1].loadKg, 70, "warmups build toward the top set, not the lighter main work");
 }());
 
 (function sparseLogsAndActualRpeNeverRestartOrAutomaticallyUnloadThePlan() {

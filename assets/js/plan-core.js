@@ -12,6 +12,10 @@
 
   var DAY_MS = 24 * 60 * 60 * 1000;
   var STATE_SCHEMA_VERSION = 3;
+  // A deadline can demand a jump the body cannot make. Prescriptions follow the
+  // straight line to the goal only while it stays within this weekly gain of the
+  // starting capacity; the goal itself still stands on the test days.
+  var MAX_WEEKLY_GAIN_RATE = 0.01;
   var DEFAULT_TEMPLATE = [
     { id: "push-strength", weekday: 1, type: "push-strength", label: "推 · 强度" },
     { id: "pull", weekday: 2, type: "pull", label: "拉" },
@@ -614,7 +618,7 @@
   }
 
   function accessoriesFor(liftKey, type, phase) {
-    if (phase.key === "test" || phase.key === "deload") return [];
+    if (phase.key === "test" || phase.key === "deload" || phase.key === "opener") return [];
     var templates = ACCESSORIES_BY_LIFT[liftKey] || {};
     var items = deepClone(templates[type] || []);
     items.forEach(function (item) { item.liftKey = liftKey; });
@@ -815,11 +819,15 @@
     return isIsoDate(progression.anchorDate) ? progression.anchorDate : cycle.startDate;
   }
 
-  function phaseFor(session, cycle) {
+  function phaseFor(session, cycle, testWeekIndex) {
     var weekIndex = Math.floor(daysBetween(progressionAnchor(cycle), session.date) / 7);
     var blockWeek = ((weekIndex % 4) + 4) % 4;
     if (session.isTest) {
       return { key: "test", label: "目标测试", weekIndex: weekIndex, blockWeek: blockWeek };
+    }
+    // Loading work in the testing week would arrive as fatigue on the attempts.
+    if (testWeekIndex != null && weekIndex === testWeekIndex) {
+      return { key: "opener", label: "测试周开把", weekIndex: weekIndex, blockWeek: blockWeek };
     }
     return {
       key: blockWeek === 3 ? "deload" : "load-" + (blockWeek + 1),
@@ -829,7 +837,7 @@
     };
   }
 
-  function programmedOneRepMax(lift, liftKey, cycle, date) {
+  function programmedOneRepMax(lift, liftKey, cycle, date, offset) {
     var progression = cycle.progression || {};
     var anchors = progression.anchor1rm || {};
     var initial = anchors[liftKey] == null
@@ -840,7 +848,16 @@
     var steps = Math.max(0, Math.floor(daysBetween(anchorDate, cycle.endDate) / 7));
     var week = Math.max(0, Math.floor(daysBetween(anchorDate, date) / 7));
     var progress = steps > 0 ? clamp(week / steps, 0, 1) : 0;
-    return initial + (target - initial) * progress;
+    var linear = initial + (target - initial) * progress;
+    if (linear <= initial) {
+      return linear;
+    }
+    // Pull-ups move the whole system, so the ceiling grows on bodyweight plus
+    // added load rather than on the added load alone.
+    var base = asNumber(offset, 0);
+    var rate = Math.max(0, asNumber(progression.maxWeeklyGain, MAX_WEEKLY_GAIN_RATE));
+    var ceiling = (initial + base) * (1 + rate * week) - base;
+    return Math.min(linear, ceiling);
   }
 
   function makeWorkSet(label, sets, reps, loadKg, rpe, rest, percentage) {
@@ -883,21 +900,35 @@
       return attempts.filter(function (set, index) { return !index || set.loadKg > attempts[index - 1].loadKg; });
     }
     if (phase.key === "deload") {
-      var percentage = liftKey === "pullup" ? 0.7 : 0.625;
-      return [makeWorkSet("减量组", 3, liftKey === "pullup" ? 4 : 5, load(percentage), 6, "2–3 分钟", percentage)];
+      // A percentage of bodyweight plus added load always resolves below
+      // bodyweight here, which would demand a band or an assist machine;
+      // pull-ups deload by dropping sets and reps at bodyweight instead.
+      if (liftKey === "pullup") {
+        return [makeWorkSet("减量组", 3, 4, 0, 6, "2–3 分钟", null)];
+      }
+      return [makeWorkSet("减量组", 3, 5, load(0.625), 6, "2–3 分钟", 0.625)];
+    }
+    if (phase.key === "opener") {
+      return [
+        makeWorkSet("开把单次", 1, 1, load(0.9), 8, "3–5 分钟", 0.9),
+        makeWorkSet("确认组", 2, 3, load(0.75), 7, "2–3 分钟", 0.75)
+      ];
     }
 
     var week = phase.blockWeek;
     if (type === "push-volume") {
       var volume = [
-        { sets: 4, reps: 6, percentage: 0.7, rpe: 7 },
-        { sets: 4, reps: 5, percentage: 0.725, rpe: 7.5 },
-        { sets: 4, reps: 4, percentage: 0.75, rpe: 8 }
+        { sets: 4, reps: 6, percentage: 0.75, rpe: 7 },
+        { sets: 4, reps: 5, percentage: 0.775, rpe: 7.5 },
+        { sets: 4, reps: 4, percentage: 0.8, rpe: 8 }
       ][week];
       return [makeWorkSet("容量组", volume.sets, volume.reps, load(volume.percentage), volume.rpe, "2–3 分钟", volume.percentage)];
     }
 
-    var topSet = makeWorkSet("非极限顶组", 1, 1, load(0.9), 8, "3–5 分钟", 0.9);
+    // The top single ramps on its own percentage: a capped reference moves less
+    // per week than the smallest plate, so holding it at 90% would repeat.
+    var topPercentage = [0.88, 0.9, 0.92][week];
+    var topSet = makeWorkSet("非极限顶组", 1, 1, load(topPercentage), 8, "3–5 分钟", topPercentage);
     if (type === "pull") {
       var pullMain = [
         { sets: 4, reps: 4, percentage: 0.825 },
@@ -924,14 +955,18 @@
     var result = [];
 
     if (liftKey === "pullup") {
-      result.push({ label: "自重热身", sets: 1, reps: 5, loadKg: 0 });
+      // The bodyweight set is movement preparation, not a lighter load, so it
+      // stays even when the work sets carry no added weight.
       if (workingLoad > increment) {
         result.push({ label: "递增热身", sets: 1, reps: 3, loadKg: roundLoad(workingLoad * 0.5, increment) });
       }
       if (workingLoad > increment * 2) {
         result.push({ label: "递增热身", sets: 1, reps: 1, loadKg: roundLoad(workingLoad * 0.75, increment) });
       }
-      return uniqueWarmups(result, workingLoad);
+      return [{ label: "自重热身", sets: 1, reps: 5, loadKg: 0 }]
+        .concat(uniqueWarmups(result, workingLoad).filter(function (item) {
+          return item.loadKg > 0;
+        }));
     }
 
     [
@@ -983,7 +1018,7 @@
       };
     }
 
-    var planned = programmedOneRepMax(lift, liftKey, cycle, session.date);
+    var planned = programmedOneRepMax(lift, liftKey, cycle, session.date, offset);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -1074,6 +1109,10 @@
     });
     sessions.sort(byDate);
     markTestSessions(sessions);
+    var firstTest = sessions.filter(function (session) { return session.isTest; })[0];
+    var testWeekIndex = firstTest
+      ? Math.floor(daysBetween(progressionAnchor(cycle), firstTest.date) / 7)
+      : null;
 
     var adjustmentDays = (cycle.scheduleAdjustments || []).reduce(function (total, entry) {
       return total + entry.days;
@@ -1088,7 +1127,7 @@
           session[key] = frozen[key];
         });
       } else if (!(cycle.replannedSchedule && session.date < cycle.replannedSchedule.fromDate && session.workout)) {
-        session.phase = phaseFor(session, cycle);
+        session.phase = phaseFor(session, cycle, testWeekIndex);
         session.workout = workoutFor(session, state, session.phase);
       }
       session.status = log && log.status ? log.status : "planned";
