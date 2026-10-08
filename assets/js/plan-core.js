@@ -1084,6 +1084,7 @@
     if (cycle.replannedSchedule) {
       var recordedDates = {};
       cycleLogs(state).forEach(function (log) { recordedDates[log.sessionSnapshot.date] = true; });
+      cycle.replannedSchedule.retainedSessions.forEach(function (session) { recordedDates[session.date] = true; });
       sessions = sessions.filter(function (session) {
         return !recordedDates[session.date] || Boolean(state.logs[session.id]);
       }).concat(deepClone(cycle.replannedSchedule.retainedSessions));
@@ -1126,7 +1127,8 @@
         Object.keys(frozen).forEach(function (key) {
           session[key] = frozen[key];
         });
-      } else if (!(cycle.replannedSchedule && session.date < cycle.replannedSchedule.fromDate && session.workout)) {
+      } else if (!(cycle.replannedSchedule && session.date < cycle.replannedSchedule.fromDate &&
+          session.workout && session.date === session.programDate)) {
         session.phase = phaseFor(session, cycle, testWeekIndex);
         session.workout = workoutFor(session, state, session.phase);
       }
@@ -1278,10 +1280,10 @@
   }
 
   function adjustSchedule(inputState, sourceId, targetDate, options) {
-    if (inputState.activeCycle && inputState.activeCycle.replannedSchedule) {
+    var settings = options || {};
+    if (inputState.activeCycle && inputState.activeCycle.replannedSchedule && settings.allowDeadlineChange !== true) {
       throw sessionMoveError("schedule_deadline_locked");
     }
-    var settings = options || {};
     var state = normalizeState(inputState);
     var plan = generate(state, settings.holidayCalendars || [], { asOfDate: settings.asOfDate });
     state = plan.state;
@@ -1327,10 +1329,27 @@
       }
     }
 
+    var regeneratingIds = {};
+    if (cycle.replannedSchedule) {
+      buildBaseSessions(cycle, compileHolidayCalendar(settings.holidayCalendars || [], cycle.holidayOverrides), [])
+        .concat(cycle.replannedSchedule.retainedSessions).forEach(function (session) {
+          regeneratingIds[session.id] = true;
+        });
+    }
     var restoredSkips = [];
     candidates.forEach(function (session) {
       var log = state.logs[session.id];
       if (log && log.status === "skipped") {
+        if (cycle.replannedSchedule && !regeneratingIds[session.id]) {
+          // Older revisions only survive through their logged snapshot. Keep
+          // that workout when clearing its skip, without replaying past shifts.
+          cycle.replannedSchedule.retainedSessions.push(deepClone(session));
+          cycle.sessionOverrides[session.id] = {
+            action: "move",
+            date: session.date,
+            scheduleAdjustmentCount: cycle.scheduleAdjustments.length
+          };
+        }
         restoredSkips.push({
           sessionId: session.id,
           notes: log.notes || "",

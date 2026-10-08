@@ -142,6 +142,12 @@
   function showMessage(text, kind) {
     dom.message.textContent = text || "";
     dom.message.dataset.kind = kind || "";
+    var detailMessage = dom.detailBody.querySelector("[data-plan-detail-message]");
+    if (!dom.drawer.hidden && detailMessage) {
+      detailMessage.textContent = text || "";
+      detailMessage.dataset.kind = kind || "";
+      if (text && detailMessage.scrollIntoView) detailMessage.scrollIntoView({ block: "nearest" });
+    }
   }
 
   function setLoading(value) {
@@ -872,7 +878,8 @@
     }
     selectedSessionId = id;
     dom.detailTitle.textContent = session.label;
-    dom.detailBody.innerHTML = sessionDetailsHtml(session);
+    dom.detailBody.innerHTML = sessionDetailsHtml(session) +
+      '<div class="plan-message" data-plan-detail-message role="status" aria-live="polite"></div>';
     dom.drawer.hidden = false;
     document.documentElement.classList.add("plan-drawer-open");
     bindDetailActions(session);
@@ -1129,7 +1136,9 @@
     dom.moveConfirmButton.textContent = "确认" + action;
     dom.moveConfirmMessage.textContent = "从“" + request.sourceLabel + "”开始的 " +
       request.affectedCount + " 次未完成训练将整体" + action + " " + Math.abs(request.days) + " 天，周期结束日期变为 " +
-      formatChineseDate(request.newEndDate, false) + "。范围内的“已跳过”会恢复为待训练。";
+      formatChineseDate(request.newEndDate, false) + "。" +
+      (request.changesFixedDeadline ? "这次整体调整也会修改原固定截止日期。" : "") +
+      "范围内的“已跳过”会恢复为待训练。";
     dom.moveConfirm.showModal();
   }
 
@@ -1144,7 +1153,8 @@
     try {
       privateState = core.adjustSchedule(privateState, request.sourceId, request.targetDate, {
         holidayCalendars: holidayCalendars,
-        asOfDate: todayInShanghai()
+        asOfDate: todayInShanghai(),
+        allowDeadlineChange: true
       });
       viewingChartArchive = -1;
       var saveResult = await persist(request.days < 0
@@ -1186,7 +1196,8 @@
     try {
       var previewState = core.adjustSchedule(privateState, sourceId, targetDate, {
         holidayCalendars: holidayCalendars,
-        asOfDate: todayInShanghai()
+        asOfDate: todayInShanghai(),
+        allowDeadlineChange: true
       });
       var previewPlan = core.generate(previewState, holidayCalendars, { asOfDate: todayInShanghai() });
       openScheduleAdjustmentConfirmation({
@@ -1197,7 +1208,8 @@
         affectedCount: (plan.sessions || []).filter(function (session) {
           return session.date >= source.date && session.status !== "completed";
         }).length,
-        newEndDate: previewPlan.cycle.endDate
+        newEndDate: previewPlan.cycle.endDate,
+        changesFixedDeadline: Boolean(privateState.activeCycle.replannedSchedule)
       });
     } catch (error) {
       showScheduleAdjustmentError(error);

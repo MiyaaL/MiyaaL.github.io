@@ -283,7 +283,8 @@ async function check(name, options, run) {
       "the main work stays intact when the nonmaximal top set is restored");
     assert.strictEqual(after.workout.workSets[0].sets, 1);
     assert.strictEqual(after.workout.workSets[0].reps, 1);
-    assert.strictEqual(after.workout.workSets[0].loadKg, 77.5, "the top set uses the fixed 85.5 kg anchor, not the newer 90 kg estimate");
+    assert.strictEqual(after.workout.workSets[0].percentage, 0.88, "the first loading week uses the current top-set percentage");
+    assert.strictEqual(after.workout.workSets[0].loadKg, 75, "the top set uses the fixed 85.5 kg anchor, not the newer 90 kg estimate");
     assert.strictEqual(after.workout.workSets[0].rpe, 8);
 
     const firstState = plain(stored.state);

@@ -2,6 +2,10 @@
   margin-top: 0;
 }
 
+.plan-drawer-open #main-content {
+  z-index: 51;
+}
+
 .plan-hero {
   border-bottom: 1px solid var(--border);
 }
