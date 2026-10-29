@@ -442,6 +442,30 @@ end
 require_css(
   errors,
   ROOT.join("assets/css/main.css"),
+  ".hero-grid",
+  [/display:\s*grid;/, /align-items:\s*start;/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/main.css"),
+  ".hero-role",
+  [/display:\s*flex;/, /flex-wrap:\s*wrap;/, /align-items:\s*baseline;/, /font-size:\s*18px;/, /font-weight:\s*500;/, /line-height:\s*1\.5;/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/main.css"),
+  ".hero-role span",
+  [/color:\s*var\(--text-soft\);/, /font-size:\s*14px;/, /font-weight:\s*400;/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/main.css"),
+  ".hero-intro",
+  [/font-size:\s*16px;/, /font-weight:\s*400;/, /line-height:\s*1\.75;/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/main.css"),
   ".tag-list a",
   [/color:\s*var\(--text-soft\);/, /font-family:\s*var\(--font-sans\);/, /font-size:\s*13px;/, /font-weight:\s*500;/]
 )
