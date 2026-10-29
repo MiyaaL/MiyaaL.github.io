@@ -921,6 +921,22 @@
   background: rgba(1, 4, 9, 0.68);
 }
 
+/* The native option popup is painted by the OS, so it ignores the page's CSS
+   variables. Pin the popup colors to the active theme to keep every list in the
+   plan dialogs (training type, weekday, holiday type) legible. */
+.plan-dialog select option,
+.plan-dialog select optgroup {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.plan-dialog select option:checked,
+.plan-dialog select option:focus {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 500;
+}
+
 .plan-dialog form {
   margin: 0;
 }
