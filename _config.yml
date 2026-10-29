@@ -24,6 +24,10 @@ plan:
   supabase_publishable_key: "sb_publishable_OtL6z18NHoU5zoalRMPJ1A_ZdKLdx24"
   owner_github_login: MiyaaL
   owner_github_id: "73994563"
+  volume_revision:
+    id: "moderate-volume-v1"
+    cycleId: "cycle-2026-11-02-mvsbg0jk"
+    fromDate: "2026-11-02"
   schedule_revision:
     id: "linear-wave-top-set-2026-09-23"
     previousId: "linear-wave-2026-09-23"

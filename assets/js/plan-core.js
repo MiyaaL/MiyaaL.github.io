@@ -30,8 +30,9 @@
     "push-volume": "推 · 卧推容量",
     "squat-volume": "蹲 · 杠铃深蹲容量"
   };
-  // Volume days for the same lift share one prescription formula and skip the
-  // top single that strength days carry.
+  // Keep a cycle's volume scheme explicit so new prescriptions never silently
+  // rewrite older cycles. Both volume days omit the strength-day top single.
+  var MODERATE_VOLUME_PRESCRIPTION = "moderate-volume-v1";
   var VOLUME_TYPES = { "push-volume": true, "squat-volume": true };
   var LIFT_LABELS = {
     bench: "杠铃卧推",
@@ -174,6 +175,7 @@
         startDate: start,
         endDate: addDays(start, 83),
         requestedEndDate: null,
+        volumePrescription: MODERATE_VOLUME_PRESCRIPTION,
         priorities: ["bench", "squat"],
         experience: "advanced",
         bodyweightEntries: [],
@@ -398,6 +400,14 @@
     state.version = Math.max(0, Math.floor(asNumber(state.version, 0)));
     state.preferences = Object.assign({}, fallback.preferences, state.preferences || {});
     state.activeCycle = Object.assign({}, fallback.activeCycle, state.activeCycle || {});
+    // Old stored cycles predate this opt-in. Merging the new default alone
+    // would otherwise replace all their unrecorded volume prescriptions.
+    var sourceCycle = input ? input.activeCycle || {} : fallback.activeCycle;
+    state.activeCycle.volumePrescription = sourceCycle.volumePrescription === MODERATE_VOLUME_PRESCRIPTION
+      ? MODERATE_VOLUME_PRESCRIPTION : "legacy";
+    if (!isIsoDate(state.activeCycle.volumePrescriptionFromDate)) {
+      delete state.activeCycle.volumePrescriptionFromDate;
+    }
     state.activeCycle.lifts = Object.assign({}, fallback.activeCycle.lifts, state.activeCycle.lifts || {});
     Object.keys(fallback.activeCycle.lifts).forEach(function (key) {
       state.activeCycle.lifts[key] = Object.assign(
@@ -895,7 +905,7 @@
     return Math.max(20, roundLoad(oneRepMax * percentage, preferences.barbellIncrement));
   }
 
-  function workingSets(type, liftKey, phase, oneRepMax, targetOneRepMax, bodyweight, preferences) {
+  function workingSets(type, liftKey, phase, oneRepMax, targetOneRepMax, bodyweight, preferences, volumePrescription) {
     var load = function (percentage, useTarget) {
       return prescribedLoad(
         liftKey,
@@ -932,6 +942,15 @@
 
     var week = phase.blockWeek;
     if (VOLUME_TYPES[type]) {
+      if (volumePrescription === MODERATE_VOLUME_PRESCRIPTION) {
+        // These are starting loads and an effort target, not a prediction of
+        // actual RPE. Keep 2–3 repetitions in reserve throughout the sets.
+        var moderate = type === "push-volume"
+          ? { sets: 4, reps: [10, 9, 8][week], percentage: [0.65, 0.675, 0.7][week] }
+          : { sets: 3, reps: 8, percentage: [0.675, 0.7, 0.7][week] };
+        return [makeWorkSet("容量组 · 余力 2–3 次", moderate.sets, moderate.reps,
+          load(moderate.percentage), 7.5, "2–3 分钟", moderate.percentage)];
+      }
       var volume = [
         { sets: 4, reps: 6, percentage: 0.75, rpe: 7 },
         { sets: 4, reps: 5, percentage: 0.775, rpe: 7.5 },
@@ -1012,7 +1031,7 @@
     });
   }
 
-  function workoutFor(session, state, phase) {
+  function workoutFor(session, state, phase, referenceOneRepMax) {
     var cycle = state.activeCycle;
     var preferences = state.preferences;
     var liftKey = liftKeyForType(session.type);
@@ -1033,7 +1052,8 @@
       };
     }
 
-    var planned = programmedOneRepMax(lift, liftKey, cycle, session.date, offset);
+    var planned = referenceOneRepMax != null && Number.isFinite(Number(referenceOneRepMax)) && Number(referenceOneRepMax) > 0
+      ? Number(referenceOneRepMax) : programmedOneRepMax(lift, liftKey, cycle, session.date, offset);
     var target = asNumber(lift.target1rm, planned);
     var workSets = workingSets(
       session.type,
@@ -1042,7 +1062,9 @@
       planned,
       target,
       bodyweight || 0,
-      preferences
+      preferences,
+      !cycle.volumePrescriptionFromDate || session.date >= cycle.volumePrescriptionFromDate
+        ? cycle.volumePrescription : "legacy"
     );
     var workout = {
       liftKey: liftKey,
@@ -1146,6 +1168,13 @@
           session.workout && session.date === session.programDate)) {
         session.phase = phaseFor(session, cycle, testWeekIndex);
         session.workout = workoutFor(session, state, session.phase);
+      } else if (cycle.volumePrescription === MODERATE_VOLUME_PRESCRIPTION &&
+          cycle.volumePrescriptionFromDate && session.date >= cycle.volumePrescriptionFromDate &&
+          VOLUME_TYPES[session.type] && session.phase && /^load-/.test(session.phase.key)) {
+        // A prior schedule revision may have retained still-future workouts.
+        // Adopt the dated volume change without altering their schedule, phase,
+        // or reference strength after a deadline revision.
+        session.workout = workoutFor(session, state, session.phase, session.workout.planned1rm);
       }
       session.status = log && log.status ? log.status : "planned";
       delete session.programDate;
@@ -1601,6 +1630,8 @@
         startDate: cycle.startDate,
         endDate: cycle.endDate,
         requestedEndDate: cycle.requestedEndDate,
+        volumePrescription: cycle.volumePrescription,
+        volumePrescriptionFromDate: cycle.volumePrescriptionFromDate || null,
         scheduleRevision: typeof cycle.scheduleRevision === "string" ? cycle.scheduleRevision : null,
         priorities: deepClone(cycle.priorities),
         schedule: deepClone(cycle.schedule),
@@ -1731,6 +1762,7 @@
     DEFAULT_TEMPLATE: deepClone(DEFAULT_TEMPLATE),
     TYPE_LABELS: deepClone(TYPE_LABELS),
     LIFT_LABELS: deepClone(LIFT_LABELS),
+    MODERATE_VOLUME_PRESCRIPTION: MODERATE_VOLUME_PRESCRIPTION,
     createDefaultState: createDefaultState,
     createDefaultLearningPlan: createDefaultLearningPlan,
     normalizeLearningPlan: normalizeLearningPlan,

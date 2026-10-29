@@ -28,6 +28,7 @@ plan: true
     data-owner-github-id="{{ site.plan.owner_github_id | default: '' | escape }}"
     data-holiday-url="{{ '/assets/data/holidays/cn-2026.json' | relative_url }}"
     data-schedule-revision="{{ site.plan.schedule_revision | jsonify | escape }}"
+    data-volume-revision="{{ site.plan.volume_revision | jsonify | escape }}"
   >
     <div class="plan-message" data-plan-message role="status" aria-live="polite"></div>
 

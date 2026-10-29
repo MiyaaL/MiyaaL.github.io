@@ -82,6 +82,12 @@
   } catch (_) {
     // A missing or malformed rollout configuration never changes saved plans.
   }
+  var volumeRevision = null;
+  try {
+    volumeRevision = JSON.parse(app.dataset.volumeRevision || "null");
+  } catch (_) {
+    // An invalid prescription rollout leaves saved cycles untouched.
+  }
   var holidayCalendars = [];
   var privateState = null;
   var ownerLoadPromise = null;
@@ -209,6 +215,40 @@
       showMessage("网络不可用，正在显示最近一次公开缓存。", "offline");
     } else if (publicSnapshot && needsScheduleRevision(publicSnapshot.cycle)) {
       showMessage("训练计划有更新；本人登录后会自动同步。", "notice");
+    } else if (publicSnapshot && needsVolumePrescriptionRevision(publicSnapshot.cycle)) {
+      showMessage("容量日有更新；本人登录后会自动同步。", "notice");
+    }
+  }
+
+  function needsVolumePrescriptionRevision(cycle) {
+    if (!volumeRevision || volumeRevision.id !== core.MODERATE_VOLUME_PRESCRIPTION ||
+        !cycle || cycle.id !== volumeRevision.cycleId || cycle.status !== "active" ||
+        cycle.volumePrescription === volumeRevision.id || todayInShanghai() > cycle.endDate ||
+        typeof volumeRevision.fromDate !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(volumeRevision.fromDate)) return false;
+    var date = new Date(volumeRevision.fromDate + "T00:00:00Z");
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === volumeRevision.fromDate &&
+      volumeRevision.fromDate <= cycle.endDate;
+  }
+
+  async function applyVolumePrescriptionRevision() {
+    var configuredYear = String(app.dataset.holidayUrl || "").match(/(\d{4})\.json(?:[?#]|$)/);
+    if (!holidayCalendars.length || (configuredYear && !holidayCalendars.some(function (calendar) {
+      return Number(calendar.year) === Number(configuredYear[1]);
+    }))) {
+      showMessage("节假日日历尚未载入，容量日尚未同步。请刷新重试；原计划与记录已保留。", "error");
+      return false;
+    }
+    try {
+      var candidate = core.normalizeState(privateState);
+      candidate.activeCycle.volumePrescription = volumeRevision.id;
+      candidate.activeCycle.volumePrescriptionFromDate = [
+        todayInShanghai(), candidate.activeCycle.startDate, volumeRevision.fromDate
+      ].sort().slice(-1)[0];
+      return await persist("容量日已同步：卧推 4×8–10，深蹲 3×8，目标保留 2–3 次余力。", candidate);
+    } catch (error) {
+      showMessage("容量日未能自动同步，原计划与记录已保留：" + error.message, "error");
+      return false;
     }
   }
 
@@ -307,6 +347,10 @@
       if (record && needsScheduleRevision(privateState.activeCycle)) {
         var applied = await applyScheduleRevision();
         if (applied === true) return;
+      }
+      if (record && needsVolumePrescriptionRevision(privateState.activeCycle)) {
+        var volumeApplied = await applyVolumePrescriptionRevision();
+        if (volumeApplied === true) return;
       }
       render();
       if (!record) {
