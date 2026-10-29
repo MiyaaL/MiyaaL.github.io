@@ -257,26 +257,84 @@
   border-right: 1px solid var(--border);
 }
 
-/* The all-cycles view groups one lift block per cycle inside the same grid. */
+/* The all-cycles view lists one cycle per row so several cycles stay scannable. */
 .plan-progress-grid.is-all-cycles {
   display: block;
+  border-block: 0;
 }
 
-.plan-progress-cycle + .plan-progress-cycle {
+.plan-progress-table {
   border-top: 1px solid var(--border);
 }
 
-.plan-progress-cycle-label {
+.plan-progress-row {
+  display: grid;
+  grid-template-columns: 152px repeat(3, minmax(0, 1fr));
+  align-items: center;
+  column-gap: 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-progress-row.is-head {
+  padding: 10px 0;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.plan-progress-row .plan-progress-cycle-label {
   margin: 0;
-  padding: 18px 0 0;
+  padding: 0;
   color: var(--text-soft);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
 }
 
-.plan-progress-cycle .plan-progress-item {
+.plan-progress-range {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.plan-progress-cell .plan-progress-item {
+  padding: 0;
   border-right: 0;
+}
+
+.plan-progress-cell .plan-progress-label {
+  justify-content: flex-start;
+}
+
+.plan-progress-cell .plan-progress-track {
+  margin-top: 9px;
+}
+
+@media (max-width: 780px) {
+  .plan-progress-row {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+    padding: 16px 0;
+  }
+
+  .plan-progress-row.is-head {
+    display: none;
+  }
+
+  .plan-progress-cell .plan-progress-item {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 14px;
+  }
+
+  .plan-progress-cell .plan-progress-track {
+    margin-top: 0;
+  }
 }
 
 .plan-progress-item:first-child {

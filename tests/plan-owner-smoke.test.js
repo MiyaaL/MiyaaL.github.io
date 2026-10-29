@@ -91,7 +91,7 @@ const { JSDOM } = require("jsdom");
 
   assert.strictEqual(cycleSelect.options.length, 3);
   assert.strictEqual(cycleSelect.options[0].value, "all");
-  assert(cycleSelect.options[0].textContent.includes("全量"));
+  assert.strictEqual(cycleSelect.options[0].textContent, "ALL");
   assert(cycleSelect.options[1].textContent.includes("Current"));
   assert(cycleSelect.options[2].textContent.includes("Archived"));
   const activeTitle = window.document.querySelector("[data-plan-title]").textContent;
@@ -106,11 +106,14 @@ const { JSDOM } = require("jsdom");
   cycleSelect.dispatchEvent(new window.Event("change"));
   assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, "全量训练视图");
   assert(window.document.querySelector("[data-plan-cycle-meta]").textContent.includes("2 个周期"));
-  assert.strictEqual(window.document.querySelectorAll(".plan-progress-cycle").length, 2);
-  assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"][data-series^="Bench Press · Cycle 01"]'),
+  assert.strictEqual(window.document.querySelectorAll(".plan-progress-row").length, 3,
+    "one header row plus one row per cycle");
+  assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"][data-series="Bench Press"][data-cycle-label="Cycle 01"]'),
     "the all view keeps the archived cycle on the chart");
-  assert(window.document.querySelector('[data-chart-point][data-series^="Bench Press · Cycle 02"]'),
+  assert(window.document.querySelector('[data-chart-point][data-series="Bench Press"][data-cycle-label="Cycle 02"]'),
     "the all view keeps the current cycle on the chart");
+  assert.strictEqual(window.document.querySelectorAll(".plan-chart-cycle-tag").length, 0,
+    "the legend names each lift once per cycle without repeating the cycle tag");
   assert.strictEqual(window.document.querySelectorAll('[draggable="true"]').length, 0,
     "the all view is read-only");
   window.document.querySelector('[data-plan-previous]').click();

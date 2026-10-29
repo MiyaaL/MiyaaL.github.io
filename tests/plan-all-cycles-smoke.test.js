@@ -90,7 +90,36 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(document.querySelectorAll('[draggable="true"]').length, 0,
     "the all view never allows dragging");
 
-  const archivedEntry = sharedCell.querySelector('.plan-day-session[data-session-id^="cycle-2026-07-06:"]');
+  const cellLoads = [...sharedCell.querySelectorAll(".plan-day-load")].map((node) => node.textContent);
+  assert(cellLoads.every((text) => text && text !== "待设置重量"),
+    "archived days keep the loads they show when the cycle is selected alone");
+  // The visible month may cover no archived-only day, so the standalone cycle is the
+  // reference: whatever load it shows for a date, the all view must show the same.
+  const standaloneLoads = {};
+  for (let step = 0; step < 8 && !Object.keys(standaloneLoads).length; step += 1) {
+    document.querySelector("[data-plan-previous]").click();
+    const previous = document.querySelector("[data-plan-cycle-select]");
+    previous.value = "0";
+    previous.dispatchEvent(new window.Event("change"));
+    document.querySelectorAll("[data-plan-date] .plan-day-load").forEach((node) => {
+      const date = node.closest("[data-plan-date]").dataset.planDate;
+      standaloneLoads[date] = node.textContent;
+    });
+    previous.value = "all";
+    previous.dispatchEvent(new window.Event("change"));
+  }
+  assert(Object.keys(standaloneLoads).length, "the archived cycle has visible dates");
+  const mismatched = Object.keys(standaloneLoads).filter((date) => {
+    const cell = document.querySelector('[data-plan-date="' + date + '"]');
+    if (!cell) {
+      return false;
+    }
+    return ![...cell.querySelectorAll(".plan-day-load")].some((node) => node.textContent === standaloneLoads[date]);
+  });
+  assert.deepStrictEqual(mismatched, [], "every archived day shows the load it shows when selected alone");
+
+  const refreshedCell = sharedCellFor();
+  const archivedEntry = refreshedCell.querySelector('.plan-day-session[data-session-id^="cycle-2026-07-06:"]');
   assert(archivedEntry, "the archived cycle's session is reachable");
   archivedEntry.click();
   assert.strictEqual(document.querySelector("[data-plan-drawer]").hidden, false,

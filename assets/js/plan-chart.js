@@ -321,7 +321,7 @@
           key: item.key,
           cycleLabel: cycleLabel,
           cycleState: state,
-          label: item.label + " · " + cycleLabel,
+          label: item.label,
           metric: item.metric,
           kind: item.kind,
           interpolation: item.interpolation,
@@ -398,12 +398,13 @@
 
   function renderLegend(element, series) {
     element.innerHTML = series.map(function (item) {
+      // Lift names repeat across cycles on purpose: the category is what the legend
+      // explains, and the cycle is told apart by line weight and the point tooltip.
       return '<span class="plan-chart-legend-item' +
         (item.cycleState === "archived" ? " is-archived" : "") +
         '" data-cycle="' + escapeXml(item.cycleState || "current") + '"><i class="is-' + escapeXml(item.key) +
         '" aria-hidden="true"></i><span>' + escapeXml(item.label) + '</span><small>' +
-        (item.cycleLabel ? '<span class="plan-chart-cycle-tag">' + escapeXml(item.cycleLabel) +
-          "</span> · " : "") + escapeXml(item.metric) + "</small></span>";
+        escapeXml(item.metric) + "</small></span>";
     }).join("");
   }
 
@@ -555,7 +556,9 @@
         svg.push('<circle class="plan-chart-point-hit is-' + escapeXml(item.key) +
           (point.isToday ? " is-today" : "") + '" cx="' + x + '" cy="' + y +
           '" r="10" tabindex="0" focusable="true" aria-label="' + escapeXml(aria) +
-          '" data-chart-point data-series="' + escapeXml(item.label) + '" data-date="' +
+          '" data-chart-point data-series="' + escapeXml(item.label) + '"' +
+          (item.cycleLabel ? ' data-cycle-label="' + escapeXml(item.cycleLabel) + '"' : "") +
+          ' data-date="' +
           escapeXml(point.date) + '" data-value="' + escapeXml(displayValue) + '" data-detail="' +
           escapeXml(detailText) + '" data-x="' + x + '" data-y="' + y + '"><title>' +
           escapeXml(aria) + "</title></circle>");

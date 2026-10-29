@@ -463,6 +463,13 @@
     if (archive.overview && archive.overview.cycle) {
       return deepClone(archive.overview);
     }
+    return regenerateArchive(archive);
+  }
+
+  // The stored overview only freezes planned 1RMs, so a day rendered from it would read
+  // as "weight not set". Rebuilding from the archived state restores the same sets and
+  // loads the calendar shows for that cycle on its own.
+  function regenerateArchive(archive) {
     var archivedState = core.createDefaultState(archive.cycle.startDate);
     if (!Array.isArray(archive.cycle.scheduleAdjustments)) {
       archivedState.schemaVersion = 2;
@@ -490,7 +497,7 @@
     }
     var archives = privateState.archivedCycles || [];
     var plans = archives.map(function (archive, index) {
-      var plan = planForArchive(archive);
+      var plan = regenerateArchive(archive);
       plan.cycleLabel = cycleOrdinal(index, archives.length);
       return plan;
     }).reverse();
@@ -615,19 +622,25 @@
     }).format(date);
   }
 
+  function liftProgressItemHtml(cycle, key, withLabel) {
+    var lift = cycle.lifts[key] || {};
+    var current = Number(lift.current1rm || 0);
+    var target = Number(lift.target1rm || 0);
+    var percentage = target > 0 ? Math.min(100, Math.max(0, current / target * 100)) : 0;
+    var suffix = key === "pullup" ? " kg 额外负重" : " kg";
+    return '<div class="plan-progress-item">' +
+      '<div class="plan-progress-label">' + (withLabel
+        ? '<strong>' + escapeHtml(lift.label || core.LIFT_LABELS[key]) + "</strong>"
+        : "") +
+      '<span>' + (current ? current.toFixed(1).replace(".0", "") : "—") + " → " +
+      (target ? target.toFixed(1).replace(".0", "") : "—") + escapeHtml(suffix) + '</span></div>' +
+      '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
+      percentage.toFixed(1) + '%"></span></div></div>';
+  }
+
   function liftProgressHtml(cycle) {
     return ["bench", "pullup", "squat"].map(function (key) {
-      var lift = cycle.lifts[key] || {};
-      var current = Number(lift.current1rm || 0);
-      var target = Number(lift.target1rm || 0);
-      var percentage = target > 0 ? Math.min(100, Math.max(0, current / target * 100)) : 0;
-      var suffix = key === "pullup" ? " kg 额外负重" : " kg";
-      return '<div class="plan-progress-item">' +
-        '<div class="plan-progress-label"><strong>' + escapeHtml(lift.label || core.LIFT_LABELS[key]) + '</strong>' +
-        '<span>' + (current ? current.toFixed(1).replace(".0", "") : "—") + " → " +
-        (target ? target.toFixed(1).replace(".0", "") : "—") + escapeHtml(suffix) + '</span></div>' +
-        '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
-        percentage.toFixed(1) + '%"></span></div></div>';
+      return liftProgressItemHtml(cycle, key, true);
     }).join("");
   }
 
@@ -653,13 +666,25 @@
       return;
     }
     if (allCyclePlans) {
-      dom.progress.innerHTML = allCyclePlans.map(function (item) {
-        return '<div class="plan-progress-cycle"><p class="plan-progress-cycle-label">' +
-          escapeHtml(item.cycleLabel) + " · " +
-          escapeHtml(formatDateRange(item.cycle.startDate, item.cycle.endDate)) +
-          (item.cycle.status === "archived" ? " · 已归档" : " · 进行中") + "</p>" +
-          liftProgressHtml(item.cycle) + "</div>";
-      }).join("");
+      // One cycle per row keeps several cycles short: the lift names sit in the column
+      // header once, and each row only carries that cycle's numbers.
+      dom.progress.innerHTML =
+        '<div class="plan-progress-table" role="table" aria-label="各周期三项力量进度">' +
+        '<div class="plan-progress-row is-head" role="row"><span class="plan-progress-cycle-label" role="columnheader">周期</span>' +
+        ["bench", "pullup", "squat"].map(function (key) {
+          return '<span role="columnheader">' + escapeHtml(core.LIFT_LABELS[key]) + "</span>";
+        }).join("") + "</div>" +
+        allCyclePlans.map(function (item) {
+          return '<div class="plan-progress-row" role="row"><span class="plan-progress-cell">' +
+            '<span class="plan-progress-cycle-label" role="rowheader">' + escapeHtml(item.cycleLabel) +
+            "</span><span class=\"plan-progress-range\">" +
+            escapeHtml(formatDateRange(item.cycle.startDate, item.cycle.endDate)) +
+            (item.cycle.status === "archived" ? " · 已归档" : " · 进行中") + "</span></span>" +
+            ["bench", "pullup", "squat"].map(function (key) {
+              return '<span class="plan-progress-cell" role="cell">' +
+                liftProgressItemHtml(item.cycle, key, false) + "</span>";
+            }).join("") + "</div>";
+        }).join("") + "</div>";
       return;
     }
     dom.progress.innerHTML = liftProgressHtml(cycle);
@@ -741,7 +766,7 @@
     var options = [];
     if (archives.length) {
       options.push('<option value="all">' +
-        escapeHtml("ALL · 全量 · " + cycleCount + " 个周期") + "</option>");
+        escapeHtml("ALL") + "</option>");
     }
     options.push('<option value="-1">' +
       escapeHtml("Cycle " + String(cycleCount).padStart(2, "0") + " · Current · " +
