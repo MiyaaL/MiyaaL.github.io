@@ -19,6 +19,9 @@
   align-items: end;
   justify-content: space-between;
   gap: 32px;
+  /* The legend needs the heading's full width, so when it is long the heading wraps
+     instead of squeezing the title. */
+  flex-wrap: wrap;
 }
 
 .plan-chart-heading h2 {
@@ -30,9 +33,11 @@
 
 .plan-chart-tools {
   display: flex;
+  flex: 1 1 auto;
   align-items: flex-end;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .plan-chart-cycle-select {

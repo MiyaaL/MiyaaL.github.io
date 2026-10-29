@@ -43,6 +43,12 @@ const { JSDOM } = require("jsdom");
   archivedState.activeCycle.lifts.bench.target1rm = 100;
   state.activeCycle.lifts.bench.current1rm = 100;
   state.activeCycle.lifts.bench.target1rm = 110;
+  [[state, 25, 35], [archivedState, 18, 27.5]].forEach(([fixture, from, to]) => {
+    fixture.activeCycle.lifts.pullup.current1rm = from;
+    fixture.activeCycle.lifts.pullup.target1rm = to;
+    fixture.activeCycle.lifts.squat.current1rm = from * 5;
+    fixture.activeCycle.lifts.squat.target1rm = to * 5;
+  });
   const archivedCycle = {
     cycle: archivedState.activeCycle,
     logs: {},
@@ -62,6 +68,7 @@ const { JSDOM } = require("jsdom");
 
   cycleSelect.value = "all";
   cycleSelect.dispatchEvent(new window.Event("change"));
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
   // Bodyweight-only lines would still render, but the lift overlap needs configured lifts.
   const archivedPlan = window.PlanCore.generate(archivedState, [holidays]);
@@ -128,9 +135,12 @@ const { JSDOM } = require("jsdom");
     "archived sessions stay read-only");
   document.querySelector("[data-plan-close-details]").click();
 
+  assert.strictEqual(document.querySelectorAll(".plan-chart-legend-item").length, 4,
+    "the legend stays the same size as a single cycle");
   const benchLines = [...document.querySelectorAll(".plan-chart-line.is-bench")];
   assert.strictEqual(benchLines.length, 2, "every cycle gets its own bench line");
-  assert.strictEqual(benchLines.filter((line) => line.dataset.cycle === "archived").length, 1);
+  assert.strictEqual(benchLines.filter((line) => line.dataset.cycle === "archived").length, 1,
+    "the archived cycle's bench line is drawn lighter");
 
   const startDates = [...document.querySelectorAll("[data-chart-point]")]
     .map((point) => point.dataset.date)

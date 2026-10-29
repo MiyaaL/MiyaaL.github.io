@@ -112,8 +112,10 @@ const { JSDOM } = require("jsdom");
     "the all view keeps the archived cycle on the chart");
   assert(window.document.querySelector('[data-chart-point][data-series="Bench Press"][data-cycle-label="Cycle 02"]'),
     "the all view keeps the current cycle on the chart");
-  assert.strictEqual(window.document.querySelectorAll(".plan-chart-cycle-tag").length, 0,
-    "the legend names each lift once per cycle without repeating the cycle tag");
+  const legendItems = [...window.document.querySelectorAll(".plan-chart-legend-item")];
+  assert.deepStrictEqual(legendItems.map((item) => item.querySelector("span").textContent),
+    ["Bodyweight", "Bench Press", "Weighted Pull-up", "Back Squat"],
+    "overlapping cycles keep one legend entry per lift");
   assert.strictEqual(window.document.querySelectorAll('[draggable="true"]').length, 0,
     "the all view is read-only");
   window.document.querySelector('[data-plan-previous]').click();

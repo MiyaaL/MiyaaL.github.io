@@ -397,9 +397,31 @@
   }
 
   function renderLegend(element, series) {
-    element.innerHTML = series.map(function (item) {
-      // Lift names repeat across cycles on purpose: the category is what the legend
-      // explains, and the cycle is told apart by line weight and the point tooltip.
+    // Each lift is one category with one colour: when cycles overlap, the legend keeps
+    // one entry per lift and the lighter archived lines carry the cycle split instead.
+    var entries = [];
+    series.forEach(function (item) {
+      var existing = null;
+      entries.forEach(function (entry) {
+        if (!existing && entry.key === item.key) {
+          existing = entry;
+        }
+      });
+      if (existing) {
+        // A lift present in an archived cycle alone still deserves the archived shade.
+        if (item.cycleState === "current") {
+          existing.cycleState = "current";
+        }
+        return;
+      }
+      entries.push({
+        key: item.key,
+        label: item.label,
+        metric: item.metric,
+        cycleState: item.cycleState
+      });
+    });
+    element.innerHTML = entries.map(function (item) {
       return '<span class="plan-chart-legend-item' +
         (item.cycleState === "archived" ? " is-archived" : "") +
         '" data-cycle="' + escapeXml(item.cycleState || "current") + '"><i class="is-' + escapeXml(item.key) +
