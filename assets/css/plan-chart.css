@@ -57,13 +57,29 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
+  line-height: 1.6;
   letter-spacing: 0;
   text-transform: none;
 }
 
 .plan-chart-cycle-select select:focus {
   border-color: var(--accent);
+}
+
+/* The native option popup is painted by the OS, so it ignores the page's CSS
+   variables. Pin the popup colors to the active theme to keep the list legible. */
+.plan-chart-cycle-select select option,
+.plan-chart-cycle-select select optgroup {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.plan-chart-cycle-select select option:checked,
+.plan-chart-cycle-select select option:focus {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 500;
 }
 
 .plan-chart-legend {
@@ -301,6 +317,17 @@
   .plan-chart-cycle-select,
   .plan-chart-cycle-select select {
     width: 100%;
+  }
+
+  .plan-chart-cycle-select select {
+    min-height: 32px;
+    font-size: 12px;
+  }
+
+  .plan-chart-cycle-select select option,
+  .plan-chart-cycle-select select optgroup {
+    font-size: 13px;
+    line-height: 2;
   }
 
   .plan-chart-legend {
