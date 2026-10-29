@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Plan
-description: "支持健身周期与按日学习计划，并记录可验收的总结、感悟和学习生产物。"
+description: "记录健身周期、训练日历与力量进度，支持训练安排和复盘。"
 permalink: /plan/
 plan: true
 ---
@@ -10,7 +10,7 @@ plan: true
     <div>
       <p class="eyebrow">PLAN / 个人计划</p>
       <h1>Plan</h1>
-      <p class="plan-intro">把训练、学习和可验收的产出放进同一份按日计划：每天知道要做什么，也留下可以复盘的成果。</p>
+      <p class="plan-intro">记录训练安排、力量进度与周期目标，让每天的训练有据可查。</p>
     </div>
     <div class="plan-hero-actions">
       <span class="plan-sync-state" data-plan-sync-state>正在载入</span>
@@ -30,17 +30,6 @@ plan: true
     data-schedule-revision="{{ site.plan.schedule_revision | jsonify | escape }}"
   >
     <div class="plan-message" data-plan-message role="status" aria-live="polite"></div>
-
-    <div class="plan-kind-toolbar" aria-label="计划类型">
-      <div class="plan-kind-switch" role="tablist" aria-label="切换计划类型">
-        <button class="plan-kind-button is-active" type="button" data-plan-kind="fitness" role="tab" aria-selected="true">健身计划</button>
-        <button class="plan-kind-button" type="button" data-plan-kind="learning" role="tab" aria-selected="false">学习计划</button>
-      </div>
-      <div class="plan-learning-selector" data-plan-learning-selector hidden>
-        <label>学习计划<select data-plan-learning-select aria-label="选择学习计划"></select></label>
-        <button class="plan-text-button" type="button" data-plan-new-learning hidden>新增学习计划</button>
-      </div>
-    </div>
 
     <div class="plan-loading" data-plan-loading>
       <span aria-hidden="true"></span>

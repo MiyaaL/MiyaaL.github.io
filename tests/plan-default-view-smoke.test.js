@@ -25,6 +25,8 @@ const { JSDOM } = require("jsdom");
     removeEventListener() {}
   });
   window.fetch = async () => ({ ok: true, json: async () => holidays });
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   window.URL.createObjectURL = () => "blob:test";
   window.URL.revokeObjectURL = () => {};
 
@@ -46,6 +48,7 @@ const { JSDOM } = require("jsdom");
   });
   state.learningPlans = [learningPlan];
   state.activePlanId = learningPlan.id;
+  const savedLearningPlans = JSON.parse(JSON.stringify(state.learningPlans));
 
   const memory = window.PlanStore.createMemoryAdapter({ version: 1, state, signedIn: true });
   window.PlanStore.createSupabaseAdapter = () => memory;
@@ -53,14 +56,31 @@ const { JSDOM } = require("jsdom");
 
   await new Promise((resolve) => setTimeout(resolve, 50));
 
-  const fitnessTab = window.document.querySelector('[data-plan-kind="fitness"]');
-  const learningTab = window.document.querySelector('[data-plan-kind="learning"]');
-  assert.strictEqual(fitnessTab.getAttribute("aria-selected"), "true", "Plan must open on fitness");
-  assert.strictEqual(learningTab.getAttribute("aria-selected"), "false");
-  assert.strictEqual(window.document.querySelector("[data-plan-learning-selector]").hidden, true);
+  assert.strictEqual(window.document.querySelector(".plan-kind-toolbar"), null, "single-plan view has no mode toolbar");
+  assert.strictEqual(window.document.querySelector("[data-plan-kind]"), null, "plan kind tabs are removed");
+  assert.strictEqual(window.document.querySelector("[data-plan-learning-selector]"), null);
+  assert.strictEqual(window.document.querySelector("[data-plan-new-learning]"), null);
   assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, "推拉蹲 + 推");
 
-  console.log("PASS: Plan always opens on fitness even when a learning plan was last active");
+  window.document.querySelector("[data-plan-update-bodyweight]").click();
+  const bodyweightForm = window.document.querySelector("[data-plan-bodyweight-form]");
+  assert.strictEqual(bodyweightForm.closest("dialog").open, true, "fitness actions remain available");
+  bodyweightForm.elements.date.value = "2026-09-22";
+  bodyweightForm.elements.bodyweight.value = "69.5";
+  bodyweightForm.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const stored = await memory.loadPrivate();
+  assert.strictEqual(stored.version, 2, "fitness updates still save");
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(stored.state.activeCycle.bodyweightEntries.slice(-1)[0])),
+    { date: "2026-09-22", value: 69.5 }
+  );
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(stored.state.learningPlans)), savedLearningPlans,
+    "removing learning UI must preserve saved learning plans during fitness updates");
+  assert.strictEqual(stored.state.activePlanId, learningPlan.id, "saved learning selection remains intact");
+
+  console.log("PASS: fitness-only Plan UI remains editable and preserves saved learning plans");
   window.close();
 }()).catch((error) => {
   console.error(error);

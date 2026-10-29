@@ -463,6 +463,29 @@ require_css(
   ".hero-intro",
   [/font-size:\s*16px;/, /font-weight:\s*400;/, /line-height:\s*1\.75;/]
 )
+[
+  ["assets/css/plan.css", ".plan-hero-inner", ".plan-hero h1", ".plan-intro", ".plan-hero .eyebrow"],
+  ["assets/css/library.css", ".library-hero-inner", ".library-hero h1", ".library-intro", ".library-hero .eyebrow"],
+  ["assets/css/main.css", ".archive-hero", ".archive-hero h1", ".archive-hero > .container > p:last-child", ".archive-hero .eyebrow"]
+].each do |stylesheet, container, title, intro, eyebrow|
+  path = ROOT.join(stylesheet)
+  require_css(errors, path, container, [/padding-block:\s*64px;/])
+  require_css(errors, path, title, [/font-size:\s*18px;/, /font-weight:\s*500;/, /line-height:\s*1\.5;/])
+  require_css(errors, path, intro, [/font-size:\s*16px;/, /font-weight:\s*400;/, /line-height:\s*1\.75;/, /margin:\s*16px 0 0;/])
+  require_css(errors, path, eyebrow, [/margin-bottom:\s*16px;/])
+end
+require_css(
+  errors,
+  ROOT.join("assets/css/plan.css"),
+  ".plan-sync-state",
+  [/color:\s*var\(--text-soft\);/, /font-size:\s*12px;/, /font-weight:\s*500;/]
+)
+require_css(
+  errors,
+  ROOT.join("assets/css/library.css"),
+  ".library-count",
+  [/color:\s*var\(--text-soft\);/, /font-size:\s*12px;/, /font-weight:\s*500;/]
+)
 require_css(
   errors,
   ROOT.join("assets/css/main.css"),

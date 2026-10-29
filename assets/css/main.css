@@ -586,26 +586,31 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .archive-hero {
-  padding: 78px 0 48px;
+  padding-block: 64px;
 }
 
 .archive-container {
-  max-width: 900px;
+  max-width: var(--content-width);
+}
+
+.archive-hero .eyebrow {
+  margin-bottom: 16px;
 }
 
 .archive-hero h1 {
   margin: 0;
-  font-size: clamp(42px, 6vw, 50px);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.1;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 .archive-hero > .container > p:last-child {
-  max-width: 620px;
-  margin: 18px 0 0;
+  max-width: 680px;
+  margin: 16px 0 0;
   color: var(--text-soft);
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.75;
 }
 
 .archive-section {
@@ -1165,6 +1170,10 @@ html[data-theme-mode="dark"] .theme-dark {
     max-width: 600px;
   }
 
+  .archive-hero {
+    padding-block: 56px;
+  }
+
   .section {
     padding: 72px 0 86px;
   }
@@ -1228,7 +1237,7 @@ html[data-theme-mode="dark"] .theme-dark {
   }
 
   .archive-hero {
-    padding-top: 60px;
+    padding-block: 40px;
   }
 
   .tag-filters {

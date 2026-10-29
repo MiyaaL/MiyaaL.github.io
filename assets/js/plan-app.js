@@ -13,10 +13,6 @@
     empty: app.querySelector("[data-plan-empty]"),
     view: app.querySelector("[data-plan-view]"),
     message: app.querySelector("[data-plan-message]"),
-    kindButtons: app.querySelectorAll("[data-plan-kind]"),
-    learningSelector: app.querySelector("[data-plan-learning-selector]"),
-    learningSelect: app.querySelector("[data-plan-learning-select]"),
-    newLearning: app.querySelector("[data-plan-new-learning]"),
     emptyEyebrow: app.querySelector("[data-plan-empty-eyebrow]"),
     emptyTitle: app.querySelector("[data-plan-empty-title]"),
     emptyDescription: app.querySelector("[data-plan-empty-description]"),
@@ -373,7 +369,6 @@
     setLoading(false);
     dom.empty.hidden = false;
     dom.view.hidden = true;
-    renderPlanKindControls();
     if (selectedPlanKind === "learning") {
       dom.emptyEyebrow.textContent = "LEARNING / 学习计划";
       dom.emptyTitle.textContent = "还没有学习计划";
@@ -524,7 +519,6 @@
   function render() {
     setLoading(false);
     var plan = displayPlan();
-    renderPlanKindControls();
     if (!plan || !plan.cycle) {
       renderEmpty();
       return;
@@ -570,25 +564,6 @@
     renderTrajectory(displayTrajectoryPlan(plan));
     normalizeViewDate(allCyclePlans ? null : plan.cycle);
     renderCalendar(plan);
-  }
-
-  function renderPlanKindControls() {
-    Array.prototype.slice.call(dom.kindButtons || []).forEach(function (button) {
-      var active = button.dataset.planKind === selectedPlanKind;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-selected", active ? "true" : "false");
-    });
-    var plans = isOwner && privateState
-      ? (privateState.learningPlans || [])
-      : (publicSnapshot && publicSnapshot.learningPlans) || [];
-    dom.learningSelector.hidden = selectedPlanKind !== "learning";
-    dom.newLearning.hidden = !isOwner || isOffline || selectedPlanKind !== "learning";
-    if (selectedPlanKind === "learning") {
-      dom.learningSelect.innerHTML = plans.length ? plans.map(function (plan) {
-        return '<option value="' + escapeHtml(plan.id) + '">' + escapeHtml(plan.title) + '</option>';
-      }).join("") : '<option value="">暂无学习计划</option>';
-      dom.learningSelect.value = selectedLearningPlanId || (plans[0] && plans[0].id) || "";
-    }
   }
 
   function normalizeViewDate(cycle) {
@@ -2261,23 +2236,6 @@
   });
   dom.exportIcs.addEventListener("click", exportIcs);
   dom.exportJson.addEventListener("click", exportJson);
-  Array.prototype.slice.call(dom.kindButtons || []).forEach(function (button) {
-    button.addEventListener("click", function () {
-      selectedPlanKind = button.dataset.planKind;
-      if (selectedPlanKind === "learning" && isOwner && privateState) {
-        selectedLearningPlanId = privateState.activePlanId || selectedLearningPlanId ||
-          (privateState.learningPlans[0] && privateState.learningPlans[0].id);
-      }
-      viewDate = todayInShanghai();
-      render();
-    });
-  });
-  dom.learningSelect.addEventListener("change", function () {
-    selectedLearningPlanId = dom.learningSelect.value || null;
-    viewDate = todayInShanghai();
-    render();
-  });
-  dom.newLearning.addEventListener("click", function () { openLearningSettings(null); });
   dom.previous.addEventListener("click", function () {
     viewDate = mobileQuery.matches ? core.addDays(weekStart(viewDate), -7) : shiftMonth(viewDate, -1);
     renderCalendar(displayPlan());
