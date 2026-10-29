@@ -245,6 +245,9 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="endDate"]').value, "2026-10-25", "editing preserves the user-selected cycle boundary");
   assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value, "bench,squat");
   window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value = "bench,pullup,squat";
+  // The calendar may have been navigated forward while looking up the goal
+  // attempt; replanning must start from today, not from the visible month.
+  window.document.querySelector('[data-plan-settings-form] [name="replanFromDate"]').value = "2026-08-26";
   const settingsBodyweight = window.document.querySelector("[data-plan-settings-bodyweight]");
   assert.strictEqual(settingsBodyweight.hidden, true);
   assert.strictEqual(settingsBodyweight.querySelector("input").disabled, true);

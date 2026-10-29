@@ -48,8 +48,9 @@ check("the cycle ends with goal attempts and routine strength work includes a no
 
   const plan = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
   const benchTest = plan.sessions.find(x => x.date === "2026-11-06" && x.workout.liftKey === "bench");
-  const squatTest = plan.sessions.find(x => x.date === "2026-11-04" && x.type === "squat");
+  const squatTest = plan.sessions.find(x => x.workout.liftKey === "squat" && x.isTest);
   assert.strictEqual(benchTest.label, "杠铃卧推 · 周期目标");
+  assert.strictEqual(squatTest.label, "杠铃深蹲 · 周期目标");
   assert.deepStrictEqual([
     benchTest.workout.workSets.map(x => x.loadKg),
     squatTest.workout.workSets.map(x => x.loadKg)
@@ -57,7 +58,7 @@ check("the cycle ends with goal attempts and routine strength work includes a no
   const future = plan.sessions.filter(x => x.date >= "2026-09-23");
   assert(future.filter(x => /^load-/.test(x.phase.key)).every(x => {
     const work = x.workout.workSets;
-    if (x.type === "push-volume") return work.length === 1 && work[0].sets > 1;
+    if (/volume$/.test(x.type)) return work.length === 1 && work[0].sets > 1;
     return work.length === 2 && work[0].label === "非极限顶组" && work[0].sets === 1 && work[0].reps === 1 && work[0].rpe === 8 && work[1].sets > 1;
   }));
   assert(future.filter(x => x.phase.key === "deload").every(x => !x.workout.accessories.length));

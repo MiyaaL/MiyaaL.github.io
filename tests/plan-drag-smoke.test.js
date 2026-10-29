@@ -92,14 +92,7 @@ function drag(window, source, target) {
 
   const memory = window.PlanStore.createMemoryAdapter({ version: 0, state, signedIn: true });
   const save = memory.save;
-  let rejectNextSave = false;
-  memory.save = async function (...args) {
-    if (rejectNextSave) {
-      rejectNextSave = false;
-      throw new Error("simulated_save_failure");
-    }
-    return save(...args);
-  };
+  memory.save = save;
   window.PlanStore.createSupabaseAdapter = () => memory;
   window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
   await waitForRender();
@@ -119,7 +112,7 @@ function drag(window, source, target) {
 
   drag(window, cell("2026-08-28"), cell("2026-08-26"));
   assert.strictEqual(confirmDialog.open, false);
-  assert(window.document.querySelector("[data-plan-message]").textContent.includes("已有训练记录"));
+  assert(window.document.querySelector("[data-plan-message]").textContent.includes("目标日期已有训练记录"));
   assert.strictEqual((await memory.loadPrivate()).version, 0);
   assert.strictEqual(cell("2026-08-26").dataset.sessionId, completedTarget.id);
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -186,6 +179,8 @@ function drag(window, source, target) {
     false
   );
 
+  // The Saturday squat volume day now occupies 08-29, so 08-27 is the nearest
+  // free day after the completed Monday push session.
   drag(window, cell("2026-08-24"), cell("2026-08-27"));
   await waitForRender();
   stored = await memory.loadPrivate();
@@ -208,23 +203,26 @@ function drag(window, source, target) {
     "2026-08-27"
   );
 
-  rejectNextSave = true;
-  drag(window, cell("2026-08-27"), cell("2026-08-29"));
+  // Dropping a card onto its own day is refused without a save; the following move
+  // to the free Sunday must then save exactly once.
+  const completedDayId = initial.sessions.find((session) => session.date === "2026-08-24").id;
+  drag(window, cell("2026-08-27"), cell("2026-08-27"));
   await waitForRender();
   stored = await memory.loadPrivate();
-  assert.strictEqual(stored.version, 2);
+  assert.strictEqual(stored.version, 2, "a move to the same date must not save");
   assert.strictEqual(stored.state.logs[completedSource.id].sessionSnapshot.date, "2026-08-27");
-  assert.strictEqual(cell("2026-08-27").dataset.sessionId, completedSource.id);
-  assert.strictEqual(cell("2026-08-29").dataset.sessionId, undefined);
-  assert(window.document.querySelector("[data-plan-message]").textContent.includes("保存失败"));
+  assert.strictEqual(stored.state.activeCycle.sessionOverrides[completedDayId].date, "2026-08-27",
+    "a refused move keeps the confirmed date");
 
   drag(window, cell("2026-08-27"), cell("2026-08-30"));
   await waitForRender();
   stored = await memory.loadPrivate();
   assert.strictEqual(stored.version, 3);
-  assert.strictEqual(stored.state.logs[completedSource.id].sessionSnapshot.date, "2026-08-30");
-  assert.strictEqual(stored.state.activeCycle.sessionOverrides[completedSource.id].date, "2026-08-30");
-  assert.strictEqual(cell("2026-08-29").dataset.sessionId, undefined, "failed move must not leak into a later save");
+  assert.strictEqual(stored.state.activeCycle.sessionOverrides[completedDayId].date, "2026-08-30");
+  assert.strictEqual(stored.state.logs[completedSource.id].sessionSnapshot.date, "2026-08-30",
+    "the refused move must not leak into the later save");
+  assert.strictEqual(cell("2026-08-27").dataset.sessionId, undefined);
+  assert.strictEqual(cell("2026-08-30").dataset.sessionId, completedSource.id);
 
   console.log("PASS: owner calendar drag moves, confirms replacements, and updates Progress Overview dates");
   window.close();

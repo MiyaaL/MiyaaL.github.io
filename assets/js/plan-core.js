@@ -19,15 +19,20 @@
   var DEFAULT_TEMPLATE = [
     { id: "push-strength", weekday: 1, type: "push-strength", label: "推 · 强度" },
     { id: "pull", weekday: 2, type: "pull", label: "拉" },
-    { id: "squat", weekday: 3, type: "squat", label: "蹲" },
-    { id: "push-volume", weekday: 5, type: "push-volume", label: "推 · 容量" }
+    { id: "squat", weekday: 3, type: "squat", label: "蹲 · 强度" },
+    { id: "push-volume", weekday: 5, type: "push-volume", label: "推 · 容量" },
+    { id: "squat-volume", weekday: 6, type: "squat-volume", label: "蹲 · 容量" }
   ];
   var TYPE_LABELS = {
     "push-strength": "推 · 卧推强度",
     pull: "拉 · 负重引体",
-    squat: "蹲 · 杠铃深蹲",
-    "push-volume": "推 · 卧推容量"
+    squat: "蹲 · 杠铃深蹲强度",
+    "push-volume": "推 · 卧推容量",
+    "squat-volume": "蹲 · 杠铃深蹲容量"
   };
+  // Volume days for the same lift share one prescription formula and skip the
+  // top single that strength days carry.
+  var VOLUME_TYPES = { "push-volume": true, "squat-volume": true };
   var LIFT_LABELS = {
     bench: "杠铃卧推",
     pullup: "负重引体向上",
@@ -70,6 +75,11 @@
         exercise("罗马尼亚硬拉", 2, "6–8", 7.5, "2–3 分钟"),
         exercise("保加利亚分腿蹲", 2, "8–10 / 侧", 8, "2 分钟"),
         exercise("核心训练", 2, "8–12", 7.5, "60 秒")
+      ],
+      "squat-volume": [
+        exercise("腿弯举", 2, "10–12", 8, "90 秒"),
+        exercise("腿屈伸", 2, "10–12", 8, "90 秒"),
+        exercise("核心训练", 2, "10–12", 7.5, "60 秒")
       ]
     }
   };
@@ -808,7 +818,7 @@
     if (type === "pull") {
       return "pullup";
     }
-    if (type === "squat") {
+    if (type === "squat" || type === "squat-volume") {
       return "squat";
     }
     return "bench";
@@ -819,8 +829,13 @@
     return isIsoDate(progression.anchorDate) ? progression.anchorDate : cycle.startDate;
   }
 
+  // Measure the wave from the Monday of the session's own week so a strength day
+  // and its weekend volume day always share one phase.
   function phaseFor(session, cycle, testWeekIndex) {
-    var weekIndex = Math.floor(daysBetween(progressionAnchor(cycle), session.date) / 7);
+    var anchor = progressionAnchor(cycle);
+    var weekStart = addDays(session.date, 1 - isoWeekday(session.date));
+    var anchorWeekStart = addDays(anchor, 1 - isoWeekday(anchor));
+    var weekIndex = Math.floor(daysBetween(anchorWeekStart, weekStart) / 7);
     var blockWeek = ((weekIndex % 4) + 4) % 4;
     if (session.isTest) {
       return { key: "test", label: "目标测试", weekIndex: weekIndex, blockWeek: blockWeek };
@@ -916,7 +931,7 @@
     }
 
     var week = phase.blockWeek;
-    if (type === "push-volume") {
+    if (VOLUME_TYPES[type]) {
       var volume = [
         { sets: 4, reps: 6, percentage: 0.75, rpe: 7 },
         { sets: 4, reps: 5, percentage: 0.775, rpe: 7.5 },

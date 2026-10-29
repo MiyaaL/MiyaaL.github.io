@@ -803,8 +803,9 @@
       learning: "学习",
       "push-strength": "推 · 强度",
       pull: "拉",
-      squat: "蹲",
-      "push-volume": "推 · 容量"
+      squat: "蹲 · 强度",
+      "push-volume": "推 · 容量",
+      "squat-volume": "蹲 · 容量"
     }[type] || type;
   }
 

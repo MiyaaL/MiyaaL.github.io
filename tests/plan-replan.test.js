@@ -45,18 +45,23 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
     assert(plan.sessions.some((session) => session.date === date), "training day restored: " + date);
   }
   assert(plan.sessions.every((session) => session.date <= options.endDate));
-  for (const week of ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]) {
-    assert.strictEqual(plan.sessions.filter((session) => session.date >= week && session.date < core.addDays(week, 7)).length, 4, week);
+  // Five training days for three lifts: bench and squat each add a volume day,
+  // including the final week that ends on the 10-31 deadline.
+  for (const [week, expected] of [["2026-09-28", 5], ["2026-10-05", 5], ["2026-10-12", 5], ["2026-10-19", 5], ["2026-10-26", 5]]) {
+    assert.strictEqual(plan.sessions.filter((session) => session.date >= week && session.date < core.addDays(week, 7)).length, expected, week);
   }
   assert.strictEqual(new Set(plan.sessions.map((session) => session.id)).size, plan.sessions.length);
   assert.strictEqual(new Set(plan.sessions.map((session) => session.date)).size, plan.sessions.length);
   const loggedId = Object.keys(state.logs)[0];
   assert.deepStrictEqual(plan.sessions.find((session) => session.id === loggedId).workout, state.logs[loggedId].sessionSnapshot.workout);
   assert.strictEqual(plan.sessions.find((session) => session.id === loggedId).date, "2026-09-22");
-  assert.deepStrictEqual(plan.sessions.filter((session) => session.date < options.fromDate).map((session) => [session.id, session.date]),
-    original.sessions.filter((session) => session.date < options.fromDate).map((session) => [session.id, session.date]));
+  // Retained workouts take the replanned revision in their identity, so compare
+  // template and date rather than the raw id prefix.
+  const templateOf = (session) => session.id.split(":").slice(1).filter((part) => !/^replan-/.test(part)).join(":");
+  assert.deepStrictEqual(plan.sessions.filter((session) => session.date < options.fromDate).map((session) => [templateOf(session), session.date]),
+    original.sessions.filter((session) => session.date < options.fromDate).map((session) => [templateOf(session), session.date]));
   const targetDates = plan.sessions.filter((session) => /周期目标/.test(session.label)).map((session) => [session.workout.liftKey, session.date]);
-  assert.deepStrictEqual(targetDates, [["pullup", "2026-10-27"], ["squat", "2026-10-28"], ["bench", "2026-10-30"]]);
+  assert.deepStrictEqual(targetDates, [["pullup", "2026-10-27"], ["bench", "2026-10-30"], ["squat", "2026-10-31"]]);
   const planned = plan.sessions.find((session) => session.date === "2026-10-05");
   assert.throws(() => core.adjustSchedule(revised, planned.id, "2026-10-06"), { code: "schedule_deadline_locked" });
   const moved = core.moveSession(revised, planned.id, "2026-10-08", { holidayCalendars: [holidays], asOfDate: "2026-09-23" });

@@ -200,7 +200,7 @@ async function check(name, options, run) {
     assert(app.window.document.querySelector("[data-plan-cycle-select]").textContent.includes("2026.10.31"));
     assert.deepStrictEqual(plain(generated.sessions
       .filter((session) => session.date >= "2026-10-05" && session.date <= "2026-10-11")
-      .map((session) => session.date)), ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-09"]);
+      .map((session) => session.date)), ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-09", "2026-10-10"]);
     assert(generated.sessions.every((session) => session.date <= "2026-10-31"));
     const published = (await app.memory.loadPublic()).record.snapshot;
     assert.strictEqual(published.cycle.endDate, "2026-10-31");

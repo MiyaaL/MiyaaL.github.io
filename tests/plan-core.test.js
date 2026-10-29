@@ -77,11 +77,12 @@ function configuredState(start, end) {
   const plan = PlanCore.generate(state, [holidays2026]);
   const dates = plan.sessions.map((session) => session.date);
   assert(!dates.includes("2026-09-20"), "official makeup workdays must not become automatic training days");
-  assert(!dates.includes("2026-10-10"), "official makeup workdays must not become automatic training days");
+  assert(dates.includes("2026-10-10"), "an ordinary weekend day still trains when the weekly template asks for it");
   ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07"].forEach((date) => {
     assert(!dates.includes(date), date + " must remain holiday-free");
   });
   assert(!plan.sessions.some((session) => session.holiday && session.holiday.kind === "makeup"));
+  assert(dates.includes("2026-09-19"), "an ordinary weekend day still trains when the weekly template asks for it");
 }());
 
 (function customTrainingDayRestoresTheWeeklyTemplateDuringAnOfficialHoliday() {
@@ -107,13 +108,15 @@ function configuredState(start, end) {
 
 (function customHolidayOverridesCreateMakeupSession() {
   const state = configuredState("2026-08-03", "2026-08-09");
+  // Sunday is a rest day in the default template, so it can serve as a custom
+  // workout day; Saturday now carries the squat volume session.
   state.activeCycle.holidayOverrides = {
     "2026-08-03": "off",
-    "2026-08-08": "work"
+    "2026-08-09": "work"
   };
   const plan = PlanCore.generate(state, [holidays2026]);
   assert(!plan.sessions.some((session) => session.date === "2026-08-03"));
-  const makeup = plan.sessions.find((session) => session.date === "2026-08-08");
+  const makeup = plan.sessions.find((session) => session.date === "2026-08-09" && session.type === "push-strength");
   assert.strictEqual(makeup.type, "push-strength");
   assert.strictEqual(makeup.holiday.movedFrom, "2026-08-03");
 }());

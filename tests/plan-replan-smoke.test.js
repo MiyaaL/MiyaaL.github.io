@@ -72,7 +72,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   };
   const changeWeekdays = () => {
     document.querySelectorAll("[data-template-weekday]").forEach((select, index) => {
-      select.value = String([1, 2, 4, 6][index]);
+      select.value = String([1, 2, 4, 6][index] || [3, 5][index - 4]);
     });
   };
 
@@ -103,7 +103,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   // Reopening reads the in-memory owner state; a rejected save must not leak into it.
   document.querySelector("[data-plan-cancel-settings]").click();
   open();
-  assert.deepStrictEqual(Array.from(document.querySelectorAll("[data-template-weekday]"), (select) => Number(select.value)), [1, 2, 3, 5]);
+  assert.deepStrictEqual(Array.from(document.querySelectorAll("[data-template-weekday]"), (select) => Number(select.value)), [1, 2, 3, 5, 6]);
   let stored = await memory.loadPrivate();
   assert.strictEqual(stored.state.activeCycle.endDate, "2026-11-07");
   assert.strictEqual(stored.state.activeCycle.scheduleAdjustments.length, 1);
@@ -137,8 +137,8 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   );
   assert.deepStrictEqual(
     plain(generated.sessions.filter((session) => session.date >= "2026-10-05" && session.date <= "2026-10-11").map((session) => session.date)),
-    ["2026-10-05", "2026-10-06", "2026-10-08", "2026-10-10"],
-    "the updated four-day template runs through the holiday week"
+    ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-10"],
+    "the updated five-day template runs through the holiday week"
   );
   assert(generated.sessions.every((session) => session.date <= "2026-10-31"));
   const published = (await memory.loadPublic()).record.snapshot;

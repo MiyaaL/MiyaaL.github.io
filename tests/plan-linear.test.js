@@ -39,13 +39,13 @@ function sessionAt(plan, date) {
   assert.strictEqual(sessionAt(plan, "2026-09-25").phase.key, "deload");
   for (const [start, expected] of [["2026-09-28", "load-1"], ["2026-10-05", "load-2"], ["2026-10-12", "load-3"], ["2026-10-19", "deload"]]) {
     const sessions = plan.sessions.filter((session) => session.date >= start && session.date < core.addDays(start, 7));
-    assert.strictEqual(sessions.length, 4, "four weekly sessions, including holidays");
+    assert.strictEqual(sessions.length, 5, "five weekly sessions, including holidays");
     assert(sessions.every((session) => session.phase.key === expected), start + " must have one shared phase");
   }
   const future = plan.sessions.filter((session) => session.date >= "2026-09-25");
   assert(future.every((session) => session.date <= "2026-10-31"));
   assert.deepStrictEqual(future.filter((session) => session.phase.key === "deload").map((session) => session.date),
-    ["2026-09-25", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-23"]);
+    ["2026-09-25", "2026-09-26", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-23", "2026-10-24"]);
   assert(future.every((session) => !["return", "taper", "assessment"].includes(session.phase.key)));
 }());
 
@@ -71,7 +71,7 @@ function sessionAt(plan, date) {
     "the reference is capped to a reachable weekly gain, while the goal still stands on the test days");
   assert.strictEqual(mainSet(sessionAt(plan, "2026-10-26")).loadKg, 67.5, "the testing week opens rather than loads");
   assert.deepStrictEqual(plan.sessions.filter((session) => session.isTest).map((session) => [session.workout.liftKey, session.date]),
-    [["pullup", "2026-10-27"], ["squat", "2026-10-28"], ["bench", "2026-10-30"]]);
+    [["pullup", "2026-10-27"], ["bench", "2026-10-30"], ["squat", "2026-10-31"]]);
   const again = core.generate(JSON.parse(JSON.stringify(plan.state)), [holidays], { asOfDate });
   assert.deepStrictEqual(again.sessions, plan.sessions, "reloads must reproduce the same calendar");
 }());
@@ -81,7 +81,7 @@ function sessionAt(plan, date) {
   const sessions = plan.sessions.filter((session) => session.date >= "2026-09-25");
   for (const session of sessions) {
     const sets = session.workout.workSets;
-    const needsTop = /^load-/.test(session.phase.key) && session.type !== "push-volume";
+    const needsTop = /^load-/.test(session.phase.key) && !/volume$/.test(session.type);
     assert.strictEqual(sets.filter((set) => set.label === "非极限顶组").length, needsTop ? 1 : 0,
       session.date + " top-set eligibility");
     if (needsTop) {
@@ -102,7 +102,7 @@ function sessionAt(plan, date) {
     [["开把单次", 1, 1], ["确认组", 2, 3]]);
   assert.strictEqual(opener.workout.accessories.length, 0, "no accessory fatigue before the attempts");
   assert(plan.sessions.filter((session) => session.date >= "2026-09-25" && session.phase.key === "opener")
-    .every((session) => session.date > "2026-10-23" && session.date < "2026-10-27"),
+    .every((session) => session.date > "2026-10-23" && session.date < "2026-10-31"),
     "only the testing week opens");
   const benchDates = ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-26"];
   assert.deepStrictEqual(benchDates.map((date) => sessionAt(plan, date).workout.workSets[0].loadKg), [75, 77.5, 80, 80]);
@@ -138,7 +138,7 @@ function sessionAt(plan, date) {
   const state = fixture();
   const before = core.generate(state, [holidays], { asOfDate });
   const after = core.generate(state, [holidays], { asOfDate: "2026-10-26" });
-  for (const date of ["2026-10-27", "2026-10-28", "2026-10-30"]) {
+  for (const date of ["2026-10-27", "2026-10-30", "2026-10-31"]) {
     assert.strictEqual(sessionAt(after, date).phase.key, "test");
     assert.deepStrictEqual(sessionAt(after, date).workout, sessionAt(before, date).workout);
   }
