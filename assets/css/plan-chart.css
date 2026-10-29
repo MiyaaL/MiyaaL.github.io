@@ -193,6 +193,25 @@
   stroke-linejoin: round;
 }
 
+/* Lifts share colors across cycles, so archived cycles are drawn lighter to keep
+   each line readable when the all-cycles view overlays them. */
+.plan-chart-line[data-cycle="archived"],
+.plan-chart-point[data-cycle="archived"] {
+  opacity: 0.45;
+}
+
+.plan-chart-legend-item[data-cycle="archived"] {
+  opacity: 0.7;
+}
+
+.plan-chart-cycle-tag {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
 .plan-chart-line.is-bodyweight {
   stroke-dasharray: 4 3;
 }

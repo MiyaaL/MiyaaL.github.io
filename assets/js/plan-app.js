@@ -93,7 +93,9 @@
   var previewState = null;
   var isOwner = false;
   var isOffline = false;
+  var ALL_CYCLES = "all";
   var viewingChartArchive = -1;
+  var allCyclePlans = null;
   var viewDate = todayInShanghai();
   var selectedSessionId = null;
   var settingsNewCycle = false;
@@ -471,8 +473,37 @@
     return core.generate(archivedState, holidayCalendars, { asOfDate: todayInShanghai() });
   }
 
+  function isAllCycleView() {
+    return isOwner && Boolean(privateState) && viewingChartArchive === ALL_CYCLES &&
+      selectedPlanKind === "fitness";
+  }
+
+  function cycleOrdinal(index, archiveCount) {
+    return "Cycle " + String(archiveCount - index).padStart(2, "0");
+  }
+
+  // Cycles overlap in time, so the all view keeps each cycle as its own plan instead
+  // of merging sessions into one calendar-shaped plan.
+  function allCyclePlanSet(activePlan) {
+    if (!isOwner || !privateState || !activePlan) {
+      return [];
+    }
+    var archives = privateState.archivedCycles || [];
+    var plans = archives.map(function (archive, index) {
+      var plan = planForArchive(archive);
+      plan.cycleLabel = cycleOrdinal(index, archives.length);
+      return plan;
+    }).reverse();
+    activePlan.cycleLabel = "Cycle " + String(archives.length + 1).padStart(2, "0");
+    plans.push(activePlan);
+    return plans;
+  }
+
   function displayTrajectoryPlan(activePlan) {
-    if (!isOwner || !privateState || viewingChartArchive < 0) {
+    if (!isOwner || !privateState || viewingChartArchive === ALL_CYCLES) {
+      return activePlan;
+    }
+    if (viewingChartArchive < 0) {
       return activePlan;
     }
     var archive = privateState.archivedCycles[viewingChartArchive];
@@ -503,21 +534,34 @@
     dom.edit.textContent = selectedPlanKind === "learning" ? "编辑学习计划" : "编辑计划";
     setSyncState();
 
-    dom.title.textContent = plan.cycle.title || (selectedPlanKind === "learning" ? "学习计划" : "推拉蹲 + 推");
-    dom.cycleMeta.textContent = formatDateRange(plan.cycle.startDate, plan.cycle.endDate) +
-      (selectedPlanKind === "learning"
-        ? " · " + plan.totalDays + " 天 · " + plan.completedDays + " 天已完成"
-        : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练" +
-          (plan.cycle.requestedEndDate && plan.cycle.requestedEndDate !== plan.cycle.endDate
-            ? " · 原设结束 " + formatChineseDate(plan.cycle.requestedEndDate, false) + " · 已手动调整"
-            : ""));
+    allCyclePlans = isAllCycleView() ? allCyclePlanSet(plan) : null;
+
+    if (allCyclePlans) {
+      var firstCycle = allCyclePlans[0].cycle;
+      var lastCycle = allCyclePlans[allCyclePlans.length - 1].cycle;
+      var sessionCount = allCyclePlans.reduce(function (total, item) {
+        return total + item.sessions.length;
+      }, 0);
+      dom.title.textContent = "全量训练视图";
+      dom.cycleMeta.textContent = formatDateRange(firstCycle.startDate, lastCycle.endDate) +
+        " · " + allCyclePlans.length + " 个周期 · " + sessionCount + " 次训练";
+    } else {
+      dom.title.textContent = plan.cycle.title || (selectedPlanKind === "learning" ? "学习计划" : "推拉蹲 + 推");
+      dom.cycleMeta.textContent = formatDateRange(plan.cycle.startDate, plan.cycle.endDate) +
+        (selectedPlanKind === "learning"
+          ? " · " + plan.totalDays + " 天 · " + plan.completedDays + " 天已完成"
+          : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练" +
+            (plan.cycle.requestedEndDate && plan.cycle.requestedEndDate !== plan.cycle.endDate
+              ? " · 原设结束 " + formatChineseDate(plan.cycle.requestedEndDate, false) + " · 已手动调整"
+              : ""));
+    }
 
     renderProgress(plan.cycle);
     renderLearningSummary(plan);
     renderWarnings(plan);
     renderCycleSelect();
     renderTrajectory(displayTrajectoryPlan(plan));
-    normalizeViewDate(plan.cycle);
+    normalizeViewDate(allCyclePlans ? null : plan.cycle);
     renderCalendar(plan);
   }
 
@@ -541,8 +585,18 @@
   }
 
   function normalizeViewDate(cycle) {
-    if (!viewDate || viewDate < core.addDays(cycle.startDate, -35) || viewDate > core.addDays(cycle.endDate, 35)) {
-      viewDate = cycle.startDate;
+    var span = cycle;
+    if (!span && allCyclePlans) {
+      span = {
+        startDate: allCyclePlans[0].cycle.startDate,
+        endDate: allCyclePlans[allCyclePlans.length - 1].cycle.endDate
+      };
+    }
+    if (!span) {
+      return;
+    }
+    if (!viewDate || viewDate < core.addDays(span.startDate, -35) || viewDate > core.addDays(span.endDate, 35)) {
+      viewDate = span.startDate;
     }
   }
 
@@ -561,7 +615,24 @@
     }).format(date);
   }
 
+  function liftProgressHtml(cycle) {
+    return ["bench", "pullup", "squat"].map(function (key) {
+      var lift = cycle.lifts[key] || {};
+      var current = Number(lift.current1rm || 0);
+      var target = Number(lift.target1rm || 0);
+      var percentage = target > 0 ? Math.min(100, Math.max(0, current / target * 100)) : 0;
+      var suffix = key === "pullup" ? " kg 额外负重" : " kg";
+      return '<div class="plan-progress-item">' +
+        '<div class="plan-progress-label"><strong>' + escapeHtml(lift.label || core.LIFT_LABELS[key]) + '</strong>' +
+        '<span>' + (current ? current.toFixed(1).replace(".0", "") : "—") + " → " +
+        (target ? target.toFixed(1).replace(".0", "") : "—") + escapeHtml(suffix) + '</span></div>' +
+        '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
+        percentage.toFixed(1) + '%"></span></div></div>';
+    }).join("");
+  }
+
   function renderProgress(cycle) {
+    dom.progress.classList.toggle("is-all-cycles", Boolean(allCyclePlans));
     if (selectedPlanKind === "learning") {
       var plan = displayPlan();
       var total = Math.max(0, Number(plan && plan.totalDays || 0));
@@ -581,19 +652,17 @@
       }).join("");
       return;
     }
-    dom.progress.innerHTML = ["bench", "pullup", "squat"].map(function (key) {
-      var lift = cycle.lifts[key] || {};
-      var current = Number(lift.current1rm || 0);
-      var target = Number(lift.target1rm || 0);
-      var percentage = target > 0 ? Math.min(100, Math.max(0, current / target * 100)) : 0;
-      var suffix = key === "pullup" ? " kg 额外负重" : " kg";
-      return '<div class="plan-progress-item">' +
-        '<div class="plan-progress-label"><strong>' + escapeHtml(lift.label || core.LIFT_LABELS[key]) + '</strong>' +
-        '<span>' + (current ? current.toFixed(1).replace(".0", "") : "—") + " → " +
-        (target ? target.toFixed(1).replace(".0", "") : "—") + escapeHtml(suffix) + '</span></div>' +
-        '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
-        percentage.toFixed(1) + '%"></span></div></div>';
-    }).join("");
+    if (allCyclePlans) {
+      dom.progress.innerHTML = allCyclePlans.map(function (item) {
+        return '<div class="plan-progress-cycle"><p class="plan-progress-cycle-label">' +
+          escapeHtml(item.cycleLabel) + " · " +
+          escapeHtml(formatDateRange(item.cycle.startDate, item.cycle.endDate)) +
+          (item.cycle.status === "archived" ? " · 已归档" : " · 进行中") + "</p>" +
+          liftProgressHtml(item.cycle) + "</div>";
+      }).join("");
+      return;
+    }
+    dom.progress.innerHTML = liftProgressHtml(cycle);
   }
 
   function renderTrajectory(plan) {
@@ -609,7 +678,10 @@
       return;
     }
     dom.chart.hidden = false;
-    chart.render(dom.chart, plan, { today: todayInShanghai() });
+    chart.render(dom.chart, plan, {
+      today: todayInShanghai(),
+      plans: allCyclePlans || undefined
+    });
   }
 
   function renderLearningSummary(plan) {
@@ -638,7 +710,7 @@
       return;
     }
     var startYear = Number(String(plan.cycle.startDate).slice(0, 4));
-    if (!holidayCalendars.some(function (calendar) { return Number(calendar.year) === startYear; })) {
+    if (!allCyclePlans && !holidayCalendars.some(function (calendar) { return Number(calendar.year) === startYear; })) {
       warnings.unshift("当前周期缺少 " + startYear + " 年官方节假日数据，请在设置中手动覆盖。");
     }
     dom.warnings.hidden = warnings.length === 0;
@@ -658,16 +730,24 @@
       viewingChartArchive = -1;
       return;
     }
-    if (viewingChartArchive >= archives.length) {
+    if (viewingChartArchive !== ALL_CYCLES && viewingChartArchive >= archives.length) {
+      viewingChartArchive = -1;
+    }
+    if (viewingChartArchive === ALL_CYCLES && !archives.length) {
       viewingChartArchive = -1;
     }
     var cycleCount = archives.length + 1;
     var activeCycle = privateState.activeCycle;
-    var options = ['<option value="-1">' +
+    var options = [];
+    if (archives.length) {
+      options.push('<option value="all">' +
+        escapeHtml("ALL · 全量 · " + cycleCount + " 个周期") + "</option>");
+    }
+    options.push('<option value="-1">' +
       escapeHtml("Cycle " + String(cycleCount).padStart(2, "0") + " · Current · " +
         String(activeCycle.startDate).replace(/-/g, ".") + " — " +
         String(activeCycle.endDate).replace(/-/g, ".")) +
-      "</option>"];
+      "</option>");
     archives.forEach(function (archive, index) {
       var ordinal = archives.length - index;
       options.push('<option value="' + index + '">' +
@@ -701,8 +781,27 @@
     }, {});
   }
 
+  // In the all view a date can hold sessions from several overlapping cycles, so each
+  // entry carries the cycle tag it belongs to; a single cycle keeps ordinal null.
+  function calendarEntries(plan) {
+    var map = {};
+    (allCyclePlans || [plan]).forEach(function (item) {
+      var ordinal = item.cycleLabel || null;
+      item.sessions.forEach(function (session) {
+        map[session.date] = map[session.date] || [];
+        map[session.date].push({ session: session, ordinal: ordinal });
+      });
+    });
+    Object.keys(map).forEach(function (date) {
+      map[date].sort(function (left, right) {
+        return String(left.ordinal || "").localeCompare(String(right.ordinal || ""));
+      });
+    });
+    return map;
+  }
+
   function renderCalendar(plan) {
-    var map = sessionsByDate(plan);
+    var map = calendarEntries(plan);
     if (mobileQuery.matches) {
       renderAgenda(plan, map);
     } else {
@@ -723,8 +822,8 @@
     var cells = [];
     for (var index = 0; index < 42; index += 1) {
       var date = core.addDays(gridStart, index);
-      var sessions = map[date] || [];
-      var session = sessions[0];
+      var entries = map[date] || [];
+      var session = entries.length ? entries[0].session : null;
       var classes = ["plan-day"];
       if (date.slice(0, 7) !== currentMonth) {
         classes.push("is-outside");
@@ -732,25 +831,20 @@
       if (date === todayInShanghai()) {
         classes.push("is-today");
       }
-      var canDrag = Boolean(session && isOwner && !isOffline && selectedPlanKind === "fitness");
+      var canDrag = Boolean(session && !allCyclePlans && isOwner && !isOffline &&
+        selectedPlanKind === "fitness");
       var attributes = ' data-plan-date="' + escapeHtml(date) + '"';
-      if (session) {
+      if (entries.length === 1) {
         attributes += ' data-session-id="' + escapeHtml(session.id) + '"';
       }
       if (canDrag) {
         attributes += ' draggable="true"';
       }
       var content = '<span class="plan-day-number">' + Number(date.slice(-2)) + "</span>";
-      if (session) {
-        content += '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>";
-        content += '<span class="plan-day-load">' + escapeHtml(primaryLoad(session)) + "</span>";
-        if (session.status && session.status !== "planned") {
-          content += '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
-            escapeHtml(statusLabel(session.status)) + "</span>";
-        }
-        if (session.holiday && selectedPlanKind !== "learning") {
-          content += '<span class="plan-day-holiday">调休</span>';
-        }
+      if (entries.length) {
+        content += entries.length === 1
+          ? daySessionCellHtml(entries[0])
+          : '<span class="plan-day-sessions">' + entries.map(daySessionEntryHtml).join("") + "</span>";
       } else {
         var holiday = selectedPlanKind === "learning" ? null : holidayForDate(date);
         if (holiday && holiday.type === "off") {
@@ -758,14 +852,42 @@
         }
       }
       var aria = session
-        ? formatChineseDate(date, true) + " " + session.label + "，" + statusLabel(session.status) +
-          (canDrag ? "，可拖动调整日期" : "")
+        ? formatChineseDate(date, true) + " " + entries.map(function (entry) {
+            return (entry.ordinal ? entry.ordinal + " " : "") + entry.session.label + "，" +
+              statusLabel(entry.session.status);
+          }).join("；") + (canDrag ? "，可拖动调整日期" : "")
         : "";
       cells.push('<button class="' + classes.join(" ") + '" type="button"' + attributes +
         (session ? ' aria-label="' + escapeHtml(aria) + '"' : ' tabindex="-1"') +
         ">" + content + "</button>");
     }
     dom.monthGrid.innerHTML = cells.join("");
+  }
+
+  function daySessionCellHtml(entry) {
+    var session = entry.session;
+    var html = '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>";
+    html += '<span class="plan-day-load">' + escapeHtml(primaryLoad(session)) + "</span>";
+    if (session.status && session.status !== "planned") {
+      html += '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
+        escapeHtml(statusLabel(session.status)) + "</span>";
+    }
+    if (session.holiday && selectedPlanKind !== "learning") {
+      html += '<span class="plan-day-holiday">调休</span>';
+    }
+    return html;
+  }
+
+  function daySessionEntryHtml(entry) {
+    var session = entry.session;
+    return '<span class="plan-day-session" data-session-id="' + escapeHtml(session.id) + '">' +
+      '<span class="plan-day-cycle">' + escapeHtml(entry.ordinal) + "</span>" +
+      '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>" +
+      '<span class="plan-day-load">' + escapeHtml(primaryLoad(session)) + "</span>" +
+      (session.status && session.status !== "planned"
+        ? '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
+          escapeHtml(statusLabel(session.status)) + "</span>"
+        : "") + "</span>";
   }
 
   function renderAgenda(plan, map) {
@@ -775,16 +897,19 @@
     var rows = [];
     for (var index = 0; index < 7; index += 1) {
       var date = core.addDays(start, index);
-      var sessions = map[date] || [];
+      var entries = map[date] || [];
       var dateLabel = new Intl.DateTimeFormat("zh-CN", {
         timeZone: "Asia/Shanghai",
         month: "numeric",
         day: "numeric",
         weekday: "short"
       }).format(new Date(date + "T12:00:00+08:00"));
-      var content = sessions.length ? sessions.map(function (session) {
+      var content = entries.length ? entries.map(function (entry) {
+        var session = entry.session;
         return '<button class="plan-agenda-session" type="button" data-session-id="' +
-          escapeHtml(session.id) + '"><strong>' + escapeHtml(session.label) + '</strong><span>' +
+          escapeHtml(session.id) + '"><strong>' + (entry.ordinal
+            ? '<span class="plan-day-cycle">' + escapeHtml(entry.ordinal) + "</span> " : "") +
+          escapeHtml(session.label) + '</strong><span>' +
           escapeHtml(primaryLoad(session) + " · " + (session.phase && session.phase.label || "学习日") + " · " + statusLabel(session.status)) +
           "</span></button>";
       }).join("") : '<span class="plan-agenda-rest">' +
@@ -862,8 +987,18 @@
   }
 
   function currentSessions() {
+    if (allCyclePlans) {
+      return allCyclePlans.reduce(function (all, item) {
+        return all.concat(item.sessions);
+      }, []);
+    }
     var plan = displayPlan();
     return plan ? plan.sessions : [];
+  }
+
+  function isArchivedSession(session) {
+    return Boolean(privateState && privateState.activeCycle &&
+      session.id.indexOf(privateState.activeCycle.id + ":") !== 0);
   }
 
   function findSession(id) {
@@ -928,7 +1063,9 @@
     html += '<section class="plan-session-section"><h3>辅助动作</h3>' +
       (workout.accessories && workout.accessories.length ? setListHtml(workout.accessories, null) : "<p>本次不安排辅助训练。</p>") + "</section>";
 
-    if (isOwner && !isOffline && !workout.needsSetup) {
+    // Archived cycles share their logs with the active cycle's record path, so their
+    // sessions open read-only from the all-cycles view.
+    if (isOwner && !isOffline && !workout.needsSetup && !isArchivedSession(session)) {
       html += trainingLogHtml(session);
     }
     return html;
@@ -2218,7 +2355,7 @@
     if (calendarDragActive || suppressCalendarClick) {
       return;
     }
-    var button = event.target.closest("[data-session-id]");
+    var button = event.target.closest("[data-plan-session]") || event.target.closest("[data-session-id]");
     if (button) {
       openDetails(button.dataset.sessionId);
     }
@@ -2268,10 +2405,10 @@
     renderHolidayOverrides();
   });
   dom.cycleSelect.addEventListener("change", function () {
-    viewingChartArchive = Number(dom.cycleSelect.value);
-    var plan = displayPlan();
-    renderCycleSelect();
-    renderTrajectory(displayTrajectoryPlan(plan));
+    viewingChartArchive = dom.cycleSelect.value === ALL_CYCLES
+      ? ALL_CYCLES
+      : Number(dom.cycleSelect.value);
+    render();
   });
   app.querySelector("[data-plan-cancel-move]").addEventListener("click", cancelSessionMove);
   app.querySelector("[data-plan-confirm-move]").addEventListener("click", confirmSessionMove);

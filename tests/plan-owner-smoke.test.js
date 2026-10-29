@@ -89,9 +89,11 @@ const { JSDOM } = require("jsdom");
   await memory.signIn();
   await new Promise((resolve) => setTimeout(resolve, 50));
 
-  assert.strictEqual(cycleSelect.options.length, 2);
-  assert(cycleSelect.options[0].textContent.includes("Current"));
-  assert(cycleSelect.options[1].textContent.includes("Archived"));
+  assert.strictEqual(cycleSelect.options.length, 3);
+  assert.strictEqual(cycleSelect.options[0].value, "all");
+  assert(cycleSelect.options[0].textContent.includes("全量"));
+  assert(cycleSelect.options[1].textContent.includes("Current"));
+  assert(cycleSelect.options[2].textContent.includes("Archived"));
   const activeTitle = window.document.querySelector("[data-plan-title]").textContent;
   const activeSessionId = window.document.querySelector("[data-session-id]").dataset.sessionId;
   cycleSelect.value = "0";
@@ -99,6 +101,23 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, activeTitle);
   assert.strictEqual(window.document.querySelector("[data-session-id]").dataset.sessionId, activeSessionId);
   assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"]'));
+
+  cycleSelect.value = "all";
+  cycleSelect.dispatchEvent(new window.Event("change"));
+  assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, "全量训练视图");
+  assert(window.document.querySelector("[data-plan-cycle-meta]").textContent.includes("2 个周期"));
+  assert.strictEqual(window.document.querySelectorAll(".plan-progress-cycle").length, 2);
+  assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"][data-series^="Bench Press · Cycle 01"]'),
+    "the all view keeps the archived cycle on the chart");
+  assert(window.document.querySelector('[data-chart-point][data-series^="Bench Press · Cycle 02"]'),
+    "the all view keeps the current cycle on the chart");
+  assert.strictEqual(window.document.querySelectorAll('[draggable="true"]').length, 0,
+    "the all view is read-only");
+  window.document.querySelector('[data-plan-previous]').click();
+  assert.strictEqual(cycleSelect.value, "all", "month navigation keeps the all view selected");
+
+  cycleSelect.value = "0";
+  cycleSelect.dispatchEvent(new window.Event("change"));
   window.document.querySelector("[data-session-id]").click();
   assert(window.document.querySelector("[data-save-log]"));
   window.document.querySelector("[data-plan-close-details]").click();

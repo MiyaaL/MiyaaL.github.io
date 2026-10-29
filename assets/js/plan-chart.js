@@ -265,11 +265,7 @@
     };
   }
 
-  function buildSeries(plan, today) {
-    if (!plan || !plan.cycle || !plan.cycle.startDate || !plan.cycle.endDate) {
-      return { startDate: null, endDate: null, today: today || null, series: [] };
-    }
-
+  function cycleSeries(plan, today) {
     var result = [];
     SERIES.forEach(function (definition) {
       var item = definition.key === "bodyweight"
@@ -279,10 +275,64 @@
         result.push(item);
       }
     });
+    return result;
+  }
+
+  function hasCycle(plan) {
+    return Boolean(plan && plan.cycle && plan.cycle.startDate && plan.cycle.endDate);
+  }
+
+  function buildSeries(plan, today) {
+    if (!hasCycle(plan)) {
+      return { startDate: null, endDate: null, today: today || null, series: [] };
+    }
 
     return {
       startDate: plan.cycle.startDate,
       endDate: plan.cycle.endDate,
+      today: today || null,
+      series: cycleSeries(plan, today)
+    };
+  }
+
+  // Overlapping cycles need one line per cycle per lift: concatenating them into a
+  // single polyline would draw a segment between two cycles that never touch.
+  function buildSeriesForPlans(plans, today) {
+    var cycles = (plans || []).filter(hasCycle);
+    if (!cycles.length) {
+      return { startDate: null, endDate: null, today: today || null, series: [] };
+    }
+
+    var startDate = cycles[0].cycle.startDate;
+    var endDate = cycles[0].cycle.endDate;
+    var result = [];
+    cycles.forEach(function (plan, index) {
+      var cycleLabel = plan.cycleLabel || "Cycle " + String(index + 1).padStart(2, "0");
+      var state = plan.cycle.status === "archived" ? "archived" : "current";
+      if (plan.cycle.startDate < startDate) {
+        startDate = plan.cycle.startDate;
+      }
+      if (plan.cycle.endDate > endDate) {
+        endDate = plan.cycle.endDate;
+      }
+      cycleSeries(plan, today).forEach(function (item) {
+        result.push({
+          id: index + "-" + item.key,
+          key: item.key,
+          cycleLabel: cycleLabel,
+          cycleState: state,
+          label: item.label + " · " + cycleLabel,
+          metric: item.metric,
+          kind: item.kind,
+          interpolation: item.interpolation,
+          points: item.points
+        });
+      });
+    });
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
       today: today || null,
       series: result
     };
@@ -348,9 +398,12 @@
 
   function renderLegend(element, series) {
     element.innerHTML = series.map(function (item) {
-      return '<span class="plan-chart-legend-item"><i class="is-' + escapeXml(item.key) +
+      return '<span class="plan-chart-legend-item' +
+        (item.cycleState === "archived" ? " is-archived" : "") +
+        '" data-cycle="' + escapeXml(item.cycleState || "current") + '"><i class="is-' + escapeXml(item.key) +
         '" aria-hidden="true"></i><span>' + escapeXml(item.label) + '</span><small>' +
-        escapeXml(item.metric) + "</small></span>";
+        (item.cycleLabel ? '<span class="plan-chart-cycle-tag">' + escapeXml(item.cycleLabel) +
+          "</span> · " : "") + escapeXml(item.metric) + "</small></span>";
     }).join("");
   }
 
@@ -415,7 +468,9 @@
 
   function render(rootElement, plan, options) {
     var optionsValue = options || {};
-    var model = buildSeries(plan, optionsValue.today);
+    var model = optionsValue.plans
+      ? buildSeriesForPlans(optionsValue.plans, optionsValue.today)
+      : buildSeries(plan, optionsValue.today);
     var legend = rootElement.querySelector("[data-plan-chart-legend]");
     var plot = rootElement.querySelector("[data-plan-chart-plot]");
     var empty = rootElement.querySelector("[data-plan-chart-empty]");
@@ -483,13 +538,15 @@
 
     model.series.forEach(function (item) {
       var path = pathForSeries(item, xFor, yFor);
-      svg.push('<path class="plan-chart-line is-' + escapeXml(item.key) + '" d="' + path + '"></path>');
+      var cycleAttribute = item.cycleState ? ' data-cycle="' + escapeXml(item.cycleState) + '"' : "";
+      svg.push('<path class="plan-chart-line is-' + escapeXml(item.key) + '"' + cycleAttribute +
+        ' d="' + path + '"></path>');
 
       item.points.forEach(function (point) {
         var x = xFor(point.date);
         var y = yFor(point.value);
         var displayValue = (item.key === "pullup" && point.value > 0 ? "+" : "") + formatValue(point.value);
-        var detailText = point.detail || item.metric;
+        var detailText = (item.cycleLabel ? item.cycleLabel + " · " : "") + (point.detail || item.metric);
         var aria = item.label + ", " + fullDate(point.date) + ", " + displayValue + " kg, " + detailText;
         if (point.isToday) {
           svg.push('<circle class="plan-chart-today-ring is-' + escapeXml(item.key) + '" cx="' + x +
@@ -503,7 +560,7 @@
           escapeXml(detailText) + '" data-x="' + x + '" data-y="' + y + '"><title>' +
           escapeXml(aria) + "</title></circle>");
         svg.push('<circle class="plan-chart-point is-' + escapeXml(item.key) +
-          (point.isToday ? " is-today" : "") + '" cx="' + x + '" cy="' + y +
+          (point.isToday ? " is-today" : "") + '"' + cycleAttribute + ' cx="' + x + '" cy="' + y +
           '" r="' + (point.isToday ? 4.5 : 2.6) + '"></circle>');
       });
     });
@@ -519,6 +576,7 @@
 
   return {
     buildSeries: buildSeries,
+    buildSeriesForPlans: buildSeriesForPlans,
     render: render
   };
 }));

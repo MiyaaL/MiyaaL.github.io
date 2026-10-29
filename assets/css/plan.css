@@ -257,6 +257,28 @@
   border-right: 1px solid var(--border);
 }
 
+/* The all-cycles view groups one lift block per cycle inside the same grid. */
+.plan-progress-grid.is-all-cycles {
+  display: block;
+}
+
+.plan-progress-cycle + .plan-progress-cycle {
+  border-top: 1px solid var(--border);
+}
+
+.plan-progress-cycle-label {
+  margin: 0;
+  padding: 18px 0 0;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.plan-progress-cycle .plan-progress-item {
+  border-right: 0;
+}
+
 .plan-progress-item:first-child {
   padding-left: 0;
 }
@@ -639,6 +661,51 @@
   left: 9px;
 }
 
+/* The all-cycles view stacks every cycle's session that lands on the same date. */
+.plan-day-sessions {
+  display: block;
+  margin-top: 12px;
+}
+
+.plan-day-session {
+  display: block;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.plan-day-session:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.plan-day-session .plan-day-badge {
+  margin-top: 0;
+}
+
+.plan-day-session:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.plan-day-session:hover .plan-day-badge {
+  color: var(--accent);
+}
+
+.plan-day-session .plan-day-status {
+  position: static;
+  display: block;
+  margin-top: 4px;
+}
+
+.plan-day-cycle {
+  display: block;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+}
+
 .plan-agenda {
   display: none;
 }
@@ -675,6 +742,12 @@
   display: block;
   font-size: 14px;
   font-weight: 600;
+}
+
+.plan-agenda-session .plan-day-cycle {
+  display: inline;
+  margin-right: 4px;
+  font-size: 10px;
 }
 
 .plan-agenda-session span {
