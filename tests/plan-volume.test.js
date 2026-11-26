@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const core = require("../assets/js/plan-core.js");
+const core = require("./helpers/legacy-core.js");
 
 const moderateVolume = "moderate-volume-v1";
 const asOfDate = "2026-10-29";
@@ -75,7 +75,7 @@ test("moderate volume separates bench and squat loading prescriptions from legac
     assert.equal(session.workout.workSets.length, 1, "volume sessions have no top single");
     const set = session.workout.workSets[0];
     assert.equal(set.rpe, 7.5, "planned effort is a target rather than measured performance");
-    assert.equal(set.label, "容量组 · 余力 2–3 次");
+    assert.equal(set.label, "Volume sets · 2–3 reps in reserve");
     assert(set.loadKg < old.workout.workSets[0].loadKg, "higher repetitions start with lighter weights");
     assert.equal(set.loadKg % 2.5, 0);
     assert.deepEqual(session.workout.accessories, old.workout.accessories, "accessories remain unchanged");

@@ -4,8 +4,9 @@ title: Plan
 description: "Training schedules, strength progress, and cycle goals."
 permalink: /plan/
 plan: true
+lang: en
 ---
-<section class="plan-hero">
+<section class="plan-hero" lang="en">
   <div class="container plan-hero-inner">
     <div>
       <p class="eyebrow">TRAINING LOG</p>
@@ -13,60 +14,57 @@ plan: true
       <p class="plan-intro">Training schedules, strength progress, and cycle goals.</p>
     </div>
     <div class="plan-hero-actions">
-      <span class="plan-sync-state" data-plan-sync-state>正在载入</span>
-      <button class="plan-button plan-button-primary" type="button" data-plan-auth>管理计划</button>
+      <span class="plan-sync-state" data-plan-sync-state>Loading</span>
+      <button class="plan-text-button plan-auth-link" type="button" data-plan-auth>Owner sign-in</button>
     </div>
   </div>
 </section>
 
-<section class="plan-section">
+<section class="plan-section" lang="en">
   <div
     class="container plan-app"
     data-plan-app
     data-supabase-url="{{ site.plan.supabase_url | default: '' | escape }}"
     data-supabase-key="{{ site.plan.supabase_publishable_key | default: '' | escape }}"
-    data-owner-github-id="{{ site.plan.owner_github_id | default: '' | escape }}"
-    data-holiday-url="{{ '/assets/data/holidays/cn-2026.json' | relative_url }}"
-    data-schedule-revision="{{ site.plan.schedule_revision | jsonify | escape }}"
-    data-volume-revision="{{ site.plan.volume_revision | jsonify | escape }}"
+    data-holiday-base="{{ '/assets/data/holidays/' | relative_url }}"
   >
     <div class="plan-message" data-plan-message role="status" aria-live="polite"></div>
 
     <div class="plan-loading" data-plan-loading>
       <span aria-hidden="true"></span>
-      <p>正在载入计划…</p>
+      <p>Loading the plan…</p>
     </div>
 
     <section class="plan-empty" data-plan-empty hidden>
-      <p class="eyebrow" data-plan-empty-eyebrow>FITNESS / 健身计划</p>
-      <h2 data-plan-empty-title>计划尚未发布</h2>
-      <p data-plan-empty-description>登录后填写周期、体重与三项当前/目标 1RM，即可生成第一份训练日历。</p>
+      <p class="eyebrow">TRAINING PLAN</p>
+      <h2 data-plan-empty-title>No plan published yet</h2>
+      <p data-plan-empty-description>After signing in, enter the cycle dates, bodyweight and the current and goal 1RM for each lift to generate the first training calendar.</p>
     </section>
 
     <div data-plan-view hidden>
       <header class="plan-overview">
         <div class="plan-cycle-heading">
           <div>
-            <p class="eyebrow">ACTIVE CYCLE / 当前周期</p>
-            <h2 data-plan-title>推拉蹲 + 推</h2>
+            <p class="eyebrow">ACTIVE CYCLE</p>
+            <h2 data-plan-title></h2>
             <p class="plan-cycle-meta" data-plan-cycle-meta></p>
           </div>
           <div class="plan-owner-actions" data-plan-owner-actions hidden>
-            <button class="plan-text-button" type="button" data-plan-update-bodyweight>更新体重</button>
-            <button class="plan-text-button" type="button" data-plan-edit>编辑计划</button>
-            <button class="plan-text-button" type="button" data-plan-new-cycle>开始新周期</button>
-            <button class="plan-text-button" type="button" data-plan-sign-out>退出</button>
+            <button class="plan-text-button" type="button" data-plan-update-bodyweight>Update bodyweight</button>
+            <button class="plan-text-button" type="button" data-plan-edit>Edit plan</button>
+            <button class="plan-text-button" type="button" data-plan-new-cycle>Start new cycle</button>
+            <button class="plan-text-button" type="button" data-plan-sign-out>Sign out</button>
           </div>
         </div>
 
-        <div class="plan-progress-grid" data-plan-progress aria-label="三项力量进度"></div>
+        <div class="plan-progress-grid" data-plan-progress role="group" aria-label="Estimated 1RM against the goal for each lift"></div>
 
         <div class="plan-warning-list" data-plan-warnings hidden></div>
 
         <div class="plan-controls">
           <div class="plan-export-actions">
-            <button class="plan-text-button" type="button" data-plan-export-ics>导出 ICS</button>
-            <button class="plan-text-button" type="button" data-plan-export-json hidden>备份 JSON</button>
+            <button class="plan-text-button" type="button" data-plan-export-ics>Export calendar (.ics)</button>
+            <button class="plan-text-button" type="button" data-plan-export-json hidden>Back up JSON</button>
           </div>
         </div>
       </header>
@@ -75,40 +73,39 @@ plan: true
         <div class="plan-chart-heading">
           <div>
             <p class="eyebrow">CYCLE TRAJECTORY</p>
-            <h2 id="plan-chart-title">Progress Overview</h2>
+            <h2 id="plan-chart-title">Progress toward goals</h2>
+            <p class="plan-chart-caption">Share of the distance from each lift's starting 1RM to its goal. Lines are the programmed reference; dots are 1RM estimates from logged sessions.</p>
           </div>
           <div class="plan-chart-tools">
             <label class="plan-chart-cycle-select" data-plan-cycle-select-wrap hidden>
               <span>Cycle</span>
-              <select data-plan-cycle-select aria-label="Select progress cycle"></select>
+              <select data-plan-cycle-select></select>
             </label>
-            <div class="plan-chart-legend" data-plan-chart-legend aria-label="Chart series"></div>
+            <div class="plan-chart-legend" data-plan-chart-legend role="group" aria-label="Chart series"></div>
           </div>
         </div>
         <div class="plan-chart-plot" data-plan-chart-plot></div>
         <p class="plan-chart-empty" data-plan-chart-empty hidden>
-          Set cycle dates and 1RM targets to display the trajectory.
+          Set the cycle dates and 1RM goals to see the trajectory.
         </p>
       </section>
-
-      <section class="plan-learning-summary" data-plan-learning-summary hidden aria-label="学习进度"></section>
 
       <section class="plan-calendar-shell" aria-labelledby="plan-calendar-title">
         <div class="plan-calendar-toolbar">
           <div>
-            <p class="eyebrow">CALENDAR / 训练日历</p>
+            <p class="eyebrow">CALENDAR</p>
             <h2 id="plan-calendar-title" data-plan-view-title></h2>
           </div>
-          <div class="plan-calendar-navigation" aria-label="日历导航">
-            <button type="button" data-plan-previous aria-label="上一时段">←</button>
-            <button type="button" data-plan-today>今天</button>
-            <button type="button" data-plan-next aria-label="下一时段">→</button>
+          <div class="plan-calendar-navigation" role="group" aria-label="Calendar navigation">
+            <button type="button" data-plan-previous aria-label="Previous period">←</button>
+            <button type="button" data-plan-today>Today</button>
+            <button type="button" data-plan-next aria-label="Next period">→</button>
           </div>
         </div>
 
         <div class="plan-month" data-plan-month>
-          <div class="plan-weekdays" aria-hidden="true">
-            <span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span>
+          <div class="plan-weekdays">
+            <span><abbr title="Monday">Mon</abbr></span><span><abbr title="Tuesday">Tue</abbr></span><span><abbr title="Wednesday">Wed</abbr></span><span><abbr title="Thursday">Thu</abbr></span><span><abbr title="Friday">Fri</abbr></span><span><abbr title="Saturday">Sat</abbr></span><span><abbr title="Sunday">Sun</abbr></span>
           </div>
           <div class="plan-month-grid" data-plan-month-grid></div>
         </div>
@@ -117,147 +114,103 @@ plan: true
       </section>
     </div>
 
-    <div class="plan-drawer" data-plan-drawer hidden>
-      <button class="plan-drawer-backdrop" type="button" data-plan-close-details aria-label="关闭训练详情"></button>
-      <aside class="plan-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="plan-detail-title">
+    <dialog class="plan-drawer" data-plan-drawer aria-labelledby="plan-detail-title">
+      <div class="plan-drawer-panel">
         <div class="plan-drawer-header">
           <div>
-            <p class="eyebrow">SESSION / 当日训练</p>
+            <p class="eyebrow">SESSION</p>
             <h2 id="plan-detail-title" data-plan-detail-title></h2>
           </div>
-          <button class="plan-icon-button" type="button" data-plan-close-details aria-label="关闭训练详情">×</button>
+          <button class="plan-icon-button" type="button" data-plan-close-details aria-label="Close session details">×</button>
         </div>
         <div class="plan-drawer-body" data-plan-detail-body></div>
-      </aside>
-    </div>
+      </div>
+    </dialog>
 
-    <dialog class="plan-dialog" data-plan-settings>
+    <dialog class="plan-dialog" data-plan-settings aria-labelledby="plan-settings-title">
       <form method="dialog" data-plan-settings-form>
         <header class="plan-dialog-header">
           <div>
-            <p class="eyebrow">SETTINGS / 计划设置</p>
-            <h2 data-plan-settings-title>编辑计划</h2>
+            <p class="eyebrow">PLAN SETTINGS</p>
+            <h2 id="plan-settings-title" data-plan-settings-title>Edit plan</h2>
           </div>
-          <button class="plan-icon-button" type="button" data-plan-close-settings aria-label="关闭设置">×</button>
+          <button class="plan-icon-button" type="button" data-plan-close-settings aria-label="Close settings">×</button>
         </header>
 
+        <p class="plan-form-error" data-plan-form-error role="alert"></p>
+
         <div class="plan-form-section">
-          <h3>周期</h3>
+          <h3>Cycle</h3>
           <div class="plan-form-grid">
-            <label>开始日期<input type="date" name="startDate" required></label>
-            <label>计划结束日期<input type="date" name="endDate" required></label>
-            <label>优先目标<select name="priorities"><option value="bench,squat">卧推与深蹲优先</option><option value="bench">卧推优先</option><option value="squat">深蹲优先</option><option value="pullup">引体优先</option><option value="bench,pullup,squat">三项均衡</option></select></label>
-            <label>训练时间<input type="time" name="trainingTime" required></label>
-            <label data-plan-settings-bodyweight>初始体重（kg）<input type="number" name="bodyweight" min="30" max="300" step="0.1" required></label>
-            <label data-plan-settings-replan-from hidden>重排起始日期<input type="date" name="replanFromDate" disabled></label>
-            <label data-plan-settings-replan-holidays hidden>重排期间的节假日<select name="trainOnHolidays" disabled><option value="no">按假期日历休息</option><option value="yes">假期照常训练</option></select></label>
+            <label>Start date<input type="date" name="startDate" required></label>
+            <label>End date<input type="date" name="endDate" required></label>
+            <label>Training time<input type="time" name="trainingTime" required></label>
+            <label data-plan-settings-bodyweight>Starting bodyweight (kg)<input type="number" name="bodyweight" min="30" max="300" step="0.1" inputmode="decimal" required></label>
+            <label data-plan-settings-replan-from hidden>Reschedule from<input type="date" name="replanFromDate" disabled></label>
+            <label data-plan-settings-replan-holidays hidden>Public holidays while rescheduling<select name="trainOnHolidays" disabled><option value="no">Rest on public holidays</option><option value="yes">Train through public holidays</option></select></label>
           </div>
-          <p class="plan-cycle-meta" data-plan-settings-schedule-help>编辑计划默认按固定截止日期重排，保留此前排期和训练记录。</p>
+          <p class="plan-cycle-meta" data-plan-settings-schedule-help></p>
         </div>
 
         <div class="plan-form-section">
-          <h3>当前估算与目标 1RM</h3>
+          <h3>Current estimate and goal 1RM</h3>
           <div class="plan-lift-inputs">
-            <div><span>杠铃卧推</span><label>当前<input type="number" name="benchCurrent" min="1" step="0.1" required></label><label>目标<input type="number" name="benchTarget" min="1" step="0.1" required></label></div>
-            <div><span>负重引体</span><label>当前额外负重<input type="number" name="pullupCurrent" step="0.1" required></label><label>目标额外负重<input type="number" name="pullupTarget" step="0.1" required></label></div>
-            <div><span>杠铃深蹲</span><label>当前<input type="number" name="squatCurrent" min="1" step="0.1" required></label><label>目标<input type="number" name="squatTarget" min="1" step="0.1" required></label></div>
+            <div role="group" aria-label="Bench press"><span>Bench press</span><label>Current (kg)<input type="number" name="benchCurrent" min="1" step="0.1" inputmode="decimal" required></label><label>Goal (kg)<input type="number" name="benchTarget" min="1" step="0.1" inputmode="decimal" required></label></div>
+            <div role="group" aria-label="Weighted pull-up"><span>Weighted pull-up</span><label>Current added load (kg)<input type="number" name="pullupCurrent" step="0.1" inputmode="decimal" required></label><label>Goal added load (kg)<input type="number" name="pullupTarget" step="0.1" inputmode="decimal" required></label></div>
+            <div role="group" aria-label="Back squat"><span>Back squat</span><label>Current (kg)<input type="number" name="squatCurrent" min="1" step="0.1" inputmode="decimal" required></label><label>Goal (kg)<input type="number" name="squatTarget" min="1" step="0.1" inputmode="decimal" required></label></div>
           </div>
+          <p class="plan-cycle-meta">Changing a current value restarts that lift's training reference from the new number today.</p>
         </div>
 
         <div class="plan-form-section">
           <div class="plan-form-section-heading">
-            <div><h3>周模板</h3><p>拖动或使用箭头调整顺序；每个训练日最多一项。</p></div>
-            <button class="plan-text-button" type="button" data-plan-add-template>增加训练日</button>
+            <div><h3>Weekly template</h3><p>Drag or use the arrows to reorder; one session per day at most.</p></div>
+            <button class="plan-text-button" type="button" data-plan-add-template>Add session</button>
           </div>
           <div class="plan-template-editor" data-plan-template-editor></div>
         </div>
 
         <div class="plan-form-section">
           <div class="plan-form-section-heading">
-            <div><h3>节假日覆盖</h3><p>假期照常训练时，把周模板对应日期设为训练日。</p></div>
+            <div><h3>Holiday overrides</h3><p>To train through a holiday, mark that date as a training day.</p></div>
           </div>
           <div class="plan-holiday-editor">
-            <label>日期<input type="date" data-plan-holiday-date></label>
-            <label>类型<select data-plan-holiday-type><option value="off">休息日</option><option value="work">训练日（覆盖休假）</option></select></label>
-            <button class="plan-button" type="button" data-plan-add-holiday>添加</button>
+            <label>Date<input type="date" data-plan-holiday-date></label>
+            <label>Type<select data-plan-holiday-type><option value="off">Rest day</option><option value="work">Training day (overrides a holiday)</option></select></label>
+            <button class="plan-button" type="button" data-plan-add-holiday>Add</button>
           </div>
           <div class="plan-holiday-overrides" data-plan-holiday-overrides></div>
         </div>
 
-        <p class="plan-form-error" data-plan-form-error role="alert"></p>
         <footer class="plan-dialog-actions">
-          <button class="plan-button" type="button" data-plan-cancel-settings>取消</button>
-          <button class="plan-button plan-button-primary" type="submit">生成并保存</button>
+          <button class="plan-button" type="button" data-plan-cancel-settings>Cancel</button>
+          <button class="plan-button plan-button-primary" type="submit">Generate and save</button>
         </footer>
       </form>
     </dialog>
 
-    <dialog class="plan-dialog plan-learning-settings-dialog" data-plan-learning-settings>
-      <form method="dialog" data-plan-learning-settings-form>
-        <header class="plan-dialog-header">
-          <div>
-            <p class="eyebrow">LEARNING / 学习计划</p>
-            <h2 data-plan-learning-settings-title>新增学习计划</h2>
-          </div>
-          <button class="plan-icon-button" type="button" data-plan-close-learning-settings aria-label="关闭学习计划设置">×</button>
-        </header>
-
-        <div class="plan-form-section">
-          <h3>目标与周期</h3>
-          <div class="plan-form-grid">
-            <label>计划名称<input type="text" name="learningTitle" maxlength="80" required placeholder="例如：完成 CS336 课程复习"></label>
-            <label>开始日期<input type="date" name="learningStartDate" required></label>
-            <label>结束日期<input type="date" name="learningEndDate" required></label>
-          </div>
-          <label class="plan-learning-wide-field">学习目标<textarea name="learningObjective" maxlength="1000" placeholder="完成后你希望获得什么能力或可验证的结果？"></textarea></label>
-        </div>
-
-        <div class="plan-form-section">
-          <div class="plan-form-section-heading"><div><h3>每日计划模板</h3><p>每个日期会继承对应星期的任务，也可以在当天记录中补充成果。</p></div></div>
-          <div class="plan-learning-day-editor" data-plan-learning-day-editor>
-            <label><span>周一</span><input type="text" name="learningDay1Title" placeholder="当天主题"><textarea name="learningDay1Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-            <label><span>周二</span><input type="text" name="learningDay2Title" placeholder="当天主题"><textarea name="learningDay2Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-            <label><span>周三</span><input type="text" name="learningDay3Title" placeholder="当天主题"><textarea name="learningDay3Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-            <label><span>周四</span><input type="text" name="learningDay4Title" placeholder="当天主题"><textarea name="learningDay4Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-            <label><span>周五</span><input type="text" name="learningDay5Title" placeholder="当天主题"><textarea name="learningDay5Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-            <label><span>周六</span><input type="text" name="learningDay6Title" placeholder="当天主题"><textarea name="learningDay6Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-            <label><span>周日</span><input type="text" name="learningDay7Title" placeholder="当天主题"><textarea name="learningDay7Tasks" rows="2" placeholder="任务清单，每行一项"></textarea></label>
-          </div>
-        </div>
-
-        <div class="plan-form-section">
-          <label class="plan-learning-wide-field"><span>验收成果（每行一项）</span><textarea name="learningCriteria" rows="4" maxlength="2000" placeholder="例如：一页课程总结\n一个可运行的练习项目\n三条可复述的核心洞见"></textarea></label>
-        </div>
-        <p class="plan-form-error" data-plan-learning-form-error role="alert"></p>
-        <footer class="plan-dialog-actions">
-          <button class="plan-button" type="button" data-plan-cancel-learning-settings>取消</button>
-          <button class="plan-button plan-button-primary" type="submit">保存学习计划</button>
-        </footer>
-      </form>
-    </dialog>
-
-    <dialog class="plan-dialog plan-bodyweight-dialog" data-plan-bodyweight-dialog>
+    <dialog class="plan-dialog plan-bodyweight-dialog" data-plan-bodyweight-dialog aria-labelledby="plan-bodyweight-title">
       <form method="dialog" data-plan-bodyweight-form>
         <header class="plan-dialog-header">
           <div>
-            <p class="eyebrow">BODYWEIGHT / 体重记录</p>
-            <h2>更新体重</h2>
+            <p class="eyebrow">BODYWEIGHT</p>
+            <h2 id="plan-bodyweight-title">Update bodyweight</h2>
           </div>
-          <button class="plan-icon-button" type="button" data-plan-close-bodyweight aria-label="关闭体重记录">×</button>
+          <button class="plan-icon-button" type="button" data-plan-close-bodyweight aria-label="Close bodyweight entry">×</button>
         </header>
 
         <div class="plan-form-section">
           <div class="plan-form-grid">
-            <label>记录日期<input type="date" name="date" required></label>
-            <label>体重（kg）<input type="number" name="bodyweight" min="30" max="300" step="0.1" required></label>
+            <label>Date<input type="date" name="date" required></label>
+            <label>Bodyweight (kg)<input type="number" name="bodyweight" min="30" max="300" step="0.1" inputmode="decimal" required></label>
           </div>
-          <p class="plan-bodyweight-note">同一天重新保存会覆盖原记录；新日期会追加到当前周期的体重趋势。</p>
+          <p class="plan-bodyweight-note">Saving the same date again replaces that entry; a new date is added to this cycle's bodyweight history.</p>
         </div>
 
         <p class="plan-form-error" data-plan-bodyweight-error role="alert"></p>
         <footer class="plan-dialog-actions">
-          <button class="plan-button" type="button" data-plan-cancel-bodyweight>取消</button>
-          <button class="plan-button plan-button-primary" type="submit">保存体重</button>
+          <button class="plan-button" type="button" data-plan-cancel-bodyweight>Cancel</button>
+          <button class="plan-button plan-button-primary" type="submit">Save bodyweight</button>
         </footer>
       </form>
     </dialog>
@@ -265,28 +218,29 @@ plan: true
     <dialog class="plan-dialog plan-confirm-dialog" data-plan-move-confirm aria-labelledby="plan-move-confirm-title" aria-describedby="plan-move-confirm-description">
       <div class="plan-dialog-header">
         <div>
-          <p class="eyebrow" data-plan-move-confirm-eyebrow>MOVE / 调整日期</p>
-          <h2 id="plan-move-confirm-title" data-plan-move-confirm-title>替代已有规划？</h2>
+          <p class="eyebrow" data-plan-move-confirm-eyebrow>MOVE SESSION</p>
+          <h2 id="plan-move-confirm-title" data-plan-move-confirm-title>Replace the planned session?</h2>
         </div>
       </div>
       <p id="plan-move-confirm-description" data-plan-move-confirm-message></p>
       <div class="plan-dialog-actions">
-        <button class="plan-button" type="button" data-plan-cancel-move>取消</button>
-        <button class="plan-button plan-button-primary" type="button" data-plan-confirm-move>确认替代</button>
+        <button class="plan-button" type="button" data-plan-cancel-move>Cancel</button>
+        <button class="plan-button plan-button-primary" type="button" data-plan-confirm-move>Replace</button>
       </div>
     </dialog>
 
-    <dialog class="plan-dialog plan-conflict-dialog" data-plan-conflict>
+    <dialog class="plan-dialog plan-conflict-dialog" data-plan-conflict aria-labelledby="plan-conflict-title" aria-describedby="plan-conflict-description">
       <div class="plan-dialog-header">
         <div>
-          <p class="eyebrow">SYNC / 同步冲突</p>
-          <h2>服务器已有更新</h2>
+          <p class="eyebrow">SYNC CONFLICT</p>
+          <h2 id="plan-conflict-title">The server has a newer plan</h2>
         </div>
       </div>
-      <p>另一台设备已经修改了计划。你可以重新载入服务器版本，或用当前修改强制覆盖。</p>
+      <p id="plan-conflict-description" data-plan-conflict-message></p>
       <div class="plan-dialog-actions">
-        <button class="plan-button" type="button" data-plan-reload>重新载入</button>
-        <button class="plan-button plan-button-primary" type="button" data-plan-force-save>强制覆盖</button>
+        <button class="plan-text-button plan-danger-link" type="button" data-plan-force-save>Overwrite the server version</button>
+        <button class="plan-button" type="button" data-plan-reload>Discard mine and reload</button>
+        <button class="plan-button plan-button-primary" type="button" data-plan-merge>Merge and save</button>
       </div>
     </dialog>
   </div>

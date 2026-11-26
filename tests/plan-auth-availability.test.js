@@ -1,23 +1,11 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp, settle } = require("./helpers/dom.js");
 
-(async function () {
-  const html = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(html, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-
+test("owner sign-in waits for a reachable sync service and retries", async () => {
+  const { window } = createPlanWindow();
   let availability = "error";
   let signIns = 0;
   window.PlanStore.createSupabaseAdapter = () => ({
@@ -30,27 +18,25 @@ const { JSDOM } = require("jsdom");
     signIn: async () => { signIns += 1; },
     onAuthChange: () => () => {}
   });
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
+  await settle();
 
-  await new Promise((resolve) => setTimeout(resolve, 20));
   const button = window.document.querySelector("[data-plan-auth]");
+  assert.strictEqual(button.textContent, "Owner sign-in");
+  assert.ok(!button.classList.contains("plan-button-primary"), "visitors do not get a primary call to action");
   button.click();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await settle();
   assert.strictEqual(signIns, 0, "offline sync must not open the broken OAuth URL");
-  assert.match(window.document.querySelector("[data-plan-message]").textContent, /同步服务暂不可用/);
+  assert.match(window.document.querySelector("[data-plan-message]").textContent, /sync service is unavailable/);
 
   availability = "offline";
   button.click();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await settle();
   assert.strictEqual(signIns, 0, "cached offline data must not open the broken OAuth URL");
 
   availability = "online";
   button.click();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await settle();
   assert.strictEqual(signIns, 1, "retry must open OAuth after the service recovers");
-
-  console.log("PASS: Plan OAuth waits for a reachable sync service and retries");
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+  window.close();
 });

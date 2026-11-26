@@ -4,19 +4,57 @@ Plan 页面使用 Supabase Auth、Postgres 与 Row Level Security 实现跨设�
 
 ## 1. 创建 Supabase 项目
 
-在 Supabase Dashboard 创建项目，然后打开 SQL Editor，完整执行：
+在 Supabase Dashboard 创建项目，然后打开 SQL Editor，依次完整执行：
 
 ```text
 supabase/migrations/001_fitness_plan.sql
+supabase/migrations/004_fitness_plan_history.sql
 ```
 
-迁移会创建：
+`001` 创建：
 
 - `fitness_plan_public`：匿名访客可读的脱敏快照；
-- `fitness_plan_private`：仅通过受控数据库函数访问的完整状态（健身与学习计划共用该状态载荷）；
+- `fitness_plan_private`：仅通过受控数据库函数访问的完整状态；
 - `load_private_fitness_plan()`：仅本人读取；
 - `save_fitness_plan()`：带版本检查的原子保存；
-- GitHub 数字账号 ID `73994563` 的写权限校验。
+- `is_fitness_plan_owner()`：GitHub 数字账号 ID `73994563` 的写权限校验。这个 ID 只写在 SQL 里，更换所有者时修改迁移中的字面量并重新执行。
+
+`004` 在此基础上：
+
+- 新增 `fitness_plan_history`，由 `save_fitness_plan()` 在同一事务内追加写入，保留最近 50 个版本；表启用 RLS 且不建策略，只能经函数访问；
+- 执行时把当前线上版本写为第一条历史，之后的第一次保存即可回退；
+- 为保存载荷加上大小上限（私有状态 4 MB、公开快照 1 MB），超出时返回 `plan_payload_too_large`；
+- 新增仅本人可用的 `list_fitness_plan_history()` 与 `load_fitness_plan_history(version)`；
+- 对所有私有函数显式 `revoke ... from anon`（Supabase 默认会把新函数授权给 `anon`，仅 `revoke from public` 去不掉）。
+
+`004` 可重复执行。已有项目只需补跑这一份。
+
+### 回退到历史版本
+
+页面没有回退界面。两个 `*_fitness_plan_history` 函数要求以本人身份登录后经 `supabase-js` 调用；在 Dashboard 的 SQL Editor 里没有登录身份，直接查表即可：
+
+```sql
+-- 有哪些版本
+select version, saved_at, octet_length(state::text) as bytes
+from public.fitness_plan_history
+where plan_key = 'fitness'
+order by version desc;
+
+-- 用第 120 版的内容覆盖当前内容。版本号保持为当前值，已打开的页面下一次保存不会冲突。
+begin;
+update public.fitness_plan_private as p
+set state = jsonb_set(h.state, '{version}', to_jsonb(p.version)), updated_at = now()
+from public.fitness_plan_history as h
+where p.plan_key = 'fitness' and h.plan_key = 'fitness' and h.version = 120;
+
+update public.fitness_plan_public as p
+set snapshot = jsonb_set(h.snapshot, '{version}', to_jsonb(p.version)), updated_at = now()
+from public.fitness_plan_history as h
+where p.plan_key = 'fitness' and h.plan_key = 'fitness' and h.version = 120;
+commit;
+```
+
+回退前建议先在页面里点 “Back up JSON” 备份当前版本；回退后刷新页面。
 
 ## 2. 配置 GitHub OAuth
 
@@ -34,41 +72,55 @@ Client Secret 不得写入 `_config.yml`、JavaScript 或 Git。
 
 ## 3. 配置站点公开参数
 
-从 Supabase Project Settings → API 复制 Project URL 和 Publishable Key，填写：
+从 Supabase Project Settings → API 复制 Project URL 和 Publishable Key，填写 `_config.yml`：
 
 ```yaml
 plan:
   supabase_url: "https://<project-ref>.supabase.co"
   supabase_publishable_key: "<publishable-key>"
-  owner_github_login: MiyaaL
-  owner_github_id: "73994563"
 ```
 
-Publishable Key 设计为浏览器公开使用；真正的访问控制由迁移中的 RLS、权限回收和 GitHub identity 校验完成。不要使用或提交 `service_role` key。
+Publishable Key 设计为浏览器公开使用；真正的访问控制由迁移中的 RLS、权限回收和 GitHub identity 校验完成。不要使用或提交 `service_role` key。`_config.yml` 里不再有所有者 ID 或一次性迁移配置：前者只在 SQL 中生效，后者均已执行完毕并删除。
 
 ## 4. 首次发布
 
 完成配置并部署后：
 
 1. 打开 `/plan/`；
-2. 点击“管理计划”并使用 GitHub 账号 MiyaaL 登录；
-3. 填写周期、体重和三项当前/目标 1RM，或从“学习计划”创建按日学习目标；
-4. 首次保存会同时创建私有状态和公开脱敏快照。学习总结、感悟与上传附件只保存在私有状态，附件单个限制为 2 MB。
+2. 点击页头的 “Owner sign-in” 并使用 GitHub 账号 MiyaaL 登录；
+3. 填写周期、体重和三项当前/目标 1RM；
+4. 首次保存会同时创建私有状态和公开脱敏快照。
 
 若登录账号不是 GitHub 数字 ID `73994563`，数据库函数会返回 `not_plan_owner`，无法读取或修改私有计划。
 
+### 学习计划已移除
+
+学习计划功能已从页面、核心逻辑和公开快照中整体删除。`normalizeState` 载入时会丢弃 `learningPlans` 与 `activePlanId`，`createPublicSnapshot` 不再输出 `learningPlans`。
+
+注意：**线上那一行数据在本人下一次保存之前仍然带着旧的学习计划**（私有状态和公开快照里各一份）。页面不会在载入时自动写库，所以需要本人登录后做任意一次保存（例如记录一次训练或更新体重）才会清掉。如需留底，请在保存前先点 “Back up JSON”；备份文件仍包含载入时的完整私有状态。
+
 ## 5. 验证
 
-本地执行：
+测试只依赖 Node 22 与 `package.json` 里的 `jsdom`，不需要 Docker 或 Jekyll 构建。浏览器测试通过 `tests/helpers/dom.js` 直接读取 `plan/index.html` 源文件：
 
 ```bash
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-core.test.js
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-adaptive.test.js
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-prescriptions.test.js
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-replan.test.js
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-defer.test.js
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-chart.test.js
-docker run --rm -v "$PWD:/site:ro" node:22-alpine node /site/tests/plan-store.test.js
+npm ci
+npm test                              # node --test "tests/**/*.test.js"
+node --test tests/plan-feedback.test.js   # 只跑一个文件
+```
+
+| 文件 | 覆盖内容 |
+| --- | --- |
+| `plan-feedback.test.js` | 反馈式处方：能力上限、保持与回退、缺训、目标增速告警、测试周、引体第二次暴露、节假日、存量周期接入 |
+| `plan-sync.test.js` | 单一保存路径、冲突合并、取消冲突对话框、失败回滚、防重复提交 |
+| `plan-chart.test.js` | 归一化进度图 |
+| `plan-app-smoke.test.js` 等 `*-smoke` | 页面交互：抽屉、对话框、拖拽改期、整体提前/顺延、重排、全周期视图 |
+| `plan-core`、`plan-fixed-wave`、`plan-linear`、`plan-prescriptions`、`plan-volume`、`plan-replan`、`plan-defer`、`plan-adjust-schedule`、`plan-unskip` | 旧周期（`programRevision: "legacy"`）的固定波浪与排期行为，通过 `tests/helpers/legacy-core.js` 构造 |
+| `plan-store.test.js` | 存储适配器接口；内存替身位于 `tests/helpers/memory-store.js`，不随站点发布 |
+
+站点本身的检查不变：
+
+```bash
 docker compose run --rm site ruby scripts/check_blog_format.rb
 docker compose run --rm site bundle exec jekyll build --trace
 git diff --check
@@ -80,33 +132,66 @@ git diff --check
 - MiyaaL 登录后可修改并跨设备读取；
 - 其他 GitHub 账号无法调用私有读取和保存函数；
 - 浏览器离线时只显示最近一次公开缓存，编辑入口不可用；
-- 两台设备同时修改时会出现版本冲突提示。
+- 两台设备同时修改时出现冲突对话框，“Merge and save” 后两边的训练记录都在。
 
+## 6. 保存与冲突
 
-## 6. 健身计划生成规则
+- 所有写入都经过 `plan-app.js` 的 `commit(nextState, message)`：先生成计划与公开快照，服务端接受之后才替换页面上的状态。保存失败或冲突时，页面保持最近一次已保存的计划；训练记录、跳过、体重、改期、设置都走同一条路径。保存进行中再次点击不会发起第二次保存。
+- 版本冲突时弹出对话框，三个选择：
+  - **Merge and save**（默认）：`core.mergeStates(base, remote, local)` 做三方合并。训练记录按课次 ID、体重按日期、单次改期/跳过按课次 ID 逐条合并；同一条记录两边都改时取 `completedAt` 较新的一条。计划设置（起止日期、周模板、目标、整体顺延等）只允许一边修改；两边都改了同一项时拒绝自动合并并说明是哪一项。
+  - **Discard mine and reload**：放弃本机修改，重新载入服务端版本。
+  - **Overwrite the server version**：整份覆盖，仅作为明确的次要选项保留。
+- 按 Esc 关闭冲突对话框等同于放弃本机这次修改，页面回到最近一次已保存的计划。
+- 服务端每次保存追加一条历史（见第 1 节），误覆盖可以回退。
 
-`assets/js/plan-core.js` 只使用日历周线性递进：连续三周递进，第四周减量。所有主项共用同一周次，缺课不会重启波次。不再生成间隔恢复、额外测试前减量或就绪不足评估，也不再按 RPE、失败或辅助动作记录自动改写后续处方。
+## 7. 健身计划生成规则
 
-- 线性参考由 `cycle.progression.anchorDate`、固定的 `anchor1rm` 和目标决定，按周推进到截止周。没有显式起点时使用周期起始日和初始能力。参考值与实际 `current1rm` 分开；记录训练仍更新能力统计，但不改变固定的线性路径。
-- 卧推强度与深蹲三周分别为 4×5、4×4、4×3，使用当周参考的 80%、82.5%、85%；容量推为 4×6、4×5、4×4，使用 70%、72.5%、75%。谷周统一为 3×5、62.5%。
-- 引体按体重加额外负重的总重量计算，三周为 4×4 / 82.5%、4×3 / 85%、4×2 / 87.5%；谷周为 3×4 / 70%。所有负荷按设备增量取整。
-- 递进周的卧推强度、深蹲与引体在主训练前安排非极限顶组：1×1、当周参考的 90%、目标 RPE 8。热身向顶组递增；容量推、谷周和目标测试不额外加入顶组。原主训练组不变。
-- 各主项最后一课为目标测试，列出 90% / 95% / 100% 三档尝试；上一把稳定后再继续。其他末周训练仍执行所在波次，不附加减量。谷周和测试不排辅助动作，其他辅助动作使用固定模板。
-- `requestedEndDate` 保留用户设定截止日。普通旧周期的 `endDate` 兼容明确执行的整体改期及已记录训练日期。`replanRemaining` 从指定日期重建剩余排期、清除旧整体顺延并锁定截止日；保留此前排期、所有日志、体重和目标。日志超出新截止日时拒绝重排。
-- 设置中默认固定截止日、假期照常训练。修改排期参数才重新排期，仅改训练时间或能力统计不会清掉已有单次改期；单次改期保持截止日。明确确认“整体调整后续计划”后，可同步提前或顺延剩余训练及结束日期，确认窗口会显示新结束日期；核心接口仅在显式传入 `allowDeadlineChange: true` 时允许调整固定截止日的周期。手动休息日优先于假期训练覆盖。
-- 当前周期的已批准迁移配置位于 `_config.yml` 的 `plan.schedule_revision`。本人登录后仅在周期 ID、截止日、目标匹配且未应用该版本时自动重排，设置一次固定线性起点，并原子保存私有状态和公开快照。`previousId` 标记已应用线性计划的版本；升级顶组时只重生成处方，保留固定起点、已有重排版本及手动改期。保存失败不会显示成功或替换为未保存的计划；版本冲突不强制覆盖。匿名仅显示已保存快照及必要的待同步提示。
-- 有效的 1–5 次、实填 RPE 7–10 主项组仍参与实际能力统计；缺失 RPE 不补成计划值。谷周及历史恢复课不参与估算；旧 schema 没有实填标记的 RPE 不视为实测。同日仅一条观察，最近三次取中位数，仅一次时与固定评估基准平滑。重复保存或改备注不会累计提升能力。
-- `generate(state, calendars, { asOfDate })` 不修改输入；调用方保存返回状态与对应快照。已记录训练的日期和处方快照保持不变；公开数据不含私有日志、体重或引体具体训练负荷。旧 `loadAdjustments` 字段兼容保留，但不再参与生成。
-- 月历普通课显示组数最多的主训练组，测试日显示最终目标尝试；顶组在详情中展示并可记录。普通详情不显示生成算法说明；辅助动作仅填写重量、完成组数和每组次数，不再填写 RPE；组数与次数均大于零时记为已完成。编辑旧记录保留已隐藏的历史字段。
+每个周期记录自己使用的处方版本 `activeCycle.programRevision`，与 `volumePrescription` 的做法相同：
 
-本次起点、日期与重量示例见 [当前计划修订](plan-review-2026-09-23.md)。核心回归与浏览器自动迁移回归：
+- `feedback-v2`：新建周期的默认值，规则见下。
+- `legacy`：没有该字段的存量周期与所有归档周期，按原来的“日历周三周递进、一周减量”固定波浪重新生成，保证历史不被改写。旧规则与当时的示例见 [docs/plan/plan-review-2026-09-23.md](../docs/plan/plan-review-2026-09-23.md) 和 [docs/plan/plan-review-2026-09-30.md](../docs/plan/plan-review-2026-09-30.md)。
 
-```bash
-node tests/plan-linear.test.js
-# 先完成 Jekyll 构建，并将 jsdom 路径替换为实际安装位置。
-docker run --rm --network none \
-  -v "$PWD:/site:ro" \
-  -v "/path/to/jsdom/node_modules:/deps/node_modules:ro" \
-  -e NODE_PATH=/deps/node_modules \
-  node:22-alpine node /site/tests/plan-linear-migration-smoke.test.js
-```
+**存量的进行中周期**在本人载入时由 `adoptFeedbackProgram(state, today)` 接入新规则，并写入 `programRevisionFromDate = 当天`：当天之前的课次和所有已记录的课次保持原处方不变，当天及之后的未记录课次改用新规则。接入只发生在内存中，随本人下一次保存落库；访客在那之前看到的仍是旧快照。
+
+### 参考重量
+
+- 参考 1RM 仍按周线性从起点走向目标，并受 `maxWeeklyGain`（默认每周 1%）限制。
+- **能力上限**：参考值不超过 `current1rm × 1.03`（引体按“体重 + 负重”计算）。`current1rm` 来自训练记录：
+  - 1–5 次、实填 RPE 7–10 的主项组按 RPE 表估算；最近三次取中位数，仅一次时与评估基准平滑；
+  - 按处方完成全部主项组但没填 RPE，视为确认了该课的参考值，上限随之上移；
+  - 没达到处方次数的组按 RPE 10 计入估算；
+  - 测试课的单次即使没填 RPE 也按 RPE 10 处理，完成的最重一把直接成为 `current1rm`。
+- **保持**：递进周的强度课里，任一主项组没做满处方次数，或顶组实填 RPE ≥ 9.5，该主项下一周的参考值不递增。
+- **缺训**：早于今天且没有记录的课次状态为 `missed`（界面显示 “Missed”）。某个主项连续缺训满 7 天，参考值按缺训的整周数暂停，恢复后的第一周波次回退一档（例如本应第 3 周则执行第 2 周，标注 “back from a layoff”）。
+- **重新锚定**：在设置里修改某个主项的“Current”，会以新数值、当天为起点重画该主项的参考线（`progression.liftAnchors`），此前的保持与暂停不再叠加。
+
+### 周波次与测试
+
+- 波次从各主项自己的测试日**向前倒数**：测试周之前依次是递进第 3、2、1 周、减量周、再往前循环。测试周占据减量周的位置，所以不会出现“减量周紧接测试周”。倒数落在周期第一周的减量周改为一个入门的递进第 1 周。
+- 测试日的选择（`assignTestSessions`），优先级依次为：不排在周期最后一个训练日；测试之后还留有同一主项的课次用于补测（把测试提前，而不是把截止日推后）；尽量不让两项测试落在相邻两天；其余条件相同则尽量靠后。默认模板、周五截止的 13 周周期得到：引体周二、深蹲周六、卧推下周一，各自之后都有一次补测机会。
+- 每个主项在自己测试前 6 天内（以及测试所在周）的课次为 “Taper”：强度课做开把单次 90% + 2×3 @ 75%，容量课只做轻量 3×5 @ 62.5%，不再叠加第二把重单次。引体的减量与轻量组为自重 3×4。
+- 测试尝试为 `min(目标, current1rm × 1.03)` 的 92% / 97% / 100%。目标高于这个基数时，说明文字会指出尝试重量低于目标。
+- 测试之后同一主项的课次为 “Retry or recovery”：测试未记录或未达到目标时给出同样的三档尝试，已达到目标时为轻量恢复组。
+- 跳过测试课后，测试自动改到该主项其余未完成课次中符合上述规则的一次。
+- 引体的处方负重不会低于 0（不出现需要辅助的负数）。
+
+### 各课处方
+
+- 卧推强度、深蹲强度：顶组 1×1 @ 88% / 90% / 92%（目标 RPE 8），主训练组 4×5 @ 80%、4×4 @ 82.5%、4×3 @ 85%。
+- 引体：顶组同上，主训练组 4×4 @ 82.5%、4×3 @ 85%、4×2 @ 87.5%，百分比作用于“体重 + 负重”。
+- 容量日（`moderate-volume-v1`）：卧推 4×10 @ 65%、4×9 @ 67.5%、4×8 @ 70%；深蹲 3×8 @ 67.5%、70%、70%；保留 2–3 次余力，不加顶组。旧周期的 `legacy` 容量为 4×6 / 4×5 / 4×4 @ 75% / 77.5% / 80%。
+- **引体第二次暴露**：在周模板里离引体日最远、且不是深蹲强度日的那一天（默认模板为周五的卧推容量日）追加 “Pull-up back-off sets”：3×6 @ 70%、3×5 @ 72.5%、3×5 @ 75%。仅在该日处于递进周、且距引体测试超过 6 天时安排。公开快照不含其负重。
+- 减量周：杠铃 3×5 @ 62.5%，引体自重 3×4；减量、Taper、测试和补测课不排辅助动作。
+
+### 告警
+
+- 周期少于 8 周或多于 24 周（沿用）。
+- **目标增速**：某个主项达到目标所需的周增幅超过约 0.5% 时提示，并给出按上限推算的期末参考值。
+- 节假日：按周期跨越的每个自然年各加载一份 `assets/data/holidays/cn-<年>.json`，缺少的年份按周模板排课并提示。`cn-2027.json` 目前只含元旦当天（`partial: true`），国务院 2027 年安排公布后需补全；在那之前会提示日历不完整。
+- 公开快照只发布关于目标和处方规则的告警，不发布涉及自定义休息日的排期告警。
+
+### 其余不变的约定
+
+- `requestedEndDate` 保留用户设定的截止日；`replanRemaining` 从指定日期重建剩余排期并锁定截止日，保留此前排期、所有日志、体重和目标。
+- `generate(state, calendars, { asOfDate })` 不修改输入；调用方保存返回状态与对应快照。已记录训练的日期和处方快照保持不变；公开数据不含私有日志、体重或引体具体训练负荷。
+- 周期标题默认由周模板生成（例如 “Push / Pull / Squat · 5 sessions per week”）。界面为英文；存量数据里的中文标签在载入时由 `core.localize` 转成英文显示。

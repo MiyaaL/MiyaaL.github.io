@@ -10,12 +10,14 @@
 }(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+  // Three lifts with very different loads share one chart, so each is plotted
+  // as the share of its own distance from the cycle's starting 1RM to its goal.
+  // Kilograms stay available in the tooltip.
   var DAY_MS = 24 * 60 * 60 * 1000;
-  var SERIES = [
-    { key: "bodyweight", label: "Bodyweight", metric: "Logged weight", kind: "actual" },
-    { key: "bench", label: "Bench Press", metric: "Programmed 1RM", kind: "planned" },
-    { key: "pullup", label: "Weighted Pull-up", metric: "Programmed added 1RM", kind: "planned" },
-    { key: "squat", label: "Back Squat", metric: "Programmed 1RM", kind: "planned" }
+  var LIFTS = [
+    { key: "bench", label: "Bench press", short: "Bench" },
+    { key: "pullup", label: "Weighted pull-up", short: "Pull-up" },
+    { key: "squat", label: "Back squat", short: "Squat" }
   ];
 
   function readNumber(value) {
@@ -31,14 +33,10 @@
     return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
   }
 
-  function formatDate(date) {
-    return date.toISOString().slice(0, 10);
-  }
-
   function addDays(value, amount) {
     var date = parseDate(value);
     date.setUTCDate(date.getUTCDate() + amount);
-    return formatDate(date);
+    return date.toISOString().slice(0, 10);
   }
 
   function daysBetween(start, end) {
@@ -46,247 +44,113 @@
   }
 
   function dateInRange(date, start, end) {
-    return date && date >= start && date <= end;
+    return Boolean(date) && date >= start && date <= end;
   }
 
-  function dedupePoints(points) {
-    var byDate = {};
+  function byDate(points) {
+    var map = {};
     points.forEach(function (point) {
       if (point && point.date && readNumber(point.value) != null) {
-        byDate[point.date] = point;
+        map[point.date] = point;
       }
     });
-    return Object.keys(byDate).sort().map(function (date) {
-      return byDate[date];
-    });
+    return Object.keys(map).sort().map(function (date) { return map[date]; });
   }
 
-  function addTodayPoint(points, today) {
-    var sorted = dedupePoints(points);
-    if (!sorted.length || !today) {
-      return sorted;
-    }
-
-    var exact = sorted.find(function (point) {
-      return point.date === today;
-    });
-    if (exact) {
-      exact.isToday = true;
-      return sorted;
-    }
-
+  function valueAt(points, date) {
     var before = null;
     var after = null;
-    sorted.forEach(function (point) {
-      if (point.date < today) {
-        before = point;
-      } else if (!after && point.date > today) {
-        after = point;
-      }
+    points.forEach(function (point) {
+      if (point.date <= date) before = point;
+      else if (!after) after = point;
     });
-
+    if (before && before.date === date) return before.value;
     if (before && after) {
       var span = Math.max(1, daysBetween(before.date, after.date));
-      var progress = daysBetween(before.date, today) / span;
-      sorted.push({
-        date: today,
-        value: before.value + (after.value - before.value) * progress,
-        detail: "Current date · interpolated plan",
-        isToday: true,
-        isInterpolated: true
-      });
+      return before.value + (after.value - before.value) * daysBetween(before.date, date) / span;
     }
-
-    return dedupePoints(sorted).map(function (point) {
-      if (point.date === today) {
-        point.isToday = true;
-      }
-      return point;
-    });
-  }
-
-  function bodyweightEndpointDate(cycle, today) {
-    if (cycle.status === "archived") {
-      return cycle.endDate;
-    }
-    if (!today || today < cycle.startDate) {
-      return null;
-    }
-    return today < cycle.endDate ? today : cycle.endDate;
-  }
-
-  function carryBodyweightToEndpoint(points, endpoint, today) {
-    var sorted = dedupePoints(points);
-    if (!endpoint) {
-      return sorted;
-    }
-
-    sorted = sorted.filter(function (point) {
-      return point.date <= endpoint;
-    });
-    if (!sorted.length) {
-      return sorted;
-    }
-
-    var last = sorted[sorted.length - 1];
-    if (last.date === endpoint) {
-      last.isEndpoint = true;
-      if (endpoint === today) {
-        last.isToday = true;
-      }
-      return sorted;
-    }
-
-    var carriedFrom = last.carriedFrom || last.date;
-    sorted.push({
-      date: endpoint,
-      value: last.value,
-      carriedFrom: carriedFrom,
-      detail: (endpoint === today ? "Current date" : "Cycle end") +
-        " · latest update from " + carriedFrom,
-      isToday: endpoint === today ? true : undefined,
-      isEndpoint: true,
-      isCarried: true
-    });
-    return sorted;
-  }
-
-  function liftSeries(plan, definition, today) {
-    var cycle = plan.cycle || {};
-    var lift = cycle.lifts && cycle.lifts[definition.key] ? cycle.lifts[definition.key] : {};
-    var points = [];
-
-    (plan.sessions || []).forEach(function (session) {
-      var workout = session.workout || {};
-      var value = readNumber(workout.planned1rm);
-      if (workout.liftKey !== definition.key || value == null) {
-        return;
-      }
-      points.push({
-        date: session.date,
-        value: value,
-        detail: (session.status === "completed" ? "Historical programming reference" : "Programming reference") +
-          (session.phase && session.phase.label ? " · " + session.phase.label : "")
-      });
-    });
-
-    var baseline = readNumber(lift.baseline1rm);
-    if (baseline == null) {
-      baseline = readNumber(lift.current1rm);
-    }
-    if (baseline != null) {
-      points = points.filter(function (point) {
-        return point.date !== cycle.startDate;
-      });
-      points.push({ date: cycle.startDate, value: baseline, detail: "Cycle baseline" });
-    }
-    var target = readNumber(lift.target1rm);
-    if (target != null && !cycle.schedule) {
-      points = points.filter(function (point) {
-        return point.date !== cycle.endDate;
-      });
-      points.push({ date: cycle.endDate, value: target, detail: "Cycle target" });
-    }
-
-    points = dedupePoints(points);
-    if (dateInRange(today, cycle.startDate, cycle.endDate)) {
-      points = addTodayPoint(points, today);
-    }
-    if (!points.length) {
-      return null;
-    }
-
-    return {
-      key: definition.key,
-      label: definition.label,
-      metric: definition.metric,
-      kind: definition.kind,
-      points: points
-    };
-  }
-
-  function bodyweightSeries(plan, definition, today) {
-    var cycle = plan.cycle || {};
-    if (!Array.isArray(cycle.bodyweightEntries)) {
-      return null;
-    }
-    var sourcePoints = dedupePoints(cycle.bodyweightEntries.map(function (entry) {
-      return {
-        date: entry.date,
-        value: readNumber(entry.value),
-        carriedFrom: entry.carriedFrom || null,
-        detail: entry.carriedFrom
-          ? "Cycle carry · latest update from " + entry.carriedFrom
-          : "Recorded bodyweight"
-      };
-    }).filter(function (point) {
-      return point.value != null && point.date <= cycle.endDate;
-    }));
-    var beforeStart = null;
-    sourcePoints.forEach(function (point) {
-      if (point.date < cycle.startDate) {
-        beforeStart = point;
-      }
-    });
-    var points = sourcePoints.filter(function (point) {
-      return dateInRange(point.date, cycle.startDate, cycle.endDate);
-    });
-    var hasStartPoint = points.some(function (point) {
-      return point.date === cycle.startDate;
-    });
-    if (!hasStartPoint && beforeStart) {
-      var carriedFrom = beforeStart.carriedFrom || beforeStart.date;
-      points.push({
-        date: cycle.startDate,
-        value: beforeStart.value,
-        carriedFrom: carriedFrom,
-        detail: "Cycle start · latest update from " + carriedFrom,
-        isCarried: true,
-        isBoundary: true
-      });
-    }
-
-    points = carryBodyweightToEndpoint(
-      points,
-      bodyweightEndpointDate(cycle, today),
-      today
-    );
-    if (!points.length) {
-      return null;
-    }
-
-    return {
-      key: definition.key,
-      label: definition.label,
-      metric: definition.metric,
-      kind: definition.kind,
-      interpolation: "step",
-      points: points
-    };
-  }
-
-  function cycleSeries(plan, today) {
-    var result = [];
-    SERIES.forEach(function (definition) {
-      var item = definition.key === "bodyweight"
-        ? bodyweightSeries(plan, definition, today)
-        : liftSeries(plan, definition, today);
-      if (item) {
-        result.push(item);
-      }
-    });
-    return result;
+    return before ? before.value : (after ? after.value : null);
   }
 
   function hasCycle(plan) {
     return Boolean(plan && plan.cycle && plan.cycle.startDate && plan.cycle.endDate);
   }
 
+  function liftSeries(plan, definition, today) {
+    var cycle = plan.cycle;
+    var lift = cycle.lifts && cycle.lifts[definition.key] ? cycle.lifts[definition.key] : {};
+    var start = readNumber(lift.baseline1rm);
+    if (start == null) start = readNumber(lift.current1rm);
+    var goal = readNumber(lift.target1rm);
+    if (start == null || goal == null) {
+      return null;
+    }
+    // A maintenance goal has no distance to cover; it sits on the goal line.
+    var span = goal - start;
+    var percent = function (value) {
+      return span > 0 ? (value - start) / span * 100 : (value >= goal ? 100 : 100 + (value - goal));
+    };
+
+    var planned = [{ date: cycle.startDate, value: start, detail: "Cycle start" }];
+    (plan.sessions || []).forEach(function (session) {
+      var workout = session.workout || {};
+      var value = readNumber(workout.planned1rm);
+      if (workout.liftKey !== definition.key || value == null || session.date === cycle.startDate) {
+        return;
+      }
+      planned.push({
+        date: session.date,
+        value: value,
+        detail: "Programmed reference" + (session.phase && session.phase.label ? " · " + session.phase.label : "")
+      });
+    });
+    planned = byDate(planned);
+    var actual = byDate(((plan.performance || {})[definition.key] || []).map(function (entry) {
+      return {
+        date: entry.date,
+        value: readNumber(entry.value),
+        isTest: Boolean(entry.isTest),
+        detail: entry.isTest ? "Tested 1RM" : "Estimated 1RM from the logged session"
+      };
+    }).filter(function (point) {
+      return dateInRange(point.date, cycle.startDate, cycle.endDate);
+    }));
+    var decorate = function (point) {
+      point.percent = Math.round(percent(point.value) * 10) / 10;
+      return point;
+    };
+    planned.forEach(decorate);
+    actual.forEach(decorate);
+
+    var todayPoint = null;
+    if (dateInRange(today, cycle.startDate, cycle.endDate)) {
+      var todayValue = valueAt(planned, today);
+      if (todayValue != null) {
+        todayPoint = decorate({ date: today, value: Math.round(todayValue * 10) / 10, detail: "Programmed reference today" });
+      }
+    }
+    return {
+      key: definition.key,
+      label: definition.label,
+      short: definition.short,
+      start: start,
+      goal: goal,
+      points: planned,
+      actual: actual,
+      today: todayPoint
+    };
+  }
+
+  function cycleSeries(plan, today) {
+    return LIFTS.map(function (definition) {
+      return liftSeries(plan, definition, today);
+    }).filter(Boolean);
+  }
+
   function buildSeries(plan, today) {
     if (!hasCycle(plan)) {
       return { startDate: null, endDate: null, today: today || null, series: [] };
     }
-
     return {
       startDate: plan.cycle.startDate,
       endDate: plan.cycle.endDate,
@@ -302,76 +166,33 @@
     if (!cycles.length) {
       return { startDate: null, endDate: null, today: today || null, series: [] };
     }
-
     var startDate = cycles[0].cycle.startDate;
     var endDate = cycles[0].cycle.endDate;
     var result = [];
     cycles.forEach(function (plan, index) {
-      var cycleLabel = plan.cycleLabel || "Cycle " + String(index + 1).padStart(2, "0");
-      var state = plan.cycle.status === "archived" ? "archived" : "current";
-      if (plan.cycle.startDate < startDate) {
-        startDate = plan.cycle.startDate;
-      }
-      if (plan.cycle.endDate > endDate) {
-        endDate = plan.cycle.endDate;
-      }
+      if (plan.cycle.startDate < startDate) startDate = plan.cycle.startDate;
+      if (plan.cycle.endDate > endDate) endDate = plan.cycle.endDate;
       cycleSeries(plan, today).forEach(function (item) {
-        result.push({
-          id: index + "-" + item.key,
-          key: item.key,
-          cycleLabel: cycleLabel,
-          cycleState: state,
-          label: item.label,
-          metric: item.metric,
-          kind: item.kind,
-          interpolation: item.interpolation,
-          points: item.points
-        });
+        item.id = index + "-" + item.key;
+        item.cycleLabel = plan.cycleLabel || "Cycle " + String(index + 1).padStart(2, "0");
+        item.cycleState = plan.cycle.status === "archived" ? "archived" : "current";
+        result.push(item);
       });
     });
-
-    return {
-      startDate: startDate,
-      endDate: endDate,
-      today: today || null,
-      series: result
-    };
+    return { startDate: startDate, endDate: endDate, today: today || null, series: result, multiCycle: true };
   }
 
-  function niceDomain(series) {
-    var values = [];
+  function percentDomain(series) {
+    var values = [0, 100];
     series.forEach(function (item) {
-      item.points.forEach(function (point) {
-        values.push(point.value);
-      });
+      item.points.concat(item.actual).forEach(function (point) { values.push(point.percent); });
     });
-    if (!values.length) {
-      return { minimum: 0, maximum: 100, ticks: [0, 20, 40, 60, 80, 100] };
-    }
-
-    var minimum = Math.min.apply(Math, values);
-    var maximum = Math.max.apply(Math, values);
-    if (minimum === maximum) {
-      var spread = Math.max(2.5, Math.abs(minimum) * 0.08);
-      minimum -= spread;
-      maximum += spread;
-    } else {
-      var padding = (maximum - minimum) * 0.08;
-      minimum -= padding;
-      maximum += padding;
-    }
-
-    var roughStep = Math.max(0.1, (maximum - minimum) / 5);
-    var magnitude = Math.pow(10, Math.floor(Math.log(roughStep) / Math.LN10));
-    var residual = roughStep / magnitude;
-    var step = (residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 2.5 ? 2.5 : residual <= 5 ? 5 : 10) * magnitude;
-    var niceMinimum = Math.floor(minimum / step) * step;
-    var niceMaximum = Math.ceil(maximum / step) * step;
+    var minimum = Math.floor(Math.min.apply(Math, values) / 25) * 25;
+    var maximum = Math.ceil(Math.max.apply(Math, values) / 25) * 25;
+    var step = maximum - minimum > 200 ? 50 : 25;
     var ticks = [];
-    for (var value = niceMinimum; value <= niceMaximum + step / 2; value += step) {
-      ticks.push(Math.round(value * 100) / 100);
-    }
-    return { minimum: niceMinimum, maximum: niceMaximum, ticks: ticks };
+    for (var value = minimum; value <= maximum; value += step) ticks.push(value);
+    return { minimum: minimum, maximum: maximum, ticks: ticks };
   }
 
   function escapeXml(value) {
@@ -387,6 +208,14 @@
     return Number(value).toFixed(1).replace(/\.0$/, "");
   }
 
+  function formatKg(value, key) {
+    return (key === "pullup" && value > 0 ? "+" : "") + formatValue(value) + " kg" + (key === "pullup" ? " added" : "");
+  }
+
+  function formatPercent(value) {
+    return Math.round(value) + " %";
+  }
+
   function shortDate(value) {
     var parts = String(value).split("-");
     return parts.length === 3 ? parts[1] + "." + parts[2] : value;
@@ -397,37 +226,21 @@
   }
 
   function renderLegend(element, series) {
-    // Each lift is one category with one colour: when cycles overlap, the legend keeps
-    // one entry per lift and the lighter archived lines carry the cycle split instead.
-    var entries = [];
-    series.forEach(function (item) {
-      var existing = null;
-      entries.forEach(function (entry) {
-        if (!existing && entry.key === item.key) {
-          existing = entry;
-        }
-      });
-      if (existing) {
-        // A lift present in an archived cycle alone still deserves the archived shade.
-        if (item.cycleState === "current") {
-          existing.cycleState = "current";
-        }
-        return;
-      }
-      entries.push({
-        key: item.key,
-        label: item.label,
-        metric: item.metric,
-        cycleState: item.cycleState
-      });
+    // One entry per lift whatever the number of cycles, then the two mark types.
+    var seen = {};
+    var html = series.filter(function (item) {
+      if (seen[item.key]) return false;
+      seen[item.key] = true;
+      return true;
+    }).map(function (item) {
+      return '<span class="plan-chart-legend-item"><i class="is-' + escapeXml(item.key) +
+        '" aria-hidden="true"></i><span>' + escapeXml(item.label) + "</span></span>";
     });
-    element.innerHTML = entries.map(function (item) {
-      return '<span class="plan-chart-legend-item' +
-        (item.cycleState === "archived" ? " is-archived" : "") +
-        '" data-cycle="' + escapeXml(item.cycleState || "current") + '"><i class="is-' + escapeXml(item.key) +
-        '" aria-hidden="true"></i><span>' + escapeXml(item.label) + '</span><small>' +
-        escapeXml(item.metric) + "</small></span>";
-    }).join("");
+    html.push('<span class="plan-chart-legend-item is-key"><i class="is-line" aria-hidden="true"></i>' +
+      "<span>Programmed</span></span>");
+    html.push('<span class="plan-chart-legend-item is-key"><i class="is-dot" aria-hidden="true"></i>' +
+      "<span>Logged estimate</span></span>");
+    element.innerHTML = html.join("");
   }
 
   function bindTooltips(plot, width) {
@@ -435,28 +248,25 @@
     var name = tooltip.querySelector("[data-chart-tooltip-name]");
     var value = tooltip.querySelector("[data-chart-tooltip-value]");
     var detail = tooltip.querySelector("[data-chart-tooltip-detail]");
-    var points = Array.prototype.slice.call(plot.querySelectorAll("[data-chart-point]"));
 
     function show(point) {
       name.textContent = point.dataset.series + " · " + fullDate(point.dataset.date);
-      value.textContent = point.dataset.value + " kg";
+      value.textContent = point.dataset.value + " · " + point.dataset.percent + " of the way";
       detail.textContent = point.dataset.detail;
       tooltip.hidden = false;
-
-      var x = Number(point.dataset.x);
-      var y = Number(point.dataset.y);
       var renderedWidth = plot.clientWidth || width;
-      var renderedX = x / width * renderedWidth;
-      tooltip.style.left = Math.max(82, Math.min(renderedWidth - 82, renderedX)) + "px";
+      var x = Number(point.dataset.x) / width * renderedWidth;
+      var y = Number(point.dataset.y);
+      tooltip.style.left = Math.max(96, Math.min(renderedWidth - 96, x)) + "px";
       tooltip.style.top = Math.max(18, y) + "px";
-      tooltip.classList.toggle("is-below", y < 76);
+      tooltip.classList.toggle("is-below", y < 84);
     }
 
     function hide() {
       tooltip.hidden = true;
     }
 
-    points.forEach(function (point) {
+    Array.prototype.slice.call(plot.querySelectorAll("[data-chart-point]")).forEach(function (point) {
       point.addEventListener("mouseenter", function () { show(point); });
       point.addEventListener("mouseleave", hide);
       point.addEventListener("focus", function () { show(point); });
@@ -470,30 +280,46 @@
     });
   }
 
-  function pathForSeries(item, xFor, yFor) {
-    if (!item.points.length) {
-      return "";
-    }
+  function hitTarget(item, point, x, y, kind, focusable) {
+    var kg = formatKg(point.value, item.key);
+    var detail = (item.cycleLabel ? item.cycleLabel + " · " : "") + point.detail;
+    var aria = item.label + ", " + fullDate(point.date) + ", " + kg + ", " + formatPercent(point.percent) +
+      " of the way to " + formatKg(item.goal, item.key) + ", " + detail;
+    return '<circle class="plan-chart-point-hit" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="11"' +
+      (focusable ? ' tabindex="0" focusable="true" role="img" aria-label="' + escapeXml(aria) + '"'
+        : ' aria-hidden="true"') +
+      ' data-chart-point data-kind="' + kind + '" data-lift="' + escapeXml(item.key) + '" data-series="' +
+      escapeXml(item.label) + '"' + (item.cycleLabel ? ' data-cycle-label="' + escapeXml(item.cycleLabel) + '"' : "") +
+      ' data-date="' + escapeXml(point.date) + '" data-value="' + escapeXml(kg) + '" data-percent="' +
+      escapeXml(formatPercent(point.percent)) + '" data-detail="' + escapeXml(detail) + '" data-x="' + x.toFixed(1) +
+      '" data-y="' + y.toFixed(1) + '"></circle>';
+  }
 
-    var first = item.points[0];
-    var commands = ["M" + xFor(first.date).toFixed(2) + " " + yFor(first.value).toFixed(2)];
-    item.points.slice(1).forEach(function (point) {
-      var x = xFor(point.date).toFixed(2);
-      var y = yFor(point.value).toFixed(2);
-      if (item.interpolation === "step") {
-        commands.push("H" + x + " V" + y);
-      } else {
-        commands.push("L" + x + " " + y);
-      }
-    });
-    return commands.join(" ");
+  // Direct labels sit at the line ends. Where two ends are closer than a line
+  // of text they are spread apart and joined to their line by a short leader.
+  function endLabels(series, xFor, yFor, top, bottom) {
+    var labels = series.map(function (item) {
+      var last = item.points[item.points.length - 1];
+      return { item: item, x: xFor(last.date), anchor: yFor(last.percent), y: yFor(last.percent), value: last.value };
+    }).sort(function (left, right) { return left.anchor - right.anchor; });
+    var gap = 16;
+    for (var index = 1; index < labels.length; index += 1) {
+      if (labels[index].y - labels[index - 1].y < gap) labels[index].y = labels[index - 1].y + gap;
+    }
+    var overflow = labels.length ? labels[labels.length - 1].y - bottom : 0;
+    if (overflow > 0) labels.forEach(function (label) { label.y -= overflow; });
+    for (var back = labels.length - 2; back >= 0; back -= 1) {
+      if (labels[back + 1].y - labels[back].y < gap) labels[back].y = labels[back + 1].y - gap;
+    }
+    labels.forEach(function (label) { label.y = Math.max(top, label.y); });
+    return labels;
   }
 
   function render(rootElement, plan, options) {
-    var optionsValue = options || {};
-    var model = optionsValue.plans
-      ? buildSeriesForPlans(optionsValue.plans, optionsValue.today)
-      : buildSeries(plan, optionsValue.today);
+    var settings = options || {};
+    var model = settings.plans
+      ? buildSeriesForPlans(settings.plans, settings.today)
+      : buildSeries(plan, settings.today);
     var legend = rootElement.querySelector("[data-plan-chart-legend]");
     var plot = rootElement.querySelector("[data-plan-chart-plot]");
     var empty = rootElement.querySelector("[data-plan-chart-empty]");
@@ -514,12 +340,14 @@
     renderLegend(legend, model.series);
 
     var width = Math.max(320, Math.round(plot.clientWidth || 960));
-    var height = Math.max(240, Math.round(plot.clientHeight || (width < 560 ? 260 : 300)));
-    var margin = { top: 26, right: 18, bottom: 36, left: 52 };
+    var compact = width < 560;
+    var height = Math.max(240, Math.round(plot.clientHeight || (compact ? 280 : 320)));
+    var labelled = !model.multiCycle;
+    var margin = { top: 24, right: labelled ? (compact ? 96 : 150) : 16, bottom: 34, left: 46 };
     var chartWidth = Math.max(1, width - margin.left - margin.right);
     var chartHeight = height - margin.top - margin.bottom;
     var cycleDays = Math.max(1, daysBetween(model.startDate, model.endDate));
-    var domain = niceDomain(model.series);
+    var domain = percentDomain(model.series);
     var domainSpan = Math.max(1, domain.maximum - domain.minimum);
     var xFor = function (date) {
       return margin.left + daysBetween(model.startDate, date) / cycleDays * chartWidth;
@@ -530,66 +358,75 @@
 
     var svg = [];
     svg.push('<svg class="plan-chart-svg" viewBox="0 0 ' + width + " " + height +
-      '" role="img" aria-label="Cycle bodyweight and strength trajectory">');
-    svg.push('<text class="plan-chart-unit" x="' + margin.left + '" y="12">KG</text>');
+      '" role="group" aria-label="Progress of each lift from its starting 1RM toward its goal, in percent">');
 
     domain.ticks.forEach(function (tick) {
       var y = yFor(tick);
-      svg.push('<line class="plan-chart-grid-line" x1="' + margin.left + '" y1="' + y +
-        '" x2="' + (width - margin.right) + '" y2="' + y + '"></line>');
-      svg.push('<text class="plan-chart-axis-label" x="' + (margin.left - 10) + '" y="' + (y + 3) +
-        '" text-anchor="end">' + escapeXml(formatValue(tick)) + "</text>");
+      svg.push('<line class="plan-chart-grid-line' + (tick === 100 ? " is-goal" : "") + '" x1="' + margin.left +
+        '" y1="' + y + '" x2="' + (margin.left + chartWidth) + '" y2="' + y + '"></line>');
+      svg.push('<text class="plan-chart-axis-label" x="' + (margin.left - 8) + '" y="' + (y + 4) +
+        '" text-anchor="end">' + (tick === 100 ? "Goal" : (tick === 0 ? "Start" : tick + " %")) + "</text>");
     });
 
-    for (var tickIndex = 0; tickIndex < 5; tickIndex += 1) {
-      var tickDate = addDays(model.startDate, Math.round(cycleDays * tickIndex / 4));
-      var tickX = xFor(tickDate);
-      var anchor = tickIndex === 0 ? "start" : tickIndex === 4 ? "end" : "middle";
-      svg.push('<text class="plan-chart-axis-label" x="' + tickX + '" y="' + (height - 8) +
+    var tickCount = compact ? 3 : 5;
+    for (var tickIndex = 0; tickIndex < tickCount; tickIndex += 1) {
+      var tickDate = addDays(model.startDate, Math.round(cycleDays * tickIndex / (tickCount - 1)));
+      var anchor = tickIndex === 0 ? "start" : tickIndex === tickCount - 1 ? "end" : "middle";
+      svg.push('<text class="plan-chart-axis-label" x="' + xFor(tickDate) + '" y="' + (height - 8) +
         '" text-anchor="' + anchor + '">' + escapeXml(shortDate(tickDate)) + "</text>");
     }
 
     if (dateInRange(model.today, model.startDate, model.endDate)) {
       var todayX = xFor(model.today);
-      var todayAnchor = todayX > width - 70 ? "end" : "start";
-      var todayLabelX = todayAnchor === "end" ? todayX - 6 : todayX + 6;
+      var todayAnchor = todayX > margin.left + chartWidth - 50 ? "end" : "start";
       svg.push('<line class="plan-chart-today-line" x1="' + todayX + '" y1="' + margin.top +
         '" x2="' + todayX + '" y2="' + (height - margin.bottom) + '"></line>');
-      svg.push('<text class="plan-chart-today-label" x="' + todayLabelX + '" y="' +
-        (margin.top + 10) + '" text-anchor="' + todayAnchor + '">TODAY</text>');
+      svg.push('<text class="plan-chart-today-label" x="' + (todayAnchor === "end" ? todayX - 6 : todayX + 6) +
+        '" y="' + (margin.top - 8) + '" text-anchor="' + todayAnchor + '">Today</text>');
     }
 
+    var hits = [];
     model.series.forEach(function (item) {
-      var path = pathForSeries(item, xFor, yFor);
       var cycleAttribute = item.cycleState ? ' data-cycle="' + escapeXml(item.cycleState) + '"' : "";
-      svg.push('<path class="plan-chart-line is-' + escapeXml(item.key) + '"' + cycleAttribute +
-        ' d="' + path + '"></path>');
-
+      var path = item.points.map(function (point, index) {
+        return (index ? "L" : "M") + xFor(point.date).toFixed(2) + " " + yFor(point.percent).toFixed(2);
+      }).join(" ");
+      svg.push('<path class="plan-chart-line is-' + escapeXml(item.key) + '"' + cycleAttribute + ' d="' + path + '"></path>');
       item.points.forEach(function (point) {
-        var x = xFor(point.date);
-        var y = yFor(point.value);
-        var displayValue = (item.key === "pullup" && point.value > 0 ? "+" : "") + formatValue(point.value);
-        var detailText = (item.cycleLabel ? item.cycleLabel + " · " : "") + (point.detail || item.metric);
-        var aria = item.label + ", " + fullDate(point.date) + ", " + displayValue + " kg, " + detailText;
-        if (point.isToday) {
-          svg.push('<circle class="plan-chart-today-ring is-' + escapeXml(item.key) + '" cx="' + x +
-            '" cy="' + y + '" r="7"></circle>');
-        }
-        svg.push('<circle class="plan-chart-point-hit is-' + escapeXml(item.key) +
-          (point.isToday ? " is-today" : "") + '" cx="' + x + '" cy="' + y +
-          '" r="10" tabindex="0" focusable="true" aria-label="' + escapeXml(aria) +
-          '" data-chart-point data-series="' + escapeXml(item.label) + '"' +
-          (item.cycleLabel ? ' data-cycle-label="' + escapeXml(item.cycleLabel) + '"' : "") +
-          ' data-date="' +
-          escapeXml(point.date) + '" data-value="' + escapeXml(displayValue) + '" data-detail="' +
-          escapeXml(detailText) + '" data-x="' + x + '" data-y="' + y + '"><title>' +
-          escapeXml(aria) + "</title></circle>");
-        svg.push('<circle class="plan-chart-point is-' + escapeXml(item.key) +
-          (point.isToday ? " is-today" : "") + '"' + cycleAttribute + ' cx="' + x + '" cy="' + y +
-          '" r="' + (point.isToday ? 4.5 : 2.6) + '"></circle>');
+        hits.push(hitTarget(item, point, xFor(point.date), yFor(point.percent), "planned", false));
       });
     });
+    // Logged estimates are drawn after every line so their surface ring keeps
+    // them legible where they cross one.
+    model.series.forEach(function (item) {
+      var cycleAttribute = item.cycleState ? ' data-cycle="' + escapeXml(item.cycleState) + '"' : "";
+      item.actual.forEach(function (point) {
+        var x = xFor(point.date);
+        var y = yFor(point.percent);
+        svg.push('<circle class="plan-chart-actual is-' + escapeXml(item.key) + (point.isTest ? " is-test" : "") +
+          '"' + cycleAttribute + ' cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' +
+          (point.isTest ? 5.5 : 4) + '"></circle>');
+        hits.push(hitTarget(item, point, x, y, "actual", true));
+      });
+      if (item.today && item.cycleState !== "archived") {
+        hits.push(hitTarget(item, item.today, xFor(item.today.date), yFor(item.today.percent), "today", true));
+      }
+    });
 
+    if (labelled) {
+      endLabels(model.series, xFor, yFor, margin.top + 4, height - margin.bottom).forEach(function (label) {
+        var labelX = label.x + 14;
+        if (Math.abs(label.y - label.anchor) > 1) {
+          svg.push('<line class="plan-chart-leader" x1="' + (label.x + 2) + '" y1="' + label.anchor.toFixed(1) +
+            '" x2="' + (labelX - 3) + '" y2="' + label.y.toFixed(1) + '"></line>');
+        }
+        svg.push('<text class="plan-chart-end-label" x="' + labelX + '" y="' + (label.y + 4).toFixed(1) + '">' +
+          escapeXml(compact ? label.item.short : label.item.label) + '<tspan class="plan-chart-end-value" dx="6">' +
+          escapeXml(formatKg(label.value, label.item.key).replace(" added", "")) + "</tspan></text>");
+      });
+    }
+
+    svg.push(hits.join(""));
     svg.push("</svg>");
     svg.push('<div class="plan-chart-tooltip" data-chart-tooltip role="status" hidden>' +
       '<strong data-chart-tooltip-name></strong><span data-chart-tooltip-value></span>' +

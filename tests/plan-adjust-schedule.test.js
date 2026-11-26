@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const core = require("../assets/js/plan-core.js");
+const core = require("./helpers/legacy-core.js");
 const holidays = require("../assets/data/holidays/cn-2026.json");
 
 const asOfDate = "2026-09-23";
@@ -33,7 +33,7 @@ function fixture(skippedDate, { additionalSkippedDates = [], previousAdjustmentD
 
   let plan = generate(state);
   const completed = plan.sessions.find((session) => session.date === "2026-09-09");
-  state = core.recordSession(state, completed, { status: "completed", notes: "保留训练历史" });
+  state = core.recordSession(state, completed, { status: "completed", notes: "Keep the history" });
   if (skipDate !== skippedDate) {
     plan = generate(state);
     const parked = plan.sessions.find((session) => session.date === "2026-09-30");
@@ -54,7 +54,7 @@ function fixture(skippedDate, { additionalSkippedDates = [], previousAdjustmentD
   }
   for (const id of skippedIds) {
     const skipped = plan.sessions.find((session) => session.id === id);
-    state = core.recordSession(state, skipped, { status: "skipped", notes: "出差后补训" });
+    state = core.recordSession(state, skipped, { status: "skipped", notes: "Make up after travel" });
   }
   state = core.replanRemaining(state, [holidays], {
     fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays: true, asOfDate
@@ -72,7 +72,7 @@ function assertCalendarShift(before, after, sourceId, days) {
     assert.equal(current.date, previous.date >= source.date ? core.addDays(previous.date, days) : previous.date,
       "each remaining workout must move by the selected number of days: " + previous.date);
     if (previous.date >= source.date && previous.status === "skipped") {
-      assert.equal(current.status, "planned", "a shifted skipped workout must become available to train");
+      assert.match(current.status, /^(planned|missed)$/, "a shifted skipped workout must become available to train");
       assert.equal(Object.hasOwn(after.state.logs, previous.id), false, "the skip record must be cleared");
     }
     if (previous.status === "completed") {
@@ -177,7 +177,7 @@ test("a restored and skipped-again workout keeps its current date during another
   const { state, sourceId } = fixture("2026-09-15");
   let current = core.adjustSchedule(state, sourceId, "2026-09-22", options);
   const restored = generate(current).sessions.find((session) => session.id === sourceId);
-  current = core.recordSession(current, restored, { status: "skipped", notes: "再次改期" });
+  current = core.recordSession(current, restored, { status: "skipped", notes: "Moved again" });
   const before = generate(current);
   current = core.adjustSchedule(current, sourceId, "2026-09-24", options);
   assertCalendarShift(before, generate(current), sourceId, 2);

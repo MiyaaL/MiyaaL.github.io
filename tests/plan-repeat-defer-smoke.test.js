@@ -1,36 +1,13 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp } = require("./helpers/dom.js");
 
 const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
 
-(async function () {
-  const page = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(page, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  const NativeDate = window.Date;
-  const fixedNow = new NativeDate("2026-09-20T12:00:00+08:00").getTime();
-  window.Date = class FixedDate extends NativeDate {
-    constructor(...args) { super(...(args.length ? args : [fixedNow])); }
-    static now() { return fixedNow; }
-  };
-  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
-  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
-
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
+test('a workout can defer and then advance the remaining plan', async function () {
+  const { window, holidays } = createPlanWindow({ today: "2026-09-20" });
 
   let state = window.PlanCore.createDefaultState("2026-09-01");
   state.activeCycle.status = "active";
@@ -43,11 +20,11 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   });
   const initial = window.PlanCore.generate(state, [holidays], { asOfDate: "2026-09-20" });
   const source = initial.sessions.find((session) => session.date === "2026-09-15");
-  state = window.PlanCore.recordSession(state, source, { status: "skipped", notes: "出差" });
+  state = window.PlanCore.recordSession(state, source, { status: "skipped", notes: "Travelling" });
 
   const memory = window.PlanStore.createMemoryAdapter({ version: 0, state, signedIn: true });
   window.PlanStore.createSupabaseAdapter = () => memory;
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
   await waitForRender();
 
   const drawer = window.document.querySelector("[data-plan-drawer]");
@@ -71,8 +48,8 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   drawer.querySelector("[data-move-date]").value = "2026-09-21";
   secondAdjustment.click();
   assert.strictEqual(confirm.open, true);
-  assert(confirm.querySelector("[data-plan-move-confirm-title]").textContent.includes("提前"));
-  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("整体提前 1 天"));
+  assert(confirm.querySelector("[data-plan-move-confirm-title]").textContent.includes("Pull"));
+  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("forward by 1 day"));
   confirm.querySelector("[data-plan-confirm-move]").click();
   await waitForRender();
 
@@ -83,9 +60,5 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   assert.strictEqual(stored.state.activeCycle.scheduleAdjustments.map((entry) => entry.days).join(","), "7,-1");
   assert.strictEqual(generated.sessions.find((session) => session.id === source.id).date, "2026-09-21");
 
-  console.log("PASS: a workout can defer and then advance the remaining plan");
   window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
 });

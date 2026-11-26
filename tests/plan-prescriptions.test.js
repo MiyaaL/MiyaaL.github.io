@@ -1,7 +1,8 @@
 "use strict";
 
-const assert = require("assert");
-const core = require("../assets/js/plan-core.js");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const core = require("./helpers/legacy-core.js");
 const holidays = require("../assets/data/holidays/cn-2026.json");
 
 function configured() {
@@ -20,13 +21,13 @@ function configured() {
   return state;
 }
 
-(function currentMeasurementsDoNotRewriteTheLinearTrajectory() {
+test("current measurements do not rewrite the linear trajectory", () => {
   const state = configured();
   const expected = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
   const measured = core.normalizeState(state);
   Object.assign(measured.activeCycle.lifts.bench, { current1rm: 70, assessed1rm: 70 });
   Object.assign(measured.activeCycle.lifts.squat, { current1rm: 130, assessed1rm: 130 });
-  measured.activeCycle.loadAdjustments.bench = { percentage: -0.05, afterDate: "2026-08-01" };
+  measured.activeCycle.loadAdjustments = { bench: { percentage: -0.05, afterDate: "2026-08-01" } }; // legacy field, ignored and dropped
   const actual = core.generate(measured, [holidays], { asOfDate: "2026-09-23" });
   assert.deepStrictEqual(actual.sessions.map(session => session.workout), expected.sessions.map(session => session.workout),
     "measured capacity and legacy RPE adjustments must not replace the fixed linear trajectory");
@@ -34,9 +35,9 @@ function configured() {
   assert.strictEqual(actual.state.activeCycle.lifts.squat.current1rm, 130);
   assert.strictEqual(actual.cycle.lifts.bench.target1rm, 100);
   assert.strictEqual(state.activeCycle.lifts.bench.baseline1rm, 80);
-}());
+});
 
-(function movedSchedulesKeepOnlyTheWeeklyWaveAndFinalGoalAttempts() {
+test("moved schedules keep only the weekly wave and final goal attempts", () => {
   const state = configured();
   state.activeCycle.scheduleAdjustments = [{ fromDate: "2026-09-15", days: 7 }];
   const plan = core.generate(state, [], { asOfDate: "2026-09-23" });
@@ -54,11 +55,14 @@ function configured() {
     assert.strictEqual(sessions[sessions.length - 1].phase.key, "test");
     assert.strictEqual(sessions.filter(session => session.phase.key === "test").length, 1);
   }
-  assert.deepStrictEqual(core.generate(plan.state, [], { asOfDate: "2026-11-06" }).sessions, plan.sessions,
+  // Only the planned/missed status may depend on the date the plan is viewed.
+  const prescriptions = (sessions) => sessions.map((session) => Object.assign({}, session, { status: null }));
+  assert.deepStrictEqual(prescriptions(core.generate(plan.state, [], { asOfDate: "2026-11-06" }).sessions),
+    prescriptions(plan.sessions),
     "reaching the test date must not insert a taper or substitute a light assessment");
-}());
+});
 
-(function actualRpeRemainsRequiredForStrengthStatistics() {
+test("actual rpe remains required for strength statistics", () => {
   const state = configured();
   const plan = core.generate(state, [], { asOfDate: "2026-09-23" });
   let recorded = state;
@@ -84,6 +88,4 @@ function configured() {
     assert.deepStrictEqual(result.state.logs, untrusted.logs, "generation retains the original measurement records");
     assert.strictEqual(result.sessions.find(session => session.date === "2026-10-30").phase.key, "test");
   }
-}());
-
-console.log("PASS: fixed prescription trajectory, weekly phases, and actual RPE statistics");
+});

@@ -1,253 +1,149 @@
 "use strict";
 
-const assert = require("assert");
-const PlanCore = require("../assets/js/plan-core.js");
-const PlanChart = require("../assets/js/plan-chart.js");
-const holidays2026 = require("../assets/data/holidays/cn-2026.json");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const core = require("../assets/js/plan-core.js");
+const chart = require("../assets/js/plan-chart.js");
+const { sampleState, logAsPrescribed } = require("./helpers/dom.js");
 
-function chartHarness() {
+function harness(width) {
   const legend = { innerHTML: "" };
   const empty = { hidden: true };
-  const tooltipFields = {
-    "[data-chart-tooltip-name]": { textContent: "" },
-    "[data-chart-tooltip-value]": { textContent: "" },
-    "[data-chart-tooltip-detail]": { textContent: "" }
-  };
-  const tooltip = {
-    hidden: true,
-    querySelector(selector) {
-      return tooltipFields[selector];
-    }
-  };
   const plot = {
-    clientWidth: 960,
-    clientHeight: 300,
-    hidden: false,
     innerHTML: "",
-    querySelector(selector) {
-      return selector === "[data-chart-tooltip]" ? tooltip : null;
+    hidden: false,
+    clientWidth: width || 960,
+    clientHeight: 0,
+    querySelector() {
+      return { querySelector: () => ({ textContent: "" }), style: {}, classList: { toggle() {} }, hidden: true };
     },
-    querySelectorAll() {
-      return [];
+    querySelectorAll: () => []
+  };
+  const root = {
+    querySelector(selector) {
+      return { "[data-plan-chart-legend]": legend, "[data-plan-chart-plot]": plot, "[data-plan-chart-empty]": empty }[selector];
     }
   };
-  const nodes = {
-    "[data-plan-chart-legend]": legend,
-    "[data-plan-chart-plot]": plot,
-    "[data-plan-chart-empty]": empty
-  };
-  return {
-    plot,
-    root: {
-      querySelector(selector) {
-        return nodes[selector];
-      }
-    }
-  };
+  return { root, legend, plot, empty };
 }
 
-function configuredState() {
-  const state = PlanCore.createDefaultState("2026-08-03");
-  state.activeCycle.endDate = "2026-10-25";
-  state.activeCycle.status = "active";
-  state.activeCycle.bodyweightEntries = [
-    { date: "2026-08-03", value: 70 },
-    { date: "2026-08-10", value: 69.5 }
-  ];
-  state.activeCycle.lifts.bench.current1rm = 100;
-  state.activeCycle.lifts.bench.target1rm = 110;
-  state.activeCycle.lifts.pullup.current1rm = 30;
-  state.activeCycle.lifts.pullup.target1rm = 40;
-  state.activeCycle.lifts.squat.current1rm = 150;
-  state.activeCycle.lifts.squat.target1rm = 165;
-  return state;
+function loggedPlan() {
+  let state = sampleState(core);
+  const first = core.generate(state, [], { asOfDate: "2026-11-02" });
+  ["2026-11-02", "2026-11-04", "2026-11-09"].forEach((date) => {
+    const plan = core.generate(state, [], { asOfDate: date });
+    const session = plan.sessions.find((candidate) => candidate.date === date);
+    state = logAsPrescribed(core, plan.state, session, {
+      mainSets: [{ weight: session.workout.workSets[0].loadKg, reps: 1, rpe: 8 }]
+    });
+  });
+  assert.ok(first.sessions.length);
+  return core.generate(state, [], { asOfDate: "2026-11-26" });
 }
 
-(function ownerSeriesIncludesPrivateBodyweightAndTodayMarkers() {
-  const state = configuredState();
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-
-  assert.deepStrictEqual(
-    model.series.map((series) => series.key),
-    ["bodyweight", "bench", "pullup", "squat"]
-  );
-  model.series.forEach((series) => {
-    const today = series.points.find((point) => point.date === "2026-08-20");
-    assert(today && today.isToday, series.key + " must mark the current date");
+test("each lift is plotted as its share of the way from its start to its goal", () => {
+  const plan = core.generate(sampleState(core), [], { asOfDate: "2026-11-02" });
+  const model = chart.buildSeries(plan, "2026-11-02");
+  assert.deepStrictEqual(model.series.map((item) => item.key), ["bench", "pullup", "squat"]);
+  model.series.forEach((item) => {
+    assert.strictEqual(item.points[0].percent, 0, item.key + " starts at 0 %");
+    assert.strictEqual(item.points[0].date, "2026-11-02");
+    item.points.forEach((point) => {
+      const expected = (point.value - item.start) / (item.goal - item.start) * 100;
+      assert.ok(Math.abs(point.percent - expected) < 0.06, item.key + " percent matches its kilograms");
+    });
   });
+  const bench = model.series.find((item) => item.key === "bench");
+  const squat = model.series.find((item) => item.key === "squat");
+  assert.notStrictEqual(bench.start, squat.start);
+  assert.strictEqual(bench.points[0].percent, squat.points[0].percent,
+    "lifts of different absolute load share one scale");
+});
 
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-  const bodyweightToday = bodyweight.points.find((point) => point.isToday);
-  assert.strictEqual(bodyweight.interpolation, "step");
-  assert.strictEqual(bodyweightToday.value, 69.5);
-  assert.strictEqual(bodyweightToday.isEndpoint, true);
-  assert.strictEqual(bodyweightToday.isCarried, true);
-  const bench = model.series.find((series) => series.key === "bench");
-  assert(Math.abs(bench.points[0].value - 100) < 0.01);
-  assert.strictEqual(bench.points[bench.points.length - 1].value, 110, "the linear programming reference reaches the target in the final week");
-  assert(bench.points.every((point, index, points) => point.value >= 100 && point.value <= 110 &&
-    (!index || point.value >= points[index - 1].value)), "the chart follows the increasing planning reference");
-  assert.strictEqual(plan.cycle.lifts.bench.current1rm, 100, "calendar progression must not inflate measured ability");
-  assert.strictEqual(plan.cycle.lifts.bench.target1rm, 110);
-  assert.strictEqual(bench.metric, "Programmed 1RM");
-}());
-
-(function futureBodyweightUpdateDoesNotChangeTheCurrentValueEarly() {
-  const state = configuredState();
-  state.activeCycle.bodyweightEntries.push({ date: "2026-09-01", value: 67 });
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-
-  assert.deepStrictEqual(
-    bodyweight.points.map((point) => [point.date, point.value]),
-    [
-      ["2026-08-03", 70],
-      ["2026-08-10", 69.5],
-      ["2026-08-20", 69.5]
-    ]
-  );
-  assert.strictEqual(bodyweight.points.some((point) => point.isInterpolated), false);
-}());
-
-(function bodyweightCarriesFromBeforeAnEditedCycleStart() {
-  const state = configuredState();
-  state.activeCycle.startDate = "2026-08-07";
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-
-  assert.deepStrictEqual(
-    bodyweight.points.map((point) => [point.date, point.value]),
-    [
-      ["2026-08-07", 70],
-      ["2026-08-10", 69.5],
-      ["2026-08-20", 69.5]
-    ]
-  );
-  assert.strictEqual(bodyweight.points[0].isCarried, true);
-  assert(bodyweight.points[0].detail.includes("2026-08-03"));
-}());
-
-(function bodyweightStillRendersWhenEditedCycleStartsAfterTheLastUpdate() {
-  const state = configuredState();
-  state.activeCycle.startDate = "2026-08-12";
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-
-  assert.deepStrictEqual(
-    bodyweight.points.map((point) => [point.date, point.value]),
-    [
-      ["2026-08-12", 69.5],
-      ["2026-08-20", 69.5]
-    ]
-  );
-  assert.strictEqual(bodyweight.points[0].isBoundary, true);
-}());
-
-(function carriedEndpointKeepsTheLastExplicitUpdateDate() {
-  const state = configuredState();
-  state.activeCycle.bodyweightEntries = [
-    { date: "2026-08-03", value: 70, carriedFrom: "2026-07-30" }
-  ];
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-  const endpoint = bodyweight.points.find((point) => point.isToday);
-
-  assert.strictEqual(endpoint.value, 70);
-  assert.strictEqual(endpoint.carriedFrom, "2026-07-30");
-  assert(endpoint.detail.includes("2026-07-30"));
-}());
-
-(function bodyweightPathUsesStepsWithoutCreatingGuideMarkers() {
-  const state = configuredState();
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const harness = chartHarness();
-  const model = PlanChart.render(harness.root, plan, { today: "2026-08-20" });
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-  const pathMatch = harness.plot.innerHTML.match(
-    /<path class="plan-chart-line is-bodyweight" d="([^"]+)"/
-  );
-  const bodyweightMarkers = harness.plot.innerHTML.match(
-    /data-chart-point data-series="Bodyweight"/g
-  ) || [];
-
-  assert(pathMatch, "bodyweight path must render");
-  assert(pathMatch[1].includes("H"), "bodyweight path must hold the previous value horizontally");
-  assert(pathMatch[1].includes("V"), "bodyweight path must jump at the update date");
-  assert.strictEqual(bodyweightMarkers.length, bodyweight.points.length);
-}());
-
-(function archivedBodyweightCarriesForwardToTheCycleEnd() {
-  const state = configuredState();
-  state.activeCycle.status = "archived";
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-  const bodyweight = model.series.find((series) => series.key === "bodyweight");
-  const endpoint = bodyweight.points[bodyweight.points.length - 1];
-
-  assert.deepStrictEqual(
-    { date: endpoint.date, value: endpoint.value },
-    { date: state.activeCycle.endDate, value: 69.5 }
-  );
-  assert.strictEqual(endpoint.isEndpoint, true);
-  assert.strictEqual(endpoint.isToday, undefined);
-  assert.strictEqual(
-    bodyweight.points.some((point) => point.date > state.activeCycle.endDate),
-    false
-  );
-}());
-
-(function cycleBaselineDoesNotMoveWithAdaptiveCurrentEstimate() {
-  const state = configuredState();
-  state.activeCycle.lifts.bench.baseline1rm = 95;
-  state.activeCycle.lifts.bench.current1rm = 104;
-  const plan = PlanCore.generate(state, [holidays2026]);
-  const model = PlanChart.buildSeries(plan, "2026-08-20");
-  const bench = model.series.find((series) => series.key === "bench");
-
-  assert.strictEqual(bench.points[0].date, state.activeCycle.startDate);
-  assert.strictEqual(bench.points[0].value, 95);
-}());
-
-(function publicSeriesPreservesBodyweightPrivacy() {
-  const state = configuredState();
-  const generated = PlanCore.generate(state, [holidays2026]);
-  const snapshot = PlanCore.createPublicSnapshot(state, generated);
-  const model = PlanChart.buildSeries({
-    cycle: snapshot.cycle,
-    sessions: snapshot.sessions
-  }, "2026-08-20");
-
-  assert.deepStrictEqual(
-    model.series.map((series) => series.key),
-    ["bench", "pullup", "squat"]
-  );
-  assert(!JSON.stringify(model).includes("bodyweight"));
-}());
-
-(function movedAndReplacedSessionsChangeProgressPointDates() {
-  const state = configuredState();
-  const initial = PlanCore.generate(state, [holidays2026]);
-  const source = initial.sessions.find((session) => session.date === "2026-08-28");
-  const target = initial.sessions.find((session) => session.date === "2026-08-25");
-  const movedState = PlanCore.moveSession(state, source.id, target.date, {
-    holidayCalendars: [holidays2026],
-    replace: true
+test("logged sessions appear as actual estimates, separate from the programmed line", () => {
+  const plan = loggedPlan();
+  const model = chart.buildSeries(plan, "2026-11-26");
+  const bench = model.series.find((item) => item.key === "bench");
+  assert.strictEqual(bench.actual.length, 2);
+  assert.deepStrictEqual(bench.actual.map((point) => point.date), ["2026-11-02", "2026-11-09"]);
+  bench.actual.forEach((point) => {
+    assert.strictEqual(point.detail, "Estimated 1RM from the logged session");
+    assert.ok(Number.isFinite(point.percent));
   });
-  const model = PlanChart.buildSeries(
-    PlanCore.generate(movedState, [holidays2026]),
-    "2026-08-20"
-  );
-  const bench = model.series.find((series) => series.key === "bench");
-  const pullup = model.series.find((series) => series.key === "pullup");
+  assert.strictEqual(model.series.find((item) => item.key === "pullup").actual.length, 0);
+  assert.strictEqual(bench.today.date, "2026-11-26");
+  assert.doesNotMatch(JSON.stringify(model), /bodyweight/i, "the chart model carries no bodyweight");
+});
 
-  assert(bench.points.some((point) => point.date === "2026-08-25"));
-  assert.strictEqual(bench.points.some((point) => point.date === "2026-08-28"), false);
-  assert.strictEqual(pullup.points.some((point) => point.date === "2026-08-25"), false);
-}());
+test("the rendered chart labels its axis by meaning and its lines directly", () => {
+  const view = harness(960);
+  chart.render(view.root, loggedPlan(), { today: "2026-11-26" });
+  const svg = view.plot.innerHTML;
+  assert.match(svg, /viewBox="0 0 960 320"/);
+  assert.match(svg, />Start<\/text>/);
+  assert.match(svg, />Goal<\/text>/);
+  assert.match(svg, />50 %<\/text>/);
+  assert.match(svg, /plan-chart-today-line/);
+  assert.strictEqual((svg.match(/class="plan-chart-line /g) || []).length, 3);
+  assert.strictEqual((svg.match(/class="plan-chart-end-label"/g) || []).length, 3);
+  assert.match(svg, /Bench press<tspan[^>]*>[\d.]+ kg<\/tspan>/);
+  assert.strictEqual((svg.match(/class="plan-chart-actual /g) || []).length, 3, "one marker per logged estimate");
+  assert.match(svg, /data-kind="actual"[^>]*data-value="[\d.]+ kg" data-percent="-?\d+ %"/);
+  assert.doesNotMatch(svg, /KG<\/text>/, "the shared kilogram axis is gone");
+  ["Bench press", "Weighted pull-up", "Back squat", "Programmed", "Logged estimate"].forEach((label) => {
+    assert.ok(view.legend.innerHTML.includes("<span>" + label + "</span>"), label + " is in the legend");
+  });
+});
 
-console.log("PASS: PlanChart trajectories, current-date markers, and bodyweight privacy tests");
+test("a narrow plot keeps the labels inside the viewport", () => {
+  const view = harness(358);
+  chart.render(view.root, loggedPlan(), { today: "2026-11-26" });
+  const svg = view.plot.innerHTML;
+  assert.match(svg, /viewBox="0 0 358 280"/);
+  assert.match(svg, />Bench<tspan/, "short lift names are used when space is tight");
+  const xs = [...svg.matchAll(/class="plan-chart-end-label" x="([\d.]+)"/g)].map((match) => Number(match[1]));
+  xs.forEach((x) => assert.ok(x < 358 - 80, "labels start early enough to fit their text"));
+  const ys = [...svg.matchAll(/class="plan-chart-end-label" x="[\d.]+" y="([\d.]+)"/g)].map((match) => Number(match[1])).sort((a, b) => a - b);
+  for (let index = 1; index < ys.length; index += 1) {
+    assert.ok(ys[index] - ys[index - 1] >= 15.9, "end labels do not overlap");
+  }
+  assert.strictEqual((svg.match(/class="plan-chart-leader"/g) || []).length >= 1, true,
+    "converging line ends are joined to their labels by leaders");
+});
+
+test("a tested max is marked as a measurement", () => {
+  const plan = loggedPlan();
+  plan.performance.bench.push({ date: "2027-01-20", value: 100, isTest: true });
+  const view = harness(960);
+  chart.render(view.root, plan, { today: "2027-01-21" });
+  assert.match(view.plot.innerHTML, /class="plan-chart-actual is-bench is-test"/);
+  assert.match(view.plot.innerHTML, /data-detail="Tested 1RM"/);
+});
+
+test("the all-cycles view draws one line per cycle and keeps one legend entry per lift", () => {
+  const current = core.generate(sampleState(core), [], { asOfDate: "2026-11-26" });
+  const archivedState = sampleState(core, { startDate: "2026-08-03", program: "legacy" });
+  archivedState.activeCycle.status = "archived";
+  const archived = core.generate(archivedState, []);
+  archived.cycleLabel = "Cycle 01";
+  current.cycleLabel = "Cycle 02";
+  const model = chart.buildSeriesForPlans([archived, current], "2026-11-26");
+  assert.strictEqual(model.startDate, "2026-08-03");
+  assert.strictEqual(model.series.length, 6);
+  assert.deepStrictEqual([...new Set(model.series.map((item) => item.cycleState))], ["archived", "current"]);
+  const view = harness(960);
+  chart.render(view.root, null, { today: "2026-11-26", plans: [archived, current] });
+  assert.strictEqual((view.plot.innerHTML.match(/class="plan-chart-line /g) || []).length, 6);
+  assert.strictEqual((view.plot.innerHTML.match(/data-cycle="archived"/g) || []).length >= 3, true);
+  assert.strictEqual((view.legend.innerHTML.match(/plan-chart-legend-item/g) || []).length, 5);
+  assert.doesNotMatch(view.plot.innerHTML, /plan-chart-end-label/, "overlapping cycles rely on the legend and tooltip");
+});
+
+test("a plan without goals shows the empty state", () => {
+  const view = harness(960);
+  const state = core.createDefaultState("2026-11-02");
+  chart.render(view.root, core.generate(state, []), { today: "2026-11-02" });
+  assert.strictEqual(view.empty.hidden, false);
+  assert.strictEqual(view.plot.hidden, true);
+  assert.deepStrictEqual(chart.buildSeries(null, "2026-11-02").series, []);
+});

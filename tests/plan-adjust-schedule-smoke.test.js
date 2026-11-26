@@ -1,36 +1,13 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp } = require("./helpers/dom.js");
 
 const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
 
-(async function () {
-  const page = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(page, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  const NativeDate = window.Date;
-  const fixedNow = new NativeDate("2026-10-08T12:00:00+08:00").getTime();
-  window.Date = class FixedDate extends NativeDate {
-    constructor(...args) { super(...(args.length ? args : [fixedNow])); }
-    static now() { return fixedNow; }
-  };
-  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
-  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
-
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
+test('whole-plan adjustment confirms, saves and retries fixed-deadline plans with visible feedback', async function () {
+  const { window, holidays } = createPlanWindow({ today: "2026-10-08" });
   const core = window.PlanCore;
   let state = core.createDefaultState("2026-09-01");
   state.activeCycle.status = "active";
@@ -51,12 +28,12 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   assert(source);
   state = core.recordSession(state, source, { status: "skipped" });
   state = core.recordSession(state, next, { status: "skipped" });
-  state = core.recordSession(state, completed, { status: "completed", notes: "保留训练记录" });
+  state = core.recordSession(state, completed, { status: "completed", notes: "Keep this log" });
   const originalLogs = JSON.parse(JSON.stringify(state.logs));
 
   const memory = window.PlanStore.createMemoryAdapter({ version: 0, state, signedIn: true });
   window.PlanStore.createSupabaseAdapter = () => memory;
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
   await waitForRender();
 
   const document = window.document;
@@ -70,17 +47,17 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   const detailMessage = () => drawer.querySelector("[data-plan-detail-message]");
   adjust("2026-10-08");
   assert.strictEqual(confirm.open, true, "whole-plan adjustment must respond for a fixed-deadline plan");
-  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("整体顺延 6 天"));
-  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("2026年11月6日"));
+  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("back by 6 days"));
+  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("Nov 6, 2026"));
   assert.strictEqual((await memory.loadPrivate()).version, 0, "preview must not save the adjustment");
   confirm.querySelector("[data-plan-cancel-move]").click();
   assert.strictEqual(confirm.open, false);
   assert.strictEqual((await memory.loadPrivate()).version, 0, "cancel must preserve the stored plan");
 
   adjust(source.date);
-  assert(detailMessage().textContent.includes("训练日期没有变化"), "unchanged dates need visible drawer feedback");
+  assert(detailMessage().textContent.includes("The date is unchanged"), "unchanged dates need visible drawer feedback");
   adjust("2026-09-30");
-  assert(detailMessage().textContent.includes("此前最后一场训练"), "date conflicts need visible drawer feedback");
+  assert(detailMessage().textContent.includes("on or before the previous session"), "date conflicts need visible drawer feedback");
   assert.strictEqual(confirm.open, false);
 
   adjust("2026-10-08");
@@ -88,13 +65,13 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   memory.save = async () => { throw new Error("offline test"); };
   confirm.querySelector("[data-plan-confirm-move]").click();
   await waitForRender();
-  assert(detailMessage().textContent.includes("保存失败"), "save failures must remain visible in the drawer");
-  assert.strictEqual(drawer.hidden, false);
+  assert(detailMessage().textContent.includes("Saving failed"), "save failures must remain visible in the drawer");
+  assert.strictEqual(drawer.open, true);
   assert.strictEqual((await memory.loadPrivate()).version, 0);
   memory.save = save;
 
   adjust("2026-10-08");
-  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("整体顺延 6 天"),
+  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("back by 6 days"),
     "a failed save must restore the in-memory schedule before retrying");
   confirm.querySelector("[data-plan-confirm-move]").click();
   await waitForRender();
@@ -115,7 +92,7 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   document.querySelector(`[data-session-id="${source.id}"]`).click();
   adjust("2026-10-07");
   assert.strictEqual(confirm.open, true);
-  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("整体提前 1 天"));
+  assert(confirm.querySelector("[data-plan-move-confirm-message]").textContent.includes("forward by 1 day"));
   confirm.querySelector("[data-plan-confirm-move]").click();
   await waitForRender();
   stored = await memory.loadPrivate();
@@ -124,9 +101,5 @@ const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
   assert.strictEqual(generated.cycle.endDate, "2026-11-05");
   assert.strictEqual(generated.sessions.find((session) => session.id === source.id).date, "2026-10-07");
   assert.strictEqual(generated.sessions.length, initial.sessions.length);
-  console.log("PASS: whole-plan adjustment confirms, saves and retries fixed-deadline plans with visible feedback");
   window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
 });

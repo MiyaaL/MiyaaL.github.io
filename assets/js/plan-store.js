@@ -21,7 +21,7 @@
   }
 
   function normalizeError(error) {
-    var normalized = new Error(error && error.message ? error.message : "同步失败");
+    var normalized = new Error(error && error.message ? error.message : "Sync failed");
     normalized.cause = error;
     normalized.code = error && error.code ? error.code : "sync_error";
     if (normalized.message.indexOf("version_conflict") >= 0) {
@@ -205,76 +205,8 @@
     };
   }
 
-  function createMemoryAdapter(initial) {
-    var seed = initial || {};
-    var version = Number(seed.version || 0);
-    var state = seed.state || null;
-    var snapshot = seed.snapshot || null;
-    var signedIn = seed.signedIn !== false;
-    var listeners = [];
-
-    function notify(event) {
-      listeners.forEach(function (listener) {
-        listener(event, signedIn ? { user: { id: "memory-owner" } } : null);
-      });
-    }
-
-    return {
-      kind: "memory",
-      configured: true,
-      loadPublic: async function () {
-        return {
-          record: snapshot ? { version: version, snapshot: snapshot, updatedAt: null } : null,
-          offline: false,
-          configured: true
-        };
-      },
-      loadPrivate: async function () {
-        if (!signedIn) {
-          throw normalizeError({ message: "not_plan_owner" });
-        }
-        return state ? { version: version, state: state, updatedAt: null } : null;
-      },
-      save: async function (expectedVersion, nextState, nextSnapshot) {
-        if (!signedIn) {
-          throw normalizeError({ message: "not_plan_owner" });
-        }
-        if (Number(expectedVersion) !== version) {
-          throw normalizeError({ message: "version_conflict" });
-        }
-        version += 1;
-        state = JSON.parse(JSON.stringify(nextState));
-        snapshot = JSON.parse(JSON.stringify(nextSnapshot));
-        return { version: version, snapshot: snapshot, updatedAt: null };
-      },
-      getSession: async function () {
-        return signedIn ? { user: { id: "memory-owner" } } : null;
-      },
-      signIn: async function () {
-        signedIn = true;
-        notify("SIGNED_IN");
-      },
-      signOut: async function () {
-        signedIn = false;
-        notify("SIGNED_OUT");
-      },
-      onAuthChange: function (callback) {
-        listeners.push(callback);
-        return function () {
-          listeners = listeners.filter(function (listener) {
-            return listener !== callback;
-          });
-        };
-      },
-      cachedPublic: function () {
-        return snapshot ? { version: version, snapshot: snapshot, updatedAt: null } : null;
-      }
-    };
-  }
-
   return {
     createSupabaseAdapter: createSupabaseAdapter,
-    createMemoryAdapter: createMemoryAdapter,
     normalizeError: normalizeError,
     CACHE_KEY: CACHE_KEY
   };

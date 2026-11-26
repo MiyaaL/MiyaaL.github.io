@@ -1,37 +1,14 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp } = require("./helpers/dom.js");
 
 const waitForRender = () => new Promise((resolve) => setTimeout(resolve, 50));
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-(async function () {
-  const page = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(page, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  const NativeDate = window.Date;
-  const fixedNow = new NativeDate("2026-09-23T12:00:00+08:00").getTime();
-  window.Date = class FixedDate extends NativeDate {
-    constructor(...args) { super(...(args.length ? args : [fixedNow])); }
-    static now() { return fixedNow; }
-  };
-  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
-  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
-
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
+test('fixed-deadline replanning is the default, preserves history and later moves, and isolates failed saves', async function () {
+  const { window, holidays } = createPlanWindow({ today: "2026-09-23" });
   const core = window.PlanCore;
   let state = core.createDefaultState("2026-09-01");
   state.activeCycle.status = "active";
@@ -44,7 +21,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   });
   let generated = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
   const completed = generated.sessions.find((session) => session.date === "2026-09-09");
-  state = core.recordSession(state, completed, { status: "completed", notes: "保留原始记录" });
+  state = core.recordSession(state, completed, { status: "completed", notes: "Keep the original log" });
   const deferred = generated.sessions.find((session) => session.date === "2026-09-15");
   state = core.adjustSchedule(state, deferred.id, "2026-09-22", { holidayCalendars: [holidays] });
   const before = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
@@ -58,7 +35,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   let replanCalls = 0;
   const replanRemaining = core.replanRemaining;
   core.replanRemaining = (...args) => { replanCalls += 1; return replanRemaining(...args); };
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
   await waitForRender();
 
   const document = window.document;
@@ -87,7 +64,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   await submit();
   assert.strictEqual((await memory.loadPrivate()).version, 0);
   assert.strictEqual(replanCalls, 1, "existing plans automatically use fixed-deadline replanning");
-  assert(document.querySelector("[data-plan-form-error]").textContent.includes("重排起始日期"));
+  assert(document.querySelector("[data-plan-form-error]").textContent.includes("reschedule start date"));
   assert.strictEqual(settings.open, true);
 
   fields.replanFromDate.value = "2026-09-25";
@@ -97,7 +74,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   await submit();
   assert.strictEqual((await memory.loadPrivate()).version, 0);
   assert.strictEqual(settings.open, true);
-  assert(document.querySelector("[data-plan-form-error]").textContent.includes("当前计划未更改"));
+  assert(document.querySelector("[data-plan-form-error]").textContent.includes("the plan was not changed"));
   memory.save = save;
 
   // Reopening reads the in-memory owner state; a rejected save must not leak into it.
@@ -186,9 +163,5 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
   assert(!stored.state.activeCycle.replannedSchedule);
   assert.strictEqual(stored.state.archivedCycles[0].cycle.endDate, "2026-10-31");
 
-  console.log("PASS: fixed-deadline replanning is the default, preserves history and later moves, and isolates failed saves");
   window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
 });

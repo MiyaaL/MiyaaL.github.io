@@ -1,54 +1,64 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { loadPlanPage } = require("./helpers/dom.js");
 
-(async function () {
-  const html = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(html, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
+test("the unconfigured page previews the default template in English", async () => {
+  const page = await loadPlanPage({ today: "2026-11-26" });
+  assert.strictEqual(page.text("[data-plan-sync-state]"), "Sync not configured");
+  assert.strictEqual(page.$("[data-plan-view]").hidden, false);
+  assert.strictEqual(page.$$(".plan-day").length, 42);
+  assert.strictEqual(page.$("[data-plan-chart-empty]").hidden, false);
+  assert.strictEqual(page.text("[data-plan-title]"), "Push / Pull / Squat · 5 sessions per week");
+  assert.strictEqual(page.$("[data-plan-app]").closest("[lang]").getAttribute("lang"), "en");
+  assert.doesNotMatch(page.document.body.textContent, /[㐀-鿿]/, "no Chinese copy is left in the page");
+  assert.doesNotMatch(page.document.body.innerHTML, /learning/i, "the learning planner is gone");
+  page.close();
+});
+
+test("the session drawer is a modal dialog that returns focus to its trigger", async () => {
+  const page = await loadPlanPage({ today: "2026-11-26" });
+  const trigger = page.$("[data-session-id]");
+  trigger.focus();
+  trigger.click();
+  const drawer = page.$("[data-plan-drawer]");
+  assert.strictEqual(drawer.tagName, "DIALOG");
+  assert.ok(drawer.hasAttribute("open"));
+  assert.strictEqual(drawer.getAttribute("aria-labelledby"), "plan-detail-title");
+  assert.match(page.text("[data-plan-detail-body]"), /Main lift/);
+  page.$("[data-plan-close-details]").click();
+  assert.ok(!drawer.hasAttribute("open"));
+  assert.strictEqual(page.document.activeElement, trigger);
+  page.close();
+});
+
+test("every dialog is labelled and the calendar exposes its structure", async () => {
+  const page = await loadPlanPage({ today: "2026-11-26" });
+  page.$$("dialog").forEach((dialog) => {
+    const id = dialog.getAttribute("aria-labelledby");
+    assert.ok(id && page.document.getElementById(id), "dialog labelled by an existing heading");
   });
-  const { window } = dom;
-  const media = {
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {}
-  };
-  window.matchMedia = () => media;
-  window.fetch = async () => ({
-    ok: true,
-    json: async () => holidays
+  assert.strictEqual(page.$(".plan-weekdays").getAttribute("aria-hidden"), null);
+  assert.strictEqual(page.$$(".plan-weekdays abbr").length, 7);
+  page.$$(".plan-day").forEach((cell) => {
+    if (cell.dataset.sessionId) {
+      assert.strictEqual(cell.tagName, "BUTTON");
+      assert.ok(cell.getAttribute("aria-label"));
+    } else {
+      assert.notStrictEqual(cell.tagName, "BUTTON", "empty days are not focusable");
+      assert.strictEqual(cell.getAttribute("tabindex"), null);
+    }
   });
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
+  page.$$('input[type="number"]').forEach((input) => {
+    assert.ok(input.getAttribute("inputmode"), "numeric inputs ask for a numeric keyboard");
+  });
+  page.close();
+});
 
-  [
-    "/site/assets/js/plan-core.js",
-    "/site/assets/js/plan-store.js",
-    "/site/assets/js/plan-chart.js",
-    "/site/assets/js/plan-app.js"
-  ].forEach((path) => window.eval(fs.readFileSync(path, "utf8")));
-
-  await new Promise((resolve) => setTimeout(resolve, 50));
-
-  assert.strictEqual(window.document.querySelector("[data-plan-sync-state]").textContent, "同步未配置");
-  assert.strictEqual(window.document.querySelector("[data-plan-view]").hidden, false);
-  assert.strictEqual(window.document.querySelectorAll(".plan-day").length, 42);
-  assert.strictEqual(window.document.querySelector("[data-plan-chart-empty]").hidden, false);
-  assert(window.document.querySelector("[data-session-id]"));
-
-  window.document.querySelector("[data-session-id]").click();
-  assert.strictEqual(window.document.querySelector("[data-plan-drawer]").hidden, false);
-  assert(window.document.querySelector("[data-plan-detail-body]").textContent.includes("主动作"));
-  assert(window.document.querySelector('a[href="/plan/"]').getAttribute("aria-current") === "page");
-
-  console.log("PASS: generated Plan page preview, calendar, navigation, and detail drawer smoke test");
-  window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+test("the mobile layout lists the week as an agenda", async () => {
+  const page = await loadPlanPage({ today: "2026-11-26", mobile: true });
+  assert.strictEqual(page.$$(".plan-agenda-day").length, 7);
+  assert.match(page.text("[data-plan-view-title]"), /Nov 23, 2026 — Nov 29, 2026/);
+  page.close();
 });

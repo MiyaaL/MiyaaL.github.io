@@ -13,7 +13,6 @@
     empty: app.querySelector("[data-plan-empty]"),
     view: app.querySelector("[data-plan-view]"),
     message: app.querySelector("[data-plan-message]"),
-    emptyEyebrow: app.querySelector("[data-plan-empty-eyebrow]"),
     emptyTitle: app.querySelector("[data-plan-empty-title]"),
     emptyDescription: app.querySelector("[data-plan-empty-description]"),
     syncState: document.querySelector("[data-plan-sync-state]"),
@@ -27,7 +26,6 @@
     signOut: app.querySelector("[data-plan-sign-out]"),
     progress: app.querySelector("[data-plan-progress]"),
     chart: app.querySelector("[data-plan-chart]"),
-    learningSummary: app.querySelector("[data-plan-learning-summary]"),
     warnings: app.querySelector("[data-plan-warnings]"),
     cycleSelectWrap: app.querySelector("[data-plan-cycle-select-wrap]"),
     cycleSelect: app.querySelector("[data-plan-cycle-select]"),
@@ -51,10 +49,6 @@
     settingsReplanHolidays: app.querySelector("[data-plan-settings-replan-holidays]"),
     settingsScheduleHelp: app.querySelector("[data-plan-settings-schedule-help]"),
     formError: app.querySelector("[data-plan-form-error]"),
-    learningSettings: app.querySelector("[data-plan-learning-settings]"),
-    learningSettingsForm: app.querySelector("[data-plan-learning-settings-form]"),
-    learningSettingsTitle: app.querySelector("[data-plan-learning-settings-title]"),
-    learningFormError: app.querySelector("[data-plan-learning-form-error]"),
     bodyweightDialog: app.querySelector("[data-plan-bodyweight-dialog]"),
     bodyweightForm: app.querySelector("[data-plan-bodyweight-form]"),
     bodyweightError: app.querySelector("[data-plan-bodyweight-error]"),
@@ -67,27 +61,15 @@
     moveConfirmTitle: app.querySelector("[data-plan-move-confirm-title]"),
     moveConfirmMessage: app.querySelector("[data-plan-move-confirm-message]"),
     moveConfirmButton: app.querySelector("[data-plan-confirm-move]"),
-    conflict: app.querySelector("[data-plan-conflict]")
+    conflict: app.querySelector("[data-plan-conflict]"),
+    conflictMessage: app.querySelector("[data-plan-conflict-message]")
   };
   var config = {
     url: app.dataset.supabaseUrl || "",
     publishableKey: app.dataset.supabaseKey || "",
-    ownerGithubId: app.dataset.ownerGithubId || "",
     redirectTo: window.location.origin + "/plan/"
   };
   var store = window.PlanStore.createSupabaseAdapter(config);
-  var scheduleRevision = null;
-  try {
-    scheduleRevision = JSON.parse(app.dataset.scheduleRevision || "null");
-  } catch (_) {
-    // A missing or malformed rollout configuration never changes saved plans.
-  }
-  var volumeRevision = null;
-  try {
-    volumeRevision = JSON.parse(app.dataset.volumeRevision || "null");
-  } catch (_) {
-    // An invalid prescription rollout leaves saved cycles untouched.
-  }
   var holidayCalendars = [];
   var privateState = null;
   var ownerLoadPromise = null;
@@ -104,16 +86,15 @@
   var settingsDraftCycle = null;
   var settingsHolidayOverrides = {};
   var settingsInitialSchedule = null;
-  var pendingConflictState = null;
+  var pendingConflict = null;
+  var savePending = false;
+  var detailReturnFocus = null;
+  var holidayYearsRequested = {};
   var pendingSessionMove = null;
   var pendingScheduleAdjustment = null;
   var draggedSessionId = null;
   var calendarDragActive = false;
   var suppressCalendarClick = false;
-  var sessionMovePending = false;
-  var selectedPlanKind = "fitness";
-  var selectedLearningPlanId = null;
-  var learningSettingsEditingId = null;
   var mobileQuery = window.matchMedia("(max-width: 780px)");
   var chartResizeTimer = null;
 
@@ -147,7 +128,7 @@
     dom.message.textContent = text || "";
     dom.message.dataset.kind = kind || "";
     var detailMessage = dom.detailBody.querySelector("[data-plan-detail-message]");
-    if (!dom.drawer.hidden && detailMessage) {
+    if (dom.drawer.open && detailMessage) {
       detailMessage.textContent = text || "";
       detailMessage.dataset.kind = kind || "";
       if (text && detailMessage.scrollIntoView) detailMessage.scrollIntoView({ block: "nearest" });
@@ -164,26 +145,46 @@
 
   function setSyncState() {
     if (!store.configured) {
-      dom.syncState.textContent = "同步未配置";
+      dom.syncState.textContent = "Sync not configured";
     } else if (isOffline) {
-      dom.syncState.textContent = "离线 · 只读";
+      dom.syncState.textContent = "Offline · read-only";
     } else if (isOwner) {
-      dom.syncState.textContent = "已同步 · 本人";
+      dom.syncState.textContent = "Synced · owner";
     } else {
-      dom.syncState.textContent = "公开只读";
+      dom.syncState.textContent = "Public · read-only";
     }
   }
 
-  async function loadHolidayCalendars() {
+  async function loadHolidayYear(year) {
+    if (holidayYearsRequested[year]) {
+      return;
+    }
+    holidayYearsRequested[year] = true;
     try {
-      var response = await fetch(app.dataset.holidayUrl, { cache: "no-cache" });
+      var response = await fetch(app.dataset.holidayBase + "cn-" + year + ".json", { cache: "no-cache" });
       if (!response.ok) {
         throw new Error("holiday_fetch_failed");
       }
-      holidayCalendars = [await response.json()];
+      var calendar = await response.json();
+      if (calendar && Number(calendar.year) === year) {
+        holidayCalendars.push(calendar);
+        holidayCalendars.sort(function (left, right) { return left.year - right.year; });
+      }
     } catch (_) {
-      holidayCalendars = [];
+      // A year without a published calendar simply follows the weekly template.
     }
+  }
+
+  // One file per calendar year the cycle touches; missing years are tolerated.
+  async function ensureHolidayYears(cycle) {
+    var years = [Number(todayInShanghai().slice(0, 4))];
+    if (cycle && cycle.startDate && cycle.endDate) {
+      for (var year = Number(String(cycle.startDate).slice(0, 4));
+        year <= Number(String(cycle.endDate).slice(0, 4)) && years.length < 6; year += 1) {
+        if (years.indexOf(year) < 0) years.push(year);
+      }
+    }
+    await Promise.all(years.map(loadHolidayYear));
   }
 
   function createPreview() {
@@ -194,7 +195,7 @@
     isOwner = false;
     isOffline = true;
     viewingChartArchive = -1;
-    showMessage("Supabase 尚未配置；当前仅展示默认周模板预览。", "notice");
+    showMessage("Sync is not configured; showing a preview of the default weekly template.", "notice");
     render();
   }
 
@@ -210,109 +211,10 @@
       publicSnapshot.updatedAt = result.record.updatedAt || publicSnapshot.updatedAt;
     }
     previewState = null;
+    await ensureHolidayYears(publicSnapshot && publicSnapshot.cycle);
     render();
     if (result.error) {
-      showMessage("网络不可用，正在显示最近一次公开缓存。", "offline");
-    } else if (publicSnapshot && needsScheduleRevision(publicSnapshot.cycle)) {
-      showMessage("训练计划有更新；本人登录后会自动同步。", "notice");
-    } else if (publicSnapshot && needsVolumePrescriptionRevision(publicSnapshot.cycle)) {
-      showMessage("容量日有更新；本人登录后会自动同步。", "notice");
-    }
-  }
-
-  function needsVolumePrescriptionRevision(cycle) {
-    if (!volumeRevision || volumeRevision.id !== core.MODERATE_VOLUME_PRESCRIPTION ||
-        !cycle || cycle.id !== volumeRevision.cycleId || cycle.status !== "active" ||
-        cycle.volumePrescription === volumeRevision.id || todayInShanghai() > cycle.endDate ||
-        typeof volumeRevision.fromDate !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(volumeRevision.fromDate)) return false;
-    var date = new Date(volumeRevision.fromDate + "T00:00:00Z");
-    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === volumeRevision.fromDate &&
-      volumeRevision.fromDate <= cycle.endDate;
-  }
-
-  async function applyVolumePrescriptionRevision() {
-    var configuredYear = String(app.dataset.holidayUrl || "").match(/(\d{4})\.json(?:[?#]|$)/);
-    if (!holidayCalendars.length || (configuredYear && !holidayCalendars.some(function (calendar) {
-      return Number(calendar.year) === Number(configuredYear[1]);
-    }))) {
-      showMessage("节假日日历尚未载入，容量日尚未同步。请刷新重试；原计划与记录已保留。", "error");
-      return false;
-    }
-    try {
-      var candidate = core.normalizeState(privateState);
-      candidate.activeCycle.volumePrescription = volumeRevision.id;
-      candidate.activeCycle.volumePrescriptionFromDate = [
-        todayInShanghai(), candidate.activeCycle.startDate, volumeRevision.fromDate
-      ].sort().slice(-1)[0];
-      return await persist("容量日已同步：卧推 4×8–10，深蹲 3×8，目标保留 2–3 次余力。", candidate);
-    } catch (error) {
-      showMessage("容量日未能自动同步，原计划与记录已保留：" + error.message, "error");
-      return false;
-    }
-  }
-
-  function needsScheduleRevision(cycle) {
-    if (!scheduleRevision || !cycle || !scheduleRevision.id ||
-        cycle.id !== scheduleRevision.cycleId || cycle.status !== "active" ||
-        cycle.scheduleRevision === scheduleRevision.id ||
-        cycle.requestedEndDate !== scheduleRevision.endDate ||
-        todayInShanghai() > scheduleRevision.endDate) return false;
-    return Object.keys(scheduleRevision.targets || {}).every(function (key) {
-      return cycle.lifts && cycle.lifts[key] && Number(cycle.lifts[key].target1rm) === Number(scheduleRevision.targets[key]);
-    });
-  }
-
-  async function applyScheduleRevision() {
-    var today = todayInShanghai();
-    var fromDate = today > scheduleRevision.fromDate ? today : scheduleRevision.fromDate;
-    for (var year = Number(fromDate.slice(0, 4)); year <= Number(scheduleRevision.endDate.slice(0, 4)); year += 1) {
-      if (!holidayCalendars.some(function (calendar) { return Number(calendar.year) === year; })) {
-        showMessage("节假日日历尚未载入，线性计划尚未同步。请刷新重试；原计划与记录已保留。", "error");
-        return false;
-      }
-    }
-    try {
-      var existingCycle = privateState.activeCycle;
-      var prescriptionUpdate = existingCycle.scheduleRevision === scheduleRevision.previousId &&
-        existingCycle.progression && existingCycle.progression.kind === "linear-wave" &&
-        existingCycle.replannedSchedule;
-      var candidate = prescriptionUpdate
-        ? core.normalizeState(privateState)
-        : core.replanRemaining(privateState, holidayCalendars, {
-          fromDate: fromDate,
-          endDate: scheduleRevision.endDate,
-          asOfDate: today,
-          trainOnHolidays: true
-        });
-      var cycle = candidate.activeCycle;
-      // Keep earlier dates, but replace any pending legacy recovery prescription
-      // from today onward before the revision is marked as applied.
-      cycle.replannedSchedule.retainedSessions.forEach(function (session) {
-        if (session.date < today || candidate.logs[session.id]) return;
-        ["phase", "workout", "isReturn", "trainingWeek", "testReady", "testProvisional", "isTest"].forEach(function (key) {
-          delete session[key];
-        });
-      });
-      if (!prescriptionUpdate) {
-        cycle.progression = {
-          kind: "linear-wave",
-          anchorDate: scheduleRevision.anchorDate,
-          anchor1rm: {}
-        };
-        Object.keys(cycle.lifts).forEach(function (key) {
-          var current = cycle.lifts[key].current1rm;
-          if (current === null || current === "" || !Number.isFinite(Number(current))) {
-            throw new Error("缺少 " + key + " 的有效当前能力值");
-          }
-          cycle.progression.anchor1rm[key] = Number(current);
-        });
-      }
-      cycle.scheduleRevision = scheduleRevision.id;
-      return await persist("训练计划已同步，递进周已加入非极限顶组。", candidate);
-    } catch (error) {
-      showMessage("线性计划未能自动同步，原计划与记录已保留：" + error.message, "error");
-      return false;
+      showMessage("The network is unavailable; showing the last cached public plan.", "offline");
     }
   }
 
@@ -333,25 +235,15 @@
         : core.createDefaultState(todayInShanghai());
       privateState.version = record ? Number(record.version || 0) : 0;
       privateState.updatedAt = record ? record.updatedAt : null;
-      selectedPlanKind = "fitness";
-      if (privateState.activePlanId && privateState.learningPlans.some(function (plan) {
-        return plan.id === privateState.activePlanId;
-      })) {
-        selectedLearningPlanId = privateState.activePlanId;
-      }
+      // Saved cycles move onto the feedback program from today. The change is
+      // only kept in memory here and is stored with the owner's next save.
+      privateState = core.adoptFeedbackProgram(privateState, todayInShanghai());
       isOwner = true;
       isOffline = false;
       publicSnapshot = null;
       previewState = null;
       viewingChartArchive = -1;
-      if (record && needsScheduleRevision(privateState.activeCycle)) {
-        var applied = await applyScheduleRevision();
-        if (applied === true) return;
-      }
-      if (record && needsVolumePrescriptionRevision(privateState.activeCycle)) {
-        var volumeApplied = await applyVolumePrescriptionRevision();
-        if (volumeApplied === true) return;
-      }
+      await ensureHolidayYears(privateState.activeCycle);
       render();
       if (!record) {
         openSettings(false);
@@ -359,7 +251,7 @@
     } catch (error) {
       if (error.code === "not_plan_owner") {
         await store.signOut();
-        showMessage("当前 GitHub 账号没有计划写权限。", "error");
+        showMessage("This GitHub account cannot edit the plan.", "error");
         await loadPublicPlan();
         return;
       }
@@ -369,7 +261,7 @@
 
   async function initialize() {
     setLoading(true);
-    await loadHolidayCalendars();
+    await ensureHolidayYears(null);
 
     if (!store.configured) {
       setLoading(false);
@@ -386,7 +278,7 @@
       }
     } catch (error) {
       setLoading(false);
-      showMessage("计划载入失败：" + error.message, "error");
+      showMessage("The plan could not be loaded: " + error.message, "error");
       try {
         await loadPublicPlan();
       } catch (_) {
@@ -398,12 +290,12 @@
     store.onAuthChange(function (event, session) {
       if (event === "SIGNED_IN" && session) {
         loadOwnerPlan().catch(function (error) {
-          showMessage("登录后载入失败：" + error.message, "error");
+          showMessage("The plan could not be loaded after sign-in: " + error.message, "error");
         });
       }
       if (event === "SIGNED_OUT") {
         loadPublicPlan().catch(function (error) {
-          showMessage("公开计划载入失败：" + error.message, "error");
+          showMessage("The public plan could not be loaded: " + error.message, "error");
         });
       }
     });
@@ -413,51 +305,15 @@
     setLoading(false);
     dom.empty.hidden = false;
     dom.view.hidden = true;
-    if (selectedPlanKind === "learning") {
-      dom.emptyEyebrow.textContent = "LEARNING / 学习计划";
-      dom.emptyTitle.textContent = "还没有学习计划";
-      dom.emptyDescription.textContent = isOwner
-        ? "点击“新增学习计划”，设置每日任务与最终验收成果。"
-        : "当前还没有公开的学习计划。";
-    } else {
-      dom.emptyEyebrow.textContent = "FITNESS / 健身计划";
-      dom.emptyTitle.textContent = "计划尚未发布";
-      dom.emptyDescription.textContent = "登录后填写周期、体重与三项当前/目标 1RM，即可生成第一份训练日历。";
-    }
+    dom.emptyTitle.textContent = "No plan published yet";
+    dom.emptyDescription.textContent = "After signing in, enter the cycle dates, bodyweight and the current and " +
+      "goal 1RM for each lift to generate the first training calendar.";
     setSyncState();
     dom.auth.hidden = false;
-    dom.auth.textContent = store.configured ? "管理计划" : "同步未配置";
+    dom.auth.textContent = store.configured ? "Owner sign-in" : "Sync not configured";
   }
 
   function displayPlan() {
-    if (selectedPlanKind === "learning") {
-      var learningPlan = null;
-      if (isOwner && privateState) {
-        learningPlan = (privateState.learningPlans || []).find(function (candidate) {
-          return candidate.id === selectedLearningPlanId;
-        }) || (privateState.learningPlans || [])[0];
-      } else if (publicSnapshot) {
-        learningPlan = (publicSnapshot.learningPlans || []).find(function (candidate) {
-          return candidate.id === selectedLearningPlanId;
-        }) || (publicSnapshot.learningPlans || [])[0];
-      }
-      if (!learningPlan) {
-        return null;
-      }
-      selectedLearningPlanId = learningPlan.id;
-      if (!isOwner && Array.isArray(learningPlan.sessions)) {
-        return {
-          plan: learningPlan,
-          cycle: learningPlan,
-          sessions: learningPlan.sessions,
-          warnings: [],
-          totalDays: Number(learningPlan.totalDays || learningPlan.sessions.length),
-          completedDays: Number(learningPlan.completedDays || 0),
-          completedCriteria: 0
-        };
-      }
-      return core.generateLearningPlan(learningPlan);
-    }
     if (isOwner && privateState) {
       var generated = core.generate(privateState, holidayCalendars, { asOfDate: todayInShanghai() });
       privateState = generated.state;
@@ -467,13 +323,24 @@
       return core.generate(previewState, holidayCalendars);
     }
     if (publicSnapshot) {
+      // Snapshots published before the page moved to English still carry the
+      // old copy, and their statuses were fixed at the owner's last save.
+      var today = todayInShanghai();
+      var cycle = deepClone(publicSnapshot.cycle);
+      core.localizeCycle(cycle);
       return {
-        cycle: publicSnapshot.cycle,
+        cycle: cycle,
         sessions: core.filterLegacyOfficialMakeups(
           publicSnapshot.sessions || [],
           holidayCalendars
-        ),
-        warnings: publicSnapshot.cycle.schedule ? [publicSnapshot.cycle.schedule.reason] : (publicSnapshot.warnings || []),
+        ).map(function (source) {
+          var session = core.localizeSession(deepClone(source));
+          if (session.status === "planned" && session.date < today) session.status = "missed";
+          return session;
+        }),
+        warnings: Array.isArray(publicSnapshot.warnings) ? publicSnapshot.warnings
+          : (cycle.schedule ? [cycle.schedule.reason] : []),
+        performance: publicSnapshot.performance || null,
         totalWeeks: publicSnapshot.totalWeeks || 0
       };
     }
@@ -494,7 +361,8 @@
             planned1rm: session.workout.planned1rm
           } : null
         };
-      })
+      }),
+      performance: deepClone(plan.performance || null)
     };
   }
 
@@ -520,8 +388,7 @@
   }
 
   function isAllCycleView() {
-    return isOwner && Boolean(privateState) && viewingChartArchive === ALL_CYCLES &&
-      selectedPlanKind === "fitness";
+    return isOwner && Boolean(privateState) && viewingChartArchive === ALL_CYCLES;
   }
 
   function cycleOrdinal(index, archiveCount) {
@@ -571,12 +438,9 @@
     dom.empty.hidden = true;
     dom.view.hidden = false;
     dom.auth.hidden = isOwner;
-    dom.auth.textContent = store.configured ? "管理计划" : "同步未配置";
+    dom.auth.textContent = store.configured ? "Owner sign-in" : "Sync not configured";
     dom.ownerActions.hidden = !isOwner || isOffline;
     dom.exportJson.hidden = !isOwner;
-    dom.updateBodyweight.hidden = selectedPlanKind === "learning";
-    dom.newCycle.hidden = selectedPlanKind === "learning";
-    dom.edit.textContent = selectedPlanKind === "learning" ? "编辑学习计划" : "编辑计划";
     setSyncState();
 
     allCyclePlans = isAllCycleView() ? allCyclePlanSet(plan) : null;
@@ -587,22 +451,19 @@
       var sessionCount = allCyclePlans.reduce(function (total, item) {
         return total + item.sessions.length;
       }, 0);
-      dom.title.textContent = "全量训练视图";
+      dom.title.textContent = "All cycles";
       dom.cycleMeta.textContent = formatDateRange(firstCycle.startDate, lastCycle.endDate) +
-        " · " + allCyclePlans.length + " 个周期 · " + sessionCount + " 次训练";
+        " · " + allCyclePlans.length + " cycles · " + sessionCount + " sessions";
     } else {
-      dom.title.textContent = plan.cycle.title || (selectedPlanKind === "learning" ? "学习计划" : "推拉蹲 + 推");
+      dom.title.textContent = plan.cycle.title || core.templateTitle(plan.cycle.template);
       dom.cycleMeta.textContent = formatDateRange(plan.cycle.startDate, plan.cycle.endDate) +
-        (selectedPlanKind === "learning"
-          ? " · " + plan.totalDays + " 天 · " + plan.completedDays + " 天已完成"
-          : " · " + plan.totalWeeks + " 周 · " + plan.sessions.length + " 次训练" +
-            (plan.cycle.requestedEndDate && plan.cycle.requestedEndDate !== plan.cycle.endDate
-              ? " · 原设结束 " + formatChineseDate(plan.cycle.requestedEndDate, false) + " · 已手动调整"
-              : ""));
+        " · " + plan.totalWeeks + " weeks · " + plan.sessions.length + " sessions" +
+        (plan.cycle.requestedEndDate && plan.cycle.requestedEndDate !== plan.cycle.endDate
+          ? " · originally ending " + formatLongDate(plan.cycle.requestedEndDate, false) + " · moved by hand"
+          : "");
     }
 
     renderProgress(plan.cycle);
-    renderLearningSummary(plan);
     renderWarnings(plan);
     renderCycleSelect();
     renderTrajectory(displayTrajectoryPlan(plan));
@@ -627,15 +488,15 @@
   }
 
   function formatDateRange(start, end) {
-    return formatChineseDate(start, false) + " — " + formatChineseDate(end, false);
+    return formatLongDate(start, false) + " — " + formatLongDate(end, false);
   }
 
-  function formatChineseDate(value, includeWeekday) {
+  function formatLongDate(value, includeWeekday) {
     var date = new Date(value + "T12:00:00+08:00");
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Shanghai",
       year: "numeric",
-      month: "long",
+      month: "short",
       day: "numeric",
       weekday: includeWeekday ? "short" : undefined
     }).format(date);
@@ -645,11 +506,16 @@
     var lift = cycle.lifts[key] || {};
     var current = Number(lift.current1rm || 0);
     var target = Number(lift.target1rm || 0);
-    var percentage = target > 0 ? Math.min(100, Math.max(0, current / target * 100)) : 0;
-    var suffix = key === "pullup" ? " kg 额外负重" : " kg";
+    var start = lift.baseline1rm == null || lift.baseline1rm === "" ? current : Number(lift.baseline1rm);
+    // The bar shows the same quantity as the chart: how much of the distance
+    // from the cycle's starting 1RM to the goal has been covered.
+    var percentage = target > start
+      ? Math.min(100, Math.max(0, (current - start) / (target - start) * 100))
+      : (lift.target1rm != null && current >= target ? 100 : 0);
+    var suffix = key === "pullup" ? " kg added" : " kg";
     return '<div class="plan-progress-item">' +
       '<div class="plan-progress-label">' + (withLabel
-        ? '<strong>' + escapeHtml(lift.label || core.LIFT_LABELS[key]) + "</strong>"
+        ? '<strong>' + escapeHtml(core.LIFT_LABELS[key]) + "</strong>"
         : "") +
       '<span>' + (current ? current.toFixed(1).replace(".0", "") : "—") + " → " +
       (target ? target.toFixed(1).replace(".0", "") : "—") + escapeHtml(suffix) + '</span></div>' +
@@ -665,31 +531,12 @@
 
   function renderProgress(cycle) {
     dom.progress.classList.toggle("is-all-cycles", Boolean(allCyclePlans));
-    if (selectedPlanKind === "learning") {
-      var plan = displayPlan();
-      var total = Math.max(0, Number(plan && plan.totalDays || 0));
-      var completed = Math.max(0, Number(plan && plan.completedDays || 0));
-      var criteria = (cycle.acceptanceCriteria || []).length;
-      var completedCriteria = Math.max(0, Number(plan && plan.completedCriteria || 0));
-      var artifacts = (cycle.artifacts || []).length;
-      dom.progress.innerHTML = [
-        ["学习日", completed + " / " + total, total ? completed / total * 100 : 0],
-        ["验收成果", completedCriteria + " / " + criteria, criteria ? completedCriteria / criteria * 100 : 0],
-        ["学习生产物", artifacts + " 份", artifacts ? 100 : 0]
-      ].map(function (item) {
-        return '<div class="plan-progress-item"><div class="plan-progress-label"><strong>' +
-          escapeHtml(item[0]) + '</strong><span>' + escapeHtml(item[1]) + '</span></div>' +
-          '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
-          Math.min(100, item[2]).toFixed(1) + '%"></span></div></div>';
-      }).join("");
-      return;
-    }
     if (allCyclePlans) {
       // One cycle per row keeps several cycles short: the lift names sit in the column
       // header once, and each row only carries that cycle's numbers.
       dom.progress.innerHTML =
-        '<div class="plan-progress-table" role="table" aria-label="各周期三项力量进度">' +
-        '<div class="plan-progress-row is-head" role="row"><span class="plan-progress-cycle-label" role="columnheader">周期</span>' +
+        '<div class="plan-progress-table" role="table" aria-label="Strength progress for each cycle">' +
+        '<div class="plan-progress-row is-head" role="row"><span class="plan-progress-cycle-label" role="columnheader">Cycle</span>' +
         ["bench", "pullup", "squat"].map(function (key) {
           return '<span role="columnheader">' + escapeHtml(core.LIFT_LABELS[key]) + "</span>";
         }).join("") + "</div>" +
@@ -698,7 +545,7 @@
             '<span class="plan-progress-cycle-label" role="rowheader">' + escapeHtml(item.cycleLabel) +
             "</span><span class=\"plan-progress-range\">" +
             escapeHtml(formatDateRange(item.cycle.startDate, item.cycle.endDate)) +
-            (item.cycle.status === "archived" ? " · 已归档" : " · 进行中") + "</span></span>" +
+            (item.cycle.status === "archived" ? " · archived" : " · current") + "</span></span>" +
             ["bench", "pullup", "squat"].map(function (key) {
               return '<span class="plan-progress-cell" role="cell">' +
                 liftProgressItemHtml(item.cycle, key, false) + "</span>";
@@ -713,10 +560,6 @@
     if (!dom.chart) {
       return;
     }
-    if (selectedPlanKind === "learning") {
-      dom.chart.hidden = true;
-      return;
-    }
     if (!chart) {
       dom.chart.hidden = true;
       return;
@@ -728,46 +571,15 @@
     });
   }
 
-  function renderLearningSummary(plan) {
-    if (selectedPlanKind !== "learning") {
-      dom.learningSummary.hidden = true;
-      return;
-    }
-    var cycle = plan.cycle;
-    var criteria = cycle.acceptanceCriteria || [];
-    dom.learningSummary.hidden = false;
-    dom.learningSummary.innerHTML = '<div><p class="eyebrow">OUTCOME / 验收成果</p><h2>计划完成时要留下什么</h2>' +
-      (cycle.objective ? '<p class="plan-learning-objective">' + escapeHtml(cycle.objective) + '</p>' : "") +
-      '</div><ol class="plan-learning-criteria">' +
-      (criteria.length ? criteria.map(function (criterion) {
-        return '<li><span>' + escapeHtml(criterion.title) + '</span></li>';
-      }).join("") : '<li><span>尚未设置验收成果。</span></li>') + '</ol>';
-  }
-
   function renderWarnings(plan) {
     var warnings = (plan.warnings || []).slice();
-    if (selectedPlanKind === "learning") {
-      dom.warnings.hidden = warnings.length === 0;
-      dom.warnings.innerHTML = warnings.slice(0, 5).map(function (warning) {
-        return "<p>· " + escapeHtml(warning) + "</p>";
-      }).join("");
-      return;
-    }
-    var startYear = Number(String(plan.cycle.startDate).slice(0, 4));
-    if (!allCyclePlans && !holidayCalendars.some(function (calendar) { return Number(calendar.year) === startYear; })) {
-      warnings.unshift("当前周期缺少 " + startYear + " 年官方节假日数据，请在设置中手动覆盖。");
-    }
     dom.warnings.hidden = warnings.length === 0;
-    dom.warnings.innerHTML = warnings.slice(0, 5).map(function (warning) {
-      return "<p>· " + escapeHtml(warning) + "</p>";
-    }).join("");
+    dom.warnings.innerHTML = "<ul>" + warnings.slice(0, 6).map(function (warning) {
+      return "<li>" + escapeHtml(warning) + "</li>";
+    }).join("") + "</ul>";
   }
 
   function renderCycleSelect() {
-    if (selectedPlanKind === "learning") {
-      dom.cycleSelectWrap.hidden = true;
-      return;
-    }
     var archives = isOwner && privateState ? privateState.archivedCycles : [];
     dom.cycleSelectWrap.hidden = !isOwner || !privateState;
     if (!isOwner || !privateState) {
@@ -817,14 +629,6 @@
     return core.addDays(value, 1 - core.isoWeekday(value));
   }
 
-  function sessionsByDate(plan) {
-    return plan.sessions.reduce(function (map, session) {
-      map[session.date] = map[session.date] || [];
-      map[session.date].push(session);
-      return map;
-    }, {});
-  }
-
   // In the all view a date can hold sessions from several overlapping cycles, so each
   // entry carries the cycle tag it belongs to; a single cycle keeps ordinal null.
   function calendarEntries(plan) {
@@ -857,7 +661,8 @@
     var first = monthStart(viewDate);
     var gridStart = core.addDays(first, 1 - core.isoWeekday(first));
     var currentMonth = first.slice(0, 7);
-    dom.viewTitle.textContent = new Intl.DateTimeFormat("zh-CN", {
+    var today = todayInShanghai();
+    dom.viewTitle.textContent = new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Shanghai",
       year: "numeric",
       month: "long"
@@ -872,38 +677,34 @@
       if (date.slice(0, 7) !== currentMonth) {
         classes.push("is-outside");
       }
-      if (date === todayInShanghai()) {
+      if (date === today) {
         classes.push("is-today");
       }
-      var canDrag = Boolean(session && !allCyclePlans && isOwner && !isOffline &&
-        selectedPlanKind === "fitness");
+      var canDrag = Boolean(session && !allCyclePlans && isOwner && !isOffline);
       var attributes = ' data-plan-date="' + escapeHtml(date) + '"';
+      var number = '<span class="plan-day-number">' + Number(date.slice(-2)) + "</span>";
       if (entries.length === 1) {
-        attributes += ' data-session-id="' + escapeHtml(session.id) + '"';
-      }
-      if (canDrag) {
-        attributes += ' draggable="true"';
-      }
-      var content = '<span class="plan-day-number">' + Number(date.slice(-2)) + "</span>";
-      if (entries.length) {
-        content += entries.length === 1
-          ? daySessionCellHtml(entries[0])
-          : '<span class="plan-day-sessions">' + entries.map(daySessionEntryHtml).join("") + "</span>";
+        // A day with one session is a single button; the label carries what
+        // the cell shows so the date and status are not lost to a screen reader.
+        var aria = formatLongDate(date, true) + ", " + session.label + ", " + statusLabel(session.status) +
+          (canDrag ? ", draggable to another date" : "");
+        cells.push('<button class="' + classes.join(" ") + '" type="button"' + attributes +
+          ' data-session-id="' + escapeHtml(session.id) + '"' + (canDrag ? ' draggable="true"' : "") +
+          ' aria-label="' + escapeHtml(aria) + '">' + number + daySessionCellHtml(entries[0]) + "</button>");
+      } else if (entries.length) {
+        // Several cycles can share a date in the all-cycles view; each session
+        // is its own button so every one of them is reachable by keyboard.
+        cells.push('<div class="' + classes.join(" ") + ' has-sessions"' + attributes + ">" + number +
+          '<span class="plan-day-sessions">' + entries.map(function (entry) {
+            return daySessionEntryHtml(entry, date);
+          }).join("") + "</span></div>");
       } else {
-        var holiday = selectedPlanKind === "learning" ? null : holidayForDate(date);
-        if (holiday && holiday.type === "off") {
-          content += '<span class="plan-day-holiday">休</span>';
-        }
+        var holiday = holidayForDate(date);
+        cells.push('<div class="' + classes.join(" ") + '"' + attributes + ">" + number +
+          (holiday && holiday.type === "off"
+            ? '<span class="plan-day-holiday" title="' + escapeHtml(holiday.name) + '">Holiday</span>' : "") +
+          "</div>");
       }
-      var aria = session
-        ? formatChineseDate(date, true) + " " + entries.map(function (entry) {
-            return (entry.ordinal ? entry.ordinal + " " : "") + entry.session.label + "，" +
-              statusLabel(entry.session.status);
-          }).join("；") + (canDrag ? "，可拖动调整日期" : "")
-        : "";
-      cells.push('<button class="' + classes.join(" ") + '" type="button"' + attributes +
-        (session ? ' aria-label="' + escapeHtml(aria) + '"' : ' tabindex="-1"') +
-        ">" + content + "</button>");
     }
     dom.monthGrid.innerHTML = cells.join("");
   }
@@ -916,35 +717,37 @@
       html += '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
         escapeHtml(statusLabel(session.status)) + "</span>";
     }
-    if (session.holiday && selectedPlanKind !== "learning") {
-      html += '<span class="plan-day-holiday">调休</span>';
+    if (session.holiday) {
+      html += '<span class="plan-day-holiday">Make-up</span>';
     }
     return html;
   }
 
-  function daySessionEntryHtml(entry) {
+  function daySessionEntryHtml(entry, date) {
     var session = entry.session;
-    return '<span class="plan-day-session" data-session-id="' + escapeHtml(session.id) + '">' +
+    return '<button class="plan-day-session" type="button" data-session-id="' + escapeHtml(session.id) +
+      '" aria-label="' + escapeHtml(formatLongDate(date, true) + ", " + entry.ordinal + ", " + session.label +
+        ", " + statusLabel(session.status)) + '">' +
       '<span class="plan-day-cycle">' + escapeHtml(entry.ordinal) + "</span>" +
       '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>" +
       '<span class="plan-day-load">' + escapeHtml(primaryLoad(session)) + "</span>" +
       (session.status && session.status !== "planned"
         ? '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
           escapeHtml(statusLabel(session.status)) + "</span>"
-        : "") + "</span>";
+        : "") + "</button>";
   }
 
   function renderAgenda(plan, map) {
     var start = weekStart(viewDate);
     var end = core.addDays(start, 6);
-    dom.viewTitle.textContent = formatChineseDate(start, false) + " — " + formatChineseDate(end, false);
+    dom.viewTitle.textContent = formatLongDate(start, false) + " — " + formatLongDate(end, false);
     var rows = [];
     for (var index = 0; index < 7; index += 1) {
       var date = core.addDays(start, index);
       var entries = map[date] || [];
-      var dateLabel = new Intl.DateTimeFormat("zh-CN", {
+      var dateLabel = new Intl.DateTimeFormat("en-US", {
         timeZone: "Asia/Shanghai",
-        month: "numeric",
+        month: "short",
         day: "numeric",
         weekday: "short"
       }).format(new Date(date + "T12:00:00+08:00"));
@@ -954,12 +757,11 @@
           escapeHtml(session.id) + '"><strong>' + (entry.ordinal
             ? '<span class="plan-day-cycle">' + escapeHtml(entry.ordinal) + "</span> " : "") +
           escapeHtml(session.label) + '</strong><span>' +
-          escapeHtml(primaryLoad(session) + " · " + (session.phase && session.phase.label || "学习日") + " · " + statusLabel(session.status)) +
+          escapeHtml(primaryLoad(session) + " · " + (session.phase && session.phase.label || "") + " · " +
+            statusLabel(session.status)) +
           "</span></button>";
       }).join("") : '<span class="plan-agenda-rest">' +
-        (selectedPlanKind !== "learning" && holidayForDate(date) && holidayForDate(date).type === "off"
-          ? "法定休息日"
-          : (selectedPlanKind === "learning" ? "无学习安排" : "恢复 / 无训练")) +
+        (holidayForDate(date) && holidayForDate(date).type === "off" ? "Public holiday" : "Rest day") +
         "</span>";
       rows.push('<div class="plan-agenda-day"><div class="plan-agenda-date">' +
         escapeHtml(dateLabel) + '</div><div>' + content + "</div></div>");
@@ -969,34 +771,27 @@
 
   function shortTypeLabel(type) {
     return {
-      learning: "学习",
-      "push-strength": "推 · 强度",
-      pull: "拉",
-      squat: "蹲 · 强度",
-      "push-volume": "推 · 容量",
-      "squat-volume": "蹲 · 容量"
+      "push-strength": "Push · Strength",
+      pull: "Pull",
+      squat: "Squat · Strength",
+      "push-volume": "Push · Volume",
+      "squat-volume": "Squat · Volume"
     }[type] || type;
   }
 
   function statusLabel(status) {
     return {
-      planned: "计划中",
-      completed: "已完成",
-      skipped: "已跳过"
-    }[status] || status || "计划中";
+      planned: "Planned",
+      completed: "Done",
+      skipped: "Skipped",
+      missed: "Missed"
+    }[status] || status || "Planned";
   }
 
   function primaryLoad(session) {
-    if (session.type === "learning" || session.learning) {
-      var tasks = session.learning && session.learning.tasks || [];
-      if (tasks.length) {
-        return tasks.length + " 项任务";
-      }
-      return session.learning && session.learning.objective ? "目标已设置" : "待补充任务";
-    }
     var workout = session.workout || {};
     if (workout.needsSetup || !workout.workSets || !workout.workSets.length) {
-      return "待设置重量";
+      return "Loads not set";
     }
     var goalAttempt = session.phase && session.phase.key === "test";
     var set = goalAttempt ? workout.workSets[workout.workSets.length - 1] : workout.workSets.reduce(function (main, candidate) {
@@ -1006,7 +801,7 @@
     var load = Object.prototype.hasOwnProperty.call(set, "loadKg")
       ? " · " + core.formatLoad(set.loadKg, workout.liftKey)
       : " · RPE " + set.rpe;
-    return (goalAttempt ? "尝试 " : "") + set.sets + "×" + set.reps + load;
+    return (goalAttempt ? "Attempt " : "") + set.sets + "×" + set.reps + load;
   }
 
   function holidayForDate(date) {
@@ -1014,16 +809,17 @@
       ? privateState.activeCycle.holidayOverrides || {}
       : {};
     if (overrides[date]) {
-      return { type: overrides[date], name: overrides[date] === "off" ? "自定义休息日" : "自定义训练日" };
+      return { type: overrides[date], name: overrides[date] === "off" ? "Custom rest day" : "Custom training day" };
     }
     for (var calendarIndex = 0; calendarIndex < holidayCalendars.length; calendarIndex += 1) {
       var periods = holidayCalendars[calendarIndex].periods || [];
       for (var periodIndex = 0; periodIndex < periods.length; periodIndex += 1) {
+        var name = core.localize(periods[periodIndex].name);
         if ((periods[periodIndex].daysOff || []).indexOf(date) >= 0) {
-          return { type: "off", name: periods[periodIndex].name };
+          return { type: "off", name: name };
         }
         if ((periods[periodIndex].workdays || []).indexOf(date) >= 0) {
-          return { type: "work", name: periods[periodIndex].name + "调休" };
+          return { type: "work", name: name + " make-up day" };
         }
       }
     }
@@ -1057,23 +853,43 @@
       return;
     }
     selectedSessionId = id;
+    detailReturnFocus = document.activeElement && document.activeElement !== document.body
+      ? document.activeElement : null;
     dom.detailTitle.textContent = session.label;
     dom.detailBody.innerHTML = sessionDetailsHtml(session) +
       '<div class="plan-message" data-plan-detail-message role="status" aria-live="polite"></div>';
-    dom.drawer.hidden = false;
-    document.documentElement.classList.add("plan-drawer-open");
     bindDetailActions(session);
+    if (!dom.drawer.open) {
+      dom.drawer.showModal();
+    }
   }
 
   function closeDetails() {
-    dom.drawer.hidden = true;
+    if (dom.drawer.open) {
+      dom.drawer.close();
+    }
+  }
+
+  // Rendering replaces the calendar, so the element that opened the drawer may
+  // be gone; fall back to the same session's new button.
+  function restoreDetailFocus() {
+    var id = selectedSessionId;
     selectedSessionId = null;
-    document.documentElement.classList.remove("plan-drawer-open");
+    var target = detailReturnFocus && document.contains(detailReturnFocus) ? detailReturnFocus : null;
+    detailReturnFocus = null;
+    if (!target && id) {
+      target = Array.prototype.slice.call(app.querySelectorAll("[data-session-id]")).filter(function (element) {
+        return element.dataset.sessionId === id;
+      })[0] || null;
+    }
+    if (target && target.focus) {
+      target.focus();
+    }
   }
 
   function setListHtml(items, liftKey) {
     if (!items || !items.length) {
-      return "<p>保存周期参数后生成精确重量。</p>";
+      return "<p>Exact loads appear once the cycle settings are saved.</p>";
     }
     return '<ul class="plan-set-list">' + items.map(function (item) {
       var load = Object.prototype.hasOwnProperty.call(item, "loadKg")
@@ -1087,25 +903,28 @@
   }
 
   function sessionDetailsHtml(session) {
-    if (selectedPlanKind === "learning" || session.type === "learning") {
-      return learningSessionDetailsHtml(session);
-    }
     var workout = session.workout || {};
     var holiday = session.holiday
-      ? " · " + session.holiday.name + "补课（原 " + session.holiday.movedFrom + "）"
+      ? " · " + session.holiday.name + " (moved from " + session.holiday.movedFrom + ")"
       : "";
-    var html = '<p class="plan-session-meta"><span>' + escapeHtml(formatChineseDate(session.date, true)) +
+    var html = '<p class="plan-session-meta"><span>' + escapeHtml(formatLongDate(session.date, true)) +
       '</span><span>' + escapeHtml(session.phase.label) + '</span><span>' +
       escapeHtml(statusLabel(session.status)) + escapeHtml(holiday) + "</span></p>";
-    html += '<section class="plan-session-section"><h3>主动作 · ' +
+    html += '<section class="plan-session-section"><h3>Main lift · ' +
       escapeHtml(workout.mainExercise || session.label) + "</h3>" +
-      (workout.needsSetup ? "<p>尚未填写当前与目标 1RM。</p>" : "") +
+      (workout.needsSetup ? "<p>The current and goal 1RM have not been entered yet.</p>" : "") +
       setListHtml(workout.workSets, workout.liftKey) +
-      (session.phase.key === "test" && workout.guidance ? "<p>" + escapeHtml(workout.guidance) + "</p>" : "") + "</section>";
-    html += '<section class="plan-session-section"><h3>热身组</h3>' +
+      (workout.guidance && (session.phase.key === "test" || session.phase.key === "retry")
+        ? "<p>" + escapeHtml(workout.guidance) + "</p>" : "") + "</section>";
+    if (workout.secondary && workout.secondary.workSets.length) {
+      html += '<section class="plan-session-section"><h3>Second lift · ' +
+        escapeHtml(workout.secondary.mainExercise) + "</h3>" +
+        setListHtml(workout.secondary.workSets, workout.secondary.liftKey) + "</section>";
+    }
+    html += '<section class="plan-session-section"><h3>Warm-up</h3>' +
       setListHtml(workout.warmups, workout.liftKey) + "</section>";
-    html += '<section class="plan-session-section"><h3>辅助动作</h3>' +
-      (workout.accessories && workout.accessories.length ? setListHtml(workout.accessories, null) : "<p>本次不安排辅助训练。</p>") + "</section>";
+    html += '<section class="plan-session-section"><h3>Accessories</h3>' +
+      (workout.accessories && workout.accessories.length ? setListHtml(workout.accessories, null) : "<p>No accessory work in this session.</p>") + "</section>";
 
     // Archived cycles share their logs with the active cycle's record path, so their
     // sessions open read-only from the all-cycles view.
@@ -1115,114 +934,85 @@
     return html;
   }
 
-  function learningSessionDetailsHtml(session) {
-    var learning = session.learning || {};
-    var log = session.log || (privateState && privateState.learningPlans || []).reduce(function (found, plan) {
-      return found || (plan.logs && plan.logs[session.id]);
-    }, null) || {};
-    var criteria = learning.acceptanceCriteria || [];
-    var checked = log.criteria || [];
-    var tasks = learning.tasks || [];
-    var html = '<p class="plan-session-meta"><span>' + escapeHtml(formatChineseDate(session.date, true)) +
-      '</span><span>学习日</span><span>' + escapeHtml(statusLabel(session.status)) + '</span></p>';
-    html += '<section class="plan-session-section"><h3>今日学习任务</h3>' +
-      (learning.objective ? '<p class="plan-learning-objective">' + escapeHtml(learning.objective) + '</p>' : "") +
-      (tasks.length ? '<ul class="plan-learning-task-list">' + tasks.map(function (task) {
-        return '<li>' + escapeHtml(task) + '</li>';
-      }).join("") + '</ul>' : '<p>今天还没有预设任务，可以直接在总结中记录。</p>') + '</section>';
-    if (criteria.length) {
-      html += '<section class="plan-session-section"><h3>验收成果</h3><div class="plan-learning-checklist">' +
-        criteria.map(function (criterion) {
-          return '<label><input type="checkbox" data-learning-criterion="' + escapeHtml(criterion.id) + '"' +
-            (checked.indexOf(criterion.id) >= 0 ? ' checked' : '') + '><span>' + escapeHtml(criterion.title) +
-            (criterion.description ? '<small>' + escapeHtml(criterion.description) + '</small>' : '') + '</span></label>';
-        }).join("") + '</div></section>';
-    }
-    if (isOwner && !isOffline) {
-      var artifacts = log.artifacts || [];
-      var skipAction = session.status === "skipped"
-        ? '<button class="plan-button" type="button" data-restore-skipped-session>取消跳过</button>'
-        : '<button class="plan-button" type="button" data-skip-session>标记为跳过</button>';
-      html += '<section class="plan-session-section"><h3>成果记录</h3>' +
-        '<label class="plan-log-notes">今日计划（每行一项）<textarea data-learning-day-tasks rows="3">' +
-        escapeHtml(tasks.join("\n")) + '</textarea></label>' +
-        '<label class="plan-log-notes">学习总结 / 感悟<textarea data-learning-reflection maxlength="10000" placeholder="今天理解了什么？哪里仍然卡住？下一步是什么？">' +
-        escapeHtml(log.reflection || log.notes || "") + '</textarea></label>' +
-        '<label class="plan-learning-upload">学习生产物（可选）<input type="file" multiple data-learning-files>' +
-        '<small>支持文档、图片、压缩包；每个文件不超过 2 MB，文件内容会随计划同步。</small></label>' +
-        (artifacts.length ? '<ul class="plan-learning-artifacts">' + artifacts.map(learningArtifactHtml).join("") + '</ul>' : "") +
-        '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-learning>保存今日成果</button>' +
-        '<button class="plan-button" type="button" data-save-learning-plan>只保存当天计划</button>' +
-        skipAction + '</div></section>';
-    }
-    return html;
-  }
-
-  function learningArtifactHtml(artifact) {
-    var label = escapeHtml(artifact.name || "未命名文件");
-    var candidate = String(artifact.dataUrl || artifact.url || "");
-    var href = /^(data:|https?:|blob:)/i.test(candidate) ? candidate : "#";
-    return '<li><a href="' + escapeHtml(href) + '" download="' + label + '" target="_blank" rel="noreferrer">' +
-      label + '</a><span>' + escapeHtml(formatArtifactSize(artifact.size)) + '</span></li>';
-  }
-
-  function formatArtifactSize(size) {
-    var value = Number(size || 0);
-    if (value < 1024) return value + " B";
-    if (value < 1024 * 1024) return (value / 1024).toFixed(1) + " KB";
-    return (value / (1024 * 1024)).toFixed(1) + " MB";
+  function numberField(label, attribute, value, extra) {
+    return "<label>" + label + '<input class="plan-log-input" ' + attribute + ' type="number" ' + extra +
+      ' value="' + escapeHtml(value == null ? "" : value) + '"></label>';
   }
 
   function trainingLogHtml(session) {
     var log = privateState.logs[session.id] || {};
     var rows = [];
-    (session.workout.workSets || []).forEach(function (prescription, groupIndex) {
+    (session.workout.workSets || []).forEach(function (prescription) {
       for (var setIndex = 0; setIndex < prescription.sets; setIndex += 1) {
         var saved = (log.mainSets || [])[rows.length] || {};
-        rows.push('<div class="plan-log-grid" data-log-set data-planned-reps="' +
-          escapeHtml(prescription.reps) + '"><span>#' + (rows.length + 1) + '</span>' +
-          '<label>重量<input class="plan-log-input" data-log-weight type="number" step="0.1" value="' +
-          escapeHtml(saved.weight != null ? saved.weight : prescription.loadKg) + '"></label>' +
-          '<label>次数<input class="plan-log-input" data-log-reps type="number" min="0" max="30" value="' +
-          escapeHtml(saved.reps != null ? saved.reps : prescription.reps) + '"></label>' +
-          '<label>RPE<input class="plan-log-input" data-log-rpe type="number" min="1" max="10" step="0.5" placeholder="实际 RPE" value="' +
-          escapeHtml(saved.rpe != null ? saved.rpe : "") + '"></label></div>');
+        rows.push('<div class="plan-log-grid" role="group" aria-label="Set ' + (rows.length + 1) +
+          '" data-log-set data-planned-reps="' + escapeHtml(prescription.reps) +
+          '"><span class="plan-log-set-number">Set ' + (rows.length + 1) + "</span>" +
+          numberField("Weight (kg)", "data-log-weight",
+            saved.weight != null ? saved.weight : prescription.loadKg, 'step="0.1" inputmode="decimal"') +
+          numberField("Reps", "data-log-reps",
+            saved.reps != null ? saved.reps : prescription.reps, 'min="0" max="30" inputmode="numeric"') +
+          numberField("RPE", "data-log-rpe", saved.rpe,
+            'min="1" max="10" step="0.5" inputmode="decimal" placeholder="optional"') + "</div>");
+      }
+    });
+    var secondaryRows = [];
+    var secondary = session.workout.secondary;
+    (secondary ? secondary.workSets : []).forEach(function (prescription) {
+      for (var setIndex = 0; setIndex < prescription.sets; setIndex += 1) {
+        var saved = (log.secondarySets || [])[secondaryRows.length] || {};
+        secondaryRows.push('<div class="plan-log-grid" role="group" aria-label="Pull-up set ' +
+          (secondaryRows.length + 1) + '" data-log-secondary-set><span class="plan-log-set-number">Set ' +
+          (secondaryRows.length + 1) + "</span>" +
+          numberField("Added weight (kg)", "data-log-weight",
+            saved.weight != null ? saved.weight : prescription.loadKg, 'step="0.1" inputmode="decimal"') +
+          numberField("Reps", "data-log-reps",
+            saved.reps != null ? saved.reps : prescription.reps, 'min="0" max="30" inputmode="numeric"') +
+          "</div>");
       }
     });
     var accessoryRows = (session.workout.accessories || []).map(function (accessory) {
       var saved = (log.accessories || []).find(function (entry) {
-        return entry.name === accessory.name;
+        return entry.name === accessory.name || core.localize(entry.name) === accessory.name;
       }) || {};
-      return '<div class="plan-accessory-log" data-accessory-log data-accessory-name="' +
-        escapeHtml(accessory.name) + '" data-accessory-planned-sets="' + accessory.sets + '"><strong>' + escapeHtml(accessory.name) + '</strong>' +
-        '<label>重量<input class="plan-log-input" data-accessory-weight type="number" min="0" step="0.1" value="' +
-        escapeHtml(saved.weight != null ? saved.weight : (accessory.loadKg != null ? accessory.loadKg : "")) + '"></label>' +
-        '<label>完成组数<input class="plan-log-input" data-accessory-sets type="number" min="0" max="20" value="' +
-        escapeHtml(saved.sets != null ? saved.sets : "") + '"></label>' +
-        '<label>每组次数<input class="plan-log-input" data-accessory-reps type="number" min="0" max="200" step="1" value="' +
-        escapeHtml(saved.reps != null ? saved.reps : "") + '"></label></div>';
+      return '<div class="plan-accessory-log" role="group" aria-label="' + escapeHtml(accessory.name) +
+        '" data-accessory-log data-accessory-name="' +
+        escapeHtml(accessory.name) + '" data-accessory-planned-sets="' + Number(accessory.sets) + '"><strong>' +
+        escapeHtml(accessory.name) + "</strong>" +
+        numberField("Weight (kg)", "data-accessory-weight",
+          saved.weight != null ? saved.weight : accessory.loadKg, 'min="0" step="0.1" inputmode="decimal"') +
+        numberField("Sets done", "data-accessory-sets", saved.sets, 'min="0" max="20" inputmode="numeric"') +
+        numberField("Reps per set", "data-accessory-reps", saved.reps,
+          'min="0" max="200" step="1" inputmode="numeric"') + "</div>";
     }).join("");
 
     var scheduleButton = session.status !== "completed"
-      ? '<button class="plan-button" type="button" data-adjust-schedule>整体调整后续计划</button>'
+      ? '<button class="plan-button" type="button" data-adjust-schedule>Shift this and all later sessions</button>'
       : "";
     var skipAction = session.status === "skipped"
-      ? '<button class="plan-button" type="button" data-restore-skipped-session>取消跳过</button>'
-      : '<button class="plan-button" type="button" data-skip-session>跳过本次</button>';
+      ? '<button class="plan-button" type="button" data-restore-skipped-session>Undo skip</button>'
+      : '<button class="plan-button" type="button" data-skip-session>Skip this session</button>';
     var scheduleHint = session.status !== "completed"
-      ? '<p class="plan-cycle-meta">目标日期早于本次会整体提前，晚于本次会整体顺延；范围内的跳过记录会恢复为待训练。</p>'
+      ? '<p class="plan-cycle-meta">An earlier date pulls the rest of the plan forward and a later one pushes it back; skipped sessions in that range return to planned.</p>'
       : "";
-    return '<section class="plan-session-section"><h3>训练记录</h3>' +
-      '<div><div class="plan-log-grid"><span></span><span>kg</span><span>reps</span><span>RPE</span></div>' +
-      rows.join("") + "</div><p>填写实际 RPE；不确定可留空，该组不参与能力估算。失败或未做的组填 0 次。</p>" +
-      '<div class="plan-accessory-records"><h4>辅助动作 · 聚合记录</h4>' + accessoryRows + "</div>" +
-      '<label class="plan-log-notes">备注（仅本人可见）<textarea data-log-notes>' +
+    var isAttempt = session.phase.key === "test" || session.phase.key === "retry";
+    return '<section class="plan-session-section"><h3>Training log</h3>' +
+      "<div>" + rows.join("") + "</div><p>" + (isAttempt
+        ? "Enter 0 reps for a missed attempt. The heaviest single you complete becomes the measured 1RM."
+        : "RPE is optional. Enter the reps you actually got: a set short of its target, or a top single " +
+          "at RPE 9.5 or more, holds next week's increase for this lift.") + "</p>" +
+      (secondaryRows.length
+        ? '<div class="plan-accessory-records"><h4>Pull-up back-off sets</h4>' + secondaryRows.join("") + "</div>"
+        : "") +
+      (accessoryRows
+        ? '<div class="plan-accessory-records"><h4>Accessories · totals</h4>' + accessoryRows + "</div>" : "") +
+      '<label class="plan-log-notes">Notes (visible to you only)<textarea data-log-notes>' +
       escapeHtml(log.notes || "") + "</textarea></label>" +
-      '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-log>按以上记录完成</button>' +
+      '<div class="plan-log-actions"><button class="plan-button plan-button-primary" type="button" data-save-log>Save session log</button>' +
       skipAction + '</div>' +
-      '<div class="plan-reschedule"><label>改期<input class="plan-log-input" data-move-date type="date" min="' +
+      '<div class="plan-reschedule"><label>Move to<input class="plan-log-input" data-move-date type="date" min="' +
       escapeHtml(privateState.activeCycle.startDate) + '" max="' + escapeHtml(core.addDays(privateState.activeCycle.endDate, 365)) +
-      '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>仅移动本次</button>' +
+      '" value="' + escapeHtml(session.date) + '"></label><button class="plan-button" type="button" data-move-session>Move this session only</button>' +
       scheduleButton + "</div>" + scheduleHint + "</section>";
   }
 
@@ -1235,38 +1025,34 @@
   function openMoveConfirmation(request, source, conflicts) {
     pendingScheduleAdjustment = null;
     pendingSessionMove = request;
-    dom.moveConfirmEyebrow.textContent = "MOVE / 调整日期";
-    dom.moveConfirmTitle.textContent = "替代已有规划？";
-    dom.moveConfirmButton.textContent = "确认替代";
+    dom.moveConfirmEyebrow.textContent = "MOVE SESSION";
+    dom.moveConfirmTitle.textContent = "Replace the planned session?";
+    dom.moveConfirmButton.textContent = "Replace";
     var conflictSummary = conflicts.map(function (session) {
-      return "“" + session.label + "”（" + statusLabel(session.status) + "）";
-    }).join("、");
-    dom.moveConfirmMessage.textContent = "确认将“" + source.label + "”移动到 " +
-      formatChineseDate(request.targetDate, true) + " 并替代 " + conflictSummary +
-      "？原规划会从日历和 Progress Overview 中移除。";
+      return "“" + session.label + "” (" + statusLabel(session.status) + ")";
+    }).join(", ");
+    dom.moveConfirmMessage.textContent = "Move “" + source.label + "” to " +
+      formatLongDate(request.targetDate, true) + " and replace " + conflictSummary +
+      "? The replaced session is removed from the calendar and the progress chart.";
     dom.moveConfirm.showModal();
   }
 
   async function applySessionMove(request) {
-    if (sessionMovePending) {
-      showMessage("上一次改期正在保存，请稍候。", "notice");
+    if (savePending) {
+      showMessage("The previous change is still being saved.", "notice");
       return;
     }
-    sessionMovePending = true;
-    var previousState = privateState;
     var previousChartArchive = viewingChartArchive;
     try {
-      privateState = core.moveSession(privateState, request.sourceId, request.targetDate, {
+      var nextState = core.moveSession(privateState, request.sourceId, request.targetDate, {
         holidayCalendars: holidayCalendars,
         asOfDate: todayInShanghai(),
         replace: request.replace === true
       });
       viewingChartArchive = -1;
-      var saveResult = await persist(
-        request.replace ? "原规划已替代，本次训练已改期。" : "本次训练已改期。"
-      );
-      if (saveResult === false) {
-        privateState = previousState;
+      var saveResult = await commit(nextState,
+        request.replace ? "The session was moved and replaced the one planned there." : "The session was moved.");
+      if (saveResult !== true) {
         viewingChartArchive = previousChartArchive;
         render();
       }
@@ -1281,86 +1067,80 @@
           }, source, error.conflicts || []);
         }
       } else if (error.code === "session_move_recorded_target") {
-        showMessage("目标日期已有训练记录，请先将那条记录移动到其他日期。", "error");
+        showMessage("That date already has a logged session; move that one first.", "error");
       } else if (error.code === "invalid_session_move_date") {
-        showMessage("改期日期必须位于当前周期内。", "error");
+        showMessage("The new date must be inside the current cycle.", "error");
       } else {
-        showMessage("改期失败：" + error.message, "error");
+        showMessage("The session could not be moved: " + error.message, "error");
       }
-    } finally {
-      sessionMovePending = false;
     }
   }
 
   function showScheduleAdjustmentError(error) {
     if (error.code === "schedule_deadline_locked") {
-      showMessage("当前周期已固定截止日期，请在截止日内逐次改期，或在设置中重新指定截止日。", "error");
+      showMessage("This cycle has a fixed end date. Move sessions one at a time inside it, or set a new end date in the plan settings.", "error");
     } else if (error.code === "schedule_adjust_recorded_future") {
-      showMessage("调整范围内已有训练记录，无法整体移动。请从更晚的训练开始，或仅移动本次。", "error");
+      showMessage("Logged sessions lie in that range, so it cannot be shifted as a whole. Start from a later session, or move this one only.", "error");
     } else if (error.code === "schedule_adjust_conflict") {
-      showMessage("提前日期不能早于或等于此前最后一场训练，请选择更接近本次的日期，或先单独调整此前训练。", "error");
+      showMessage("The new date cannot be on or before the previous session. Pick a date closer to this one, or move the earlier session first.", "error");
     } else if (error.code === "invalid_schedule_adjust_date") {
-      showMessage("目标日期必须不同于本次日期，提前不能早于周期开始，且最多调整一年。", "error");
+      showMessage("Pick a different date, no earlier than the cycle start and at most a year away.", "error");
     } else if (error.code === "invalid_schedule_adjust_source") {
-      showMessage("这项训练已完成或已发生变化，无法整体调整。", "error");
+      showMessage("This session is already done or has changed, so the plan cannot be shifted from it.", "error");
     } else {
-      showMessage("整体调整失败：" + error.message, "error");
+      showMessage("The plan could not be shifted: " + error.message, "error");
     }
   }
 
   function openScheduleAdjustmentConfirmation(request) {
     var advancing = request.days < 0;
-    var action = advancing ? "提前" : "顺延";
+    var days = Math.abs(request.days);
     pendingSessionMove = null;
     pendingScheduleAdjustment = request;
-    dom.moveConfirmEyebrow.textContent = advancing ? "ADVANCE / 提前计划" : "DEFER / 顺延计划";
-    dom.moveConfirmTitle.textContent = action + "后续计划？";
-    dom.moveConfirmButton.textContent = "确认" + action;
-    dom.moveConfirmMessage.textContent = "从“" + request.sourceLabel + "”开始的 " +
-      request.affectedCount + " 次未完成训练将整体" + action + " " + Math.abs(request.days) + " 天，周期结束日期变为 " +
-      formatChineseDate(request.newEndDate, false) + "。" +
-      (request.changesFixedDeadline ? "这次整体调整也会修改原固定截止日期。" : "") +
-      "范围内的“已跳过”会恢复为待训练。";
+    dom.moveConfirmEyebrow.textContent = advancing ? "PULL PLAN FORWARD" : "PUSH PLAN BACK";
+    dom.moveConfirmTitle.textContent = advancing ? "Pull the rest of the plan forward?" : "Push the rest of the plan back?";
+    dom.moveConfirmButton.textContent = advancing ? "Pull forward" : "Push back";
+    dom.moveConfirmMessage.textContent = "The " + request.affectedCount + " unfinished sessions from “" +
+      request.sourceLabel + "” onward move " + (advancing ? "forward" : "back") + " by " + days +
+      (days === 1 ? " day" : " days") + ", and the cycle ends on " +
+      formatLongDate(request.newEndDate, false) + ". " +
+      (request.changesFixedDeadline ? "This also changes the fixed end date. " : "") +
+      "Skipped sessions in that range return to planned.";
     dom.moveConfirm.showModal();
   }
 
   async function applyScheduleAdjustment(request) {
-    if (sessionMovePending) {
-      showMessage("上一次日程调整正在保存，请稍候。", "notice");
+    if (savePending) {
+      showMessage("The previous change is still being saved.", "notice");
       return;
     }
-    sessionMovePending = true;
-    var previousState = privateState;
     var previousChartArchive = viewingChartArchive;
     try {
-      privateState = core.adjustSchedule(privateState, request.sourceId, request.targetDate, {
+      var nextState = core.adjustSchedule(privateState, request.sourceId, request.targetDate, {
         holidayCalendars: holidayCalendars,
         asOfDate: todayInShanghai(),
         allowDeadlineChange: true
       });
       viewingChartArchive = -1;
-      var saveResult = await persist(request.days < 0
-        ? "跳过记录已撤销，后续训练已提前。"
-        : "跳过记录已撤销，后续训练已顺延。");
-      if (saveResult === false) {
-        privateState = previousState;
+      var saveResult = await commit(nextState, request.days < 0
+        ? "Skips were cleared and the remaining sessions pulled forward."
+        : "Skips were cleared and the remaining sessions pushed back.");
+      if (saveResult !== true) {
         viewingChartArchive = previousChartArchive;
         render();
       }
     } catch (error) {
       showScheduleAdjustmentError(error);
-    } finally {
-      sessionMovePending = false;
     }
   }
 
   function requestScheduleAdjustment(sourceId, targetDate) {
-    if (sessionMovePending) {
-      showMessage("上一次日程调整正在保存，请稍候。", "notice");
+    if (savePending) {
+      showMessage("The previous change is still being saved.", "notice");
       return;
     }
     if (!isOwner || isOffline || !privateState) {
-      showMessage("请先以本人账号在线登录。", "error");
+      showMessage("Sign in as the owner while online first.", "error");
       return;
     }
     var plan = displayPlan();
@@ -1368,11 +1148,11 @@
       return session.id === sourceId;
     });
     if (!source) {
-      showMessage("这项训练已发生变化，请刷新后重试。", "error");
+      showMessage("This session has changed; reload and try again.", "error");
       return;
     }
     if (source.date === targetDate) {
-      showMessage("训练日期没有变化。", "notice");
+      showMessage("The date is unchanged.", "notice");
       return;
     }
     try {
@@ -1399,12 +1179,12 @@
   }
 
   function requestSessionMove(sourceId, targetDate) {
-    if (sessionMovePending) {
-      showMessage("上一次改期正在保存，请稍候。", "notice");
+    if (savePending) {
+      showMessage("The previous change is still being saved.", "notice");
       return;
     }
     if (!isOwner || isOffline || !privateState) {
-      showMessage("请先以本人账号在线登录。", "error");
+      showMessage("Sign in as the owner while online first.", "error");
       return;
     }
     var plan = displayPlan();
@@ -1413,15 +1193,15 @@
     });
     var cycle = privateState.activeCycle;
     if (!source) {
-      showMessage("这项训练已发生变化，请刷新后重试。", "error");
+      showMessage("This session has changed; reload and try again.", "error");
       return;
     }
     if (!targetDate || targetDate < cycle.startDate || targetDate > cycle.endDate) {
-      showMessage("改期日期必须位于当前周期内。", "error");
+      showMessage("The new date must be inside the current cycle.", "error");
       return;
     }
     if (source.date === targetDate) {
-      showMessage("训练日期没有变化。", "notice");
+      showMessage("The date is unchanged.", "notice");
       return;
     }
 
@@ -1431,7 +1211,7 @@
       return Boolean(privateState.logs[session.id]);
     });
     if (recordedConflict) {
-      showMessage("目标日期已有训练记录，请先将那条记录移动到其他日期。", "error");
+      showMessage("That date already has a logged session; move that one first.", "error");
       return;
     }
     if (conflicts.length) {
@@ -1467,36 +1247,24 @@
   }
 
   function bindDetailActions(session) {
-    var learningSave = dom.detailBody.querySelector("[data-save-learning]");
-    if (learningSave) {
-      learningSave.addEventListener("click", function () {
-        saveLearningLog(session, learningSave);
-      });
-    }
-    var learningPlanSave = dom.detailBody.querySelector("[data-save-learning-plan]");
-    if (learningPlanSave) {
-      learningPlanSave.addEventListener("click", function () {
-        saveLearningLog(session, learningPlanSave, "planned");
-      });
-    }
     var save = dom.detailBody.querySelector("[data-save-log]");
     if (save) {
       save.addEventListener("click", function () {
-        saveTrainingLog(session);
+        saveTrainingLog(session, save);
       });
     }
     var skip = dom.detailBody.querySelector("[data-skip-session]");
     if (skip) {
-      skip.addEventListener("click", function () {
-        if (selectedPlanKind === "learning") {
-          saveLearningLog(session, skip, "skipped");
-        } else {
-          privateState = core.recordSession(privateState, session, {
+      skip.addEventListener("click", async function () {
+        skip.disabled = true;
+        try {
+          await commit(core.recordSession(privateState, session, {
             status: "skipped",
             mainSets: [],
             notes: dom.detailBody.querySelector("[data-log-notes]").value
-          });
-          persist("已标记为跳过。");
+          }), "The session was marked as skipped.");
+        } finally {
+          skip.disabled = false;
         }
       });
     }
@@ -1511,7 +1279,7 @@
       move.addEventListener("click", function () {
         var date = dom.detailBody.querySelector("[data-move-date]").value;
         if (!date) {
-          showMessage("请选择改期日期。", "error");
+          showMessage("Pick the date to move this session to.", "error");
           return;
         }
         requestSessionMove(session.id, date);
@@ -1522,7 +1290,7 @@
       adjustSchedule.addEventListener("click", function () {
         var date = dom.detailBody.querySelector("[data-move-date]").value;
         if (!date) {
-          showMessage("请选择整体调整后的日期。", "error");
+          showMessage("Pick the date this session should land on.", "error");
           return;
         }
         requestScheduleAdjustment(session.id, date);
@@ -1531,116 +1299,24 @@
   }
 
   async function cancelSessionSkip(session, button) {
-    var previousState = privateState;
     button.disabled = true;
     try {
-      if (selectedPlanKind === "learning") {
-        privateState = core.restoreSkippedLearningSession(
-          privateState,
-          selectedLearningPlanId,
-          session.id
-        );
-      } else {
-        privateState = core.restoreSkippedSession(privateState, session.id);
-      }
-      var saveResult = await persist(selectedPlanKind === "learning"
-        ? "已取消跳过，学习日恢复为计划中。"
-        : "已取消跳过，训练恢复为计划中。");
-      if (saveResult === false) {
-        privateState = previousState;
-        render();
-      }
+      await commit(core.restoreSkippedSession(privateState, session.id),
+        "The skip was undone.");
     } catch (error) {
-      privateState = previousState;
-      render();
-      showMessage("取消跳过失败：" + error.message, "error");
+      showMessage("The skip could not be undone: " + error.message, "error");
     } finally {
       button.disabled = false;
     }
   }
 
-  function fileToArtifact(file) {
-    return new Promise(function (resolve, reject) {
-      if (!file || file.size > 2 * 1024 * 1024) {
-        reject(new Error("learning_file_too_large"));
-        return;
-      }
-      if (typeof FileReader === "undefined") {
-        resolve({ id: "artifact-" + Date.now().toString(36), name: file.name, size: file.size, type: file.type });
-        return;
-      }
-      var reader = new FileReader();
-      reader.onload = function () {
-        resolve({
-          id: "artifact-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
-          name: String(file.name || "未命名文件").slice(0, 180),
-          size: Number(file.size || 0),
-          type: String(file.type || "application/octet-stream"),
-          dataUrl: reader.result,
-          uploadedAt: new Date().toISOString()
-        });
-      };
-      reader.onerror = function () { reject(new Error("learning_file_read_failed")); };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function saveLearningLog(session, button, forcedStatus) {
-    if (!isOwner || isOffline || !privateState) {
-      showMessage("请先以本人账号在线登录。", "error");
-      return;
-    }
-    if (button) button.disabled = true;
-    try {
-      var plan = privateState.learningPlans.find(function (candidate) {
-        return candidate.id === selectedLearningPlanId;
-      });
-      var filesInput = dom.detailBody.querySelector("[data-learning-files]");
-      var files = filesInput ? Array.prototype.slice.call(filesInput.files || []) : [];
-      if (files.length > 5) {
-        throw new Error("learning_file_limit");
-      }
-      var artifacts = [];
-      for (var index = 0; index < files.length; index += 1) {
-        artifacts.push(await fileToArtifact(files[index]));
-      }
-      var previous = plan && plan.logs && plan.logs[session.id];
-      var criteria = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-learning-criterion]:checked"))
-        .map(function (input) { return input.dataset.learningCriterion; });
-      privateState = core.recordLearningSession(privateState, selectedLearningPlanId, session, {
-        status: forcedStatus || "completed",
-        reflection: dom.detailBody.querySelector("[data-learning-reflection]").value,
-        dailyPlan: {
-          title: session.label,
-          objective: session.learning && session.learning.objective || "",
-          tasks: dom.detailBody.querySelector("[data-learning-day-tasks]").value.split(/\n+/)
-            .map(function (task) { return task.trim(); }).filter(Boolean)
-        },
-        criteria: criteria,
-        artifacts: (previous && previous.artifacts || []).concat(artifacts).slice(-12)
-      });
-      await persist(forcedStatus === "skipped"
-        ? "学习日已标记为跳过。"
-        : (forcedStatus === "planned" ? "当天学习计划已保存。" : "学习成果已保存。"));
-    } catch (error) {
-      var messages = {
-        learning_file_too_large: "单个学习生产物不能超过 2 MB。",
-        learning_file_limit: "一次最多上传 5 个文件。",
-        learning_file_read_failed: "文件读取失败，请重试。"
-      };
-      showMessage(messages[error.message] || "学习成果保存失败：" + error.message, "error");
-    } finally {
-      if (button) button.disabled = false;
-    }
-  }
-
-  function saveTrainingLog(session) {
+  async function saveTrainingLog(session, button) {
     var invalid = Array.prototype.slice.call(dom.detailBody.querySelectorAll("input[type=number]")).find(function (input) {
       return !input.checkValidity();
     });
     if (invalid) {
       invalid.reportValidity();
-      showMessage("请检查训练记录中的重量、次数和 RPE。", "error");
+      showMessage("Check the weight, reps and RPE fields in the log.", "error");
       return;
     }
     var sets = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-log-set]")).map(function (row) {
@@ -1651,10 +1327,16 @@
         completed: Number(row.querySelector("[data-log-reps]").value) >= Number(row.dataset.plannedReps)
       };
     });
+    var secondarySets = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-log-secondary-set]")).map(function (row) {
+      return {
+        weight: Number(row.querySelector("[data-log-weight]").value),
+        reps: Number(row.querySelector("[data-log-reps]").value)
+      };
+    });
     var previousAccessories = (privateState.logs[session.id] || {}).accessories || [];
     var accessories = Array.prototype.slice.call(dom.detailBody.querySelectorAll("[data-accessory-log]")).map(function (row) {
       var previous = previousAccessories.find(function (entry) {
-        return entry.name === row.dataset.accessoryName;
+        return entry.name === row.dataset.accessoryName || core.localize(entry.name) === row.dataset.accessoryName;
       });
       // Editing the simplified form preserves fields from older records.
       return Object.assign({}, previous, {
@@ -1666,44 +1348,106 @@
           Number(row.querySelector("[data-accessory-reps]").value) > 0
       });
     });
-    privateState = core.recordSession(privateState, session, {
-      status: "completed",
-      mainSets: sets,
-      accessories: accessories,
-      notes: dom.detailBody.querySelector("[data-log-notes]").value
-    });
-    persist("训练记录已保存。");
+    if (button) button.disabled = true;
+    try {
+      await commit(core.recordSession(privateState, session, {
+        status: "completed",
+        mainSets: sets,
+        secondarySets: secondarySets,
+        accessories: accessories,
+        notes: dom.detailBody.querySelector("[data-log-notes]").value
+      }), "The session log was saved.");
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
-  async function persist(successMessage, candidateState) {
+  // The single write path. The state on screen is only replaced once the
+  // server has accepted the new one, so a failed or conflicting save leaves
+  // the last saved plan in place.
+  async function commit(candidateState, successMessage) {
     if (!isOwner || isOffline || !store.configured) {
-      showMessage("当前为只读状态，无法保存。", "error");
+      showMessage("The plan is read-only right now and cannot be saved.", "error");
       return false;
     }
-    var nextState = candidateState || privateState;
-    nextState.updatedAt = new Date().toISOString();
-    var generated = core.generate(nextState, holidayCalendars, { asOfDate: todayInShanghai() });
-    nextState = generated.state;
-    if (!candidateState) privateState = nextState;
-    var snapshot = core.createPublicSnapshot(nextState, generated);
+    if (savePending) {
+      showMessage("The previous change is still being saved.", "notice");
+      return false;
+    }
+    savePending = true;
     try {
+      var nextState = core.adoptFeedbackProgram(deepClone(candidateState), todayInShanghai());
+      await ensureHolidayYears(nextState.activeCycle);
+      var generated = core.generate(nextState, holidayCalendars, { asOfDate: todayInShanghai() });
+      nextState = generated.state;
+      var snapshot = core.createPublicSnapshot(nextState, generated);
       var record = await store.save(nextState.version, nextState, snapshot);
       nextState.version = record.version;
       nextState.updatedAt = record.updatedAt;
       privateState = nextState;
-      closeDetails();
+      // Render first so the drawer can hand focus back to the session's new button.
       render();
+      closeDetails();
       showMessage(successMessage, "success");
       return true;
     } catch (error) {
       if (error.code === "version_conflict") {
-        pendingConflictState = deepClone(nextState);
+        pendingConflict = { local: deepClone(candidateState), message: successMessage };
+        dom.conflictMessage.textContent = "Another device saved the plan after this page loaded it. " +
+          "Merging keeps the session logs, bodyweight entries and moves from both sides.";
         dom.conflict.showModal();
         return "conflict";
       }
-      showMessage("保存失败：" + error.message, "error");
+      showMessage("Saving failed; the plan was not changed: " + error.message, "error");
       return false;
+    } finally {
+      savePending = false;
     }
+  }
+
+  async function resolveConflict(strategy) {
+    var pending = pendingConflict;
+    if (!pending) {
+      dom.conflict.close();
+      return;
+    }
+    try {
+      var latest = await store.loadPrivate();
+      var remote = latest && latest.state ? core.normalizeState(latest.state) : null;
+      var resolved;
+      if (strategy === "merge" && remote) {
+        remote.version = Number(latest.version || 0);
+        resolved = core.mergeStates(privateState, remote, pending.local);
+      } else {
+        resolved = deepClone(pending.local);
+      }
+      resolved.version = latest ? Number(latest.version || 0) : 0;
+      pendingConflict = null;
+      dom.conflict.close();
+      await commit(resolved, strategy === "merge"
+        ? "Both sets of changes were merged and saved."
+        : "The server version was overwritten with this device's plan.");
+    } catch (error) {
+      if (error.code === "merge_conflict") {
+        dom.conflictMessage.textContent = "Both devices changed the same plan settings (" + error.field +
+          "), so they cannot be merged automatically. Reload the server version, or overwrite it with this device's plan.";
+        return;
+      }
+      showMessage("The conflict could not be resolved: " + error.message, "error");
+    }
+  }
+
+  function discardConflict() {
+    pendingConflict = null;
+    render();
+    showMessage("The unsaved change was discarded; the plan shows the last version this page saved.", "notice");
+  }
+
+  async function reloadAfterConflict() {
+    pendingConflict = null;
+    dom.conflict.close();
+    await loadOwnerPlan();
+    showMessage("The server version was reloaded.", "success");
   }
 
   function inputValue(name, value) {
@@ -1720,13 +1464,13 @@
 
   function openBodyweightDialog() {
     if (!isOwner || isOffline || !privateState) {
-      showMessage("请先以本人账号在线登录。", "error");
+      showMessage("Sign in as the owner while online first.", "error");
       return;
     }
     var cycle = privateState.activeCycle;
     var date = todayInShanghai();
     if (date < cycle.startDate) {
-      showMessage("当前周期尚未开始，暂不记录未来体重。", "notice");
+      showMessage("The cycle has not started yet, so there is no bodyweight to record.", "notice");
       return;
     }
     if (date > cycle.endDate) {
@@ -1753,114 +1497,27 @@
       ? todayInShanghai()
       : cycle && cycle.endDate;
     if (!cycle || !date || date < cycle.startDate || date > latestAllowedDate) {
-      dom.bodyweightError.textContent = "记录日期必须位于当前周期内，且不能晚于今天。";
+      dom.bodyweightError.textContent = "The date must be inside the current cycle and no later than today.";
       return;
     }
     if (!bodyweight || bodyweight < 30 || bodyweight > 300) {
-      dom.bodyweightError.textContent = "请输入 30–300 kg 之间的有效体重。";
+      dom.bodyweightError.textContent = "Enter a bodyweight between 30 and 300 kg.";
       return;
     }
-    privateState = core.recordBodyweight(privateState, {
+    var saved = await commit(core.recordBodyweight(privateState, {
       date: date,
       value: bodyweight
-    });
+    }), "The bodyweight entry was saved.");
+    if (saved === false) {
+      dom.bodyweightError.textContent = "Saving failed; nothing was changed. Try again shortly.";
+      return;
+    }
     dom.bodyweightDialog.close();
-    await persist("体重记录已更新。");
-  }
-
-  function setLearningInput(name, value) {
-    if (dom.learningSettingsForm && dom.learningSettingsForm.elements[name]) {
-      dom.learningSettingsForm.elements[name].value = value == null ? "" : value;
-    }
-  }
-
-  function openLearningSettings(planId) {
-    if (!isOwner || isOffline || !privateState) {
-      showMessage("请先以本人账号在线登录。", "error");
-      return;
-    }
-    learningSettingsEditingId = planId || null;
-    var existing = (privateState.learningPlans || []).find(function (plan) { return plan.id === planId; });
-    var plan = existing ? core.normalizeLearningPlan(existing) : core.createDefaultLearningPlan(todayInShanghai(), core.addDays(todayInShanghai(), 27));
-    dom.learningSettingsTitle.textContent = existing ? "编辑学习计划" : "新增学习计划";
-    setLearningInput("learningTitle", plan.title);
-    setLearningInput("learningObjective", plan.objective);
-    setLearningInput("learningStartDate", plan.startDate);
-    setLearningInput("learningEndDate", plan.endDate);
-    LEARNING_DAY_NAMES.forEach(function (name, index) {
-      var item = plan.dailyTemplate[String(index + 1)] || {};
-      setLearningInput("learningDay" + (index + 1) + "Title", item.title);
-      setLearningInput("learningDay" + (index + 1) + "Tasks", (item.tasks || []).join("\n"));
-    });
-    setLearningInput("learningCriteria", (plan.acceptanceCriteria || []).map(function (criterion) {
-      return criterion.title + (criterion.description ? " · " + criterion.description : "");
-    }).join("\n"));
-    dom.learningFormError.textContent = "";
-    dom.learningSettings.showModal();
-  }
-
-  var LEARNING_DAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-
-  async function saveLearningSettings(event) {
-    event.preventDefault();
-    var form = new FormData(dom.learningSettingsForm);
-    var title = String(form.get("learningTitle") || "").trim();
-    var objective = String(form.get("learningObjective") || "").trim();
-    var startDate = String(form.get("learningStartDate") || "");
-    var endDate = String(form.get("learningEndDate") || "");
-    if (!title) {
-      dom.learningFormError.textContent = "请填写学习计划名称。";
-      return;
-    }
-    if (!startDate || !endDate || endDate < startDate) {
-      dom.learningFormError.textContent = "结束日期必须不早于开始日期。";
-      return;
-    }
-    var dailyTemplate = {};
-    LEARNING_DAY_NAMES.forEach(function (_, index) {
-      dailyTemplate[String(index + 1)] = {
-        title: String(form.get("learningDay" + (index + 1) + "Title") || "").trim() || "学习任务",
-        objective: "",
-        tasks: String(form.get("learningDay" + (index + 1) + "Tasks") || "").split(/\n+/)
-          .map(function (task) { return task.trim(); }).filter(Boolean)
-      };
-    });
-    var acceptanceCriteria = String(form.get("learningCriteria") || "").split(/\n+/)
-      .map(function (line) { return line.trim(); }).filter(Boolean)
-      .map(function (line, index) {
-        var parts = line.split(/\s+[·|｜]\s+/);
-        return { id: "criterion-" + (index + 1), title: parts[0], description: parts.slice(1).join(" · ") };
-      });
-    var existing = (privateState.learningPlans || []).find(function (plan) {
-      return plan.id === learningSettingsEditingId;
-    });
-    var next = core.normalizeLearningPlan(Object.assign({}, existing || core.createDefaultLearningPlan(startDate, endDate), {
-      id: existing ? existing.id : "learning-" + startDate + "-" + Date.now().toString(36),
-      title: title,
-      objective: objective,
-      startDate: startDate,
-      endDate: endDate,
-      dailyTemplate: dailyTemplate,
-      acceptanceCriteria: acceptanceCriteria,
-      status: existing ? existing.status : "active"
-    }));
-    if (existing) {
-      privateState.learningPlans = privateState.learningPlans.map(function (plan) {
-        return plan.id === next.id ? next : plan;
-      });
-    } else {
-      privateState.learningPlans = (privateState.learningPlans || []).concat(next);
-    }
-    privateState.activePlanId = next.id;
-    selectedPlanKind = "learning";
-    selectedLearningPlanId = next.id;
-    dom.learningSettings.close();
-    await persist(existing ? "学习计划已更新。" : "学习计划已创建。");
   }
 
   function openSettings(newCycle) {
     if (!isOwner || isOffline) {
-      showMessage("请先以本人账号在线登录。", "error");
+      showMessage("Sign in as the owner while online first.", "error");
       return;
     }
     settingsNewCycle = Boolean(newCycle);
@@ -1879,13 +1536,12 @@
     }
 
     settingsHolidayOverrides = deepClone(settingsDraftCycle.holidayOverrides || {});
-    dom.settingsTitle.textContent = settingsNewCycle ? "开始新周期" : "编辑计划";
+    dom.settingsTitle.textContent = settingsNewCycle ? "Start a new cycle" : "Edit plan";
     inputValue("startDate", settingsDraftCycle.startDate);
     inputValue("endDate", settingsDraftCycle.requestedEndDate || settingsDraftCycle.endDate);
     inputValue("replanFromDate", todayInShanghai());
     inputValue("trainOnHolidays", "yes");
     updateSettingsScheduleFields();
-    inputValue("priorities", (settingsDraftCycle.priorities || ["bench", "squat"]).join(","));
     inputValue("trainingTime", privateState.preferences.trainingTime || "19:00");
     var bootstrapsBodyweight = !settingsNewCycle && settingsDraftCycle.status === "draft";
     dom.settingsBodyweight.hidden = !bootstrapsBodyweight;
@@ -1931,8 +1587,10 @@
     fields.startDate.readOnly = replanning;
     if (replanning) fields.startDate.value = settingsDraftCycle.startDate;
     dom.settingsScheduleHelp.textContent = replanning
-      ? "默认固定截止日期。首次保存或修改排期参数时，保留此前排期与所有训练记录，取消剩余课次的改期和原整体提前 / 顺延，按周模板重排；之后仅改重量或训练时间会保留手动改期。"
-      : "结束日期按你的设置执行，不会因目标预测自动延长。";
+      ? "The end date is fixed. The first save, or any change to the schedule fields, keeps earlier sessions " +
+        "and every log, drops moves and shifts on the remaining sessions, and lays them out again from the " +
+        "weekly template. Later edits to loads or training time keep manual moves."
+      : "The cycle ends on the date you set; it is never extended automatically.";
   }
 
   function templateTypeOptions(selected) {
@@ -1943,7 +1601,7 @@
   }
 
   function weekdayOptions(selected) {
-    var labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    var labels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     return labels.map(function (label, index) {
       var weekday = index + 1;
       return '<option value="' + weekday + '"' + (Number(selected) === weekday ? " selected" : "") +
@@ -1955,11 +1613,11 @@
     dom.templateEditor.innerHTML = (template || []).map(function (item) {
       return '<div class="plan-template-row" draggable="true" data-template-id="' + escapeHtml(item.id) + '">' +
         '<span class="plan-template-handle" aria-hidden="true">⠿</span>' +
-        '<select data-template-type aria-label="训练类型">' + templateTypeOptions(item.type) + "</select>" +
-        '<select data-template-weekday aria-label="星期">' + weekdayOptions(item.weekday) + "</select>" +
-        '<div class="plan-template-actions"><button type="button" data-template-up aria-label="上移">↑</button>' +
-        '<button type="button" data-template-down aria-label="下移">↓</button>' +
-        '<button type="button" data-template-remove aria-label="删除">×</button></div></div>';
+        '<select data-template-type aria-label="Session type">' + templateTypeOptions(item.type) + "</select>" +
+        '<select data-template-weekday aria-label="Weekday">' + weekdayOptions(item.weekday) + "</select>" +
+        '<div class="plan-template-actions"><button type="button" data-template-up aria-label="Move up">↑</button>' +
+        '<button type="button" data-template-down aria-label="Move down">↓</button>' +
+        '<button type="button" data-template-remove aria-label="Remove">×</button></div></div>';
     }).join("");
     bindTemplateEditor();
   }
@@ -2017,10 +1675,10 @@
     var entries = Object.keys(settingsHolidayOverrides).sort();
     dom.holidayOverrides.innerHTML = entries.length ? entries.map(function (date) {
       return '<div class="plan-holiday-item"><span>' + escapeHtml(date + " · " +
-        (settingsHolidayOverrides[date] === "off" ? "休息日" : "训练日")) +
+        (settingsHolidayOverrides[date] === "off" ? "rest day" : "training day")) +
         '</span><button class="plan-text-button" type="button" data-remove-holiday="' +
-        escapeHtml(date) + '">删除</button></div>';
-    }).join("") : '<p class="plan-cycle-meta">暂无手动覆盖。</p>';
+        escapeHtml(date) + '">Remove</button></div>';
+    }).join("") : '<p class="plan-cycle-meta">No manual overrides.</p>';
     Array.prototype.slice.call(dom.holidayOverrides.querySelectorAll("[data-remove-holiday]")).forEach(function (button) {
       button.addEventListener("click", function () {
         delete settingsHolidayOverrides[button.dataset.removeHoliday];
@@ -2053,28 +1711,28 @@
       (!privateState.activeCycle.replannedSchedule || settingsScheduleSignature() !== settingsInitialSchedule);
 
     if (!startDate || !endDate || endDate < startDate) {
-      dom.formError.textContent = "目标日期必须晚于开始日期。";
+      dom.formError.textContent = "The end date must be after the start date.";
       return;
     }
     if (core.daysBetween(startDate, endDate) < 27) {
-      dom.formError.textContent = "计划至少需要 4 周；少于 8 周会继续显示风险提示。";
+      dom.formError.textContent = "A cycle needs at least 4 weeks; anything under 8 weeks keeps a warning.";
       return;
     }
     if (!bodyweight || bodyweight <= 0) {
       dom.formError.textContent = bootstrapsBodyweight
-        ? "请填写有效的初始体重。"
-        : "请先通过“更新体重”记录有效体重。";
+        ? "Enter a valid starting bodyweight."
+        : "Record a bodyweight with “Update bodyweight” first.";
       return;
     }
     if (!lifts.bench.current || !lifts.bench.target ||
         !lifts.squat.current || !lifts.squat.target ||
         bodyweight + lifts.pullup.current <= 0 ||
         bodyweight + lifts.pullup.target <= 0) {
-      dom.formError.textContent = "请填写有效的三项当前/目标 1RM。";
+      dom.formError.textContent = "Enter a valid current and goal 1RM for all three lifts.";
       return;
     }
     if (!template.length || new Set(weekdays).size !== weekdays.length) {
-      dom.formError.textContent = "周模板至少需要一个训练日，且同一天只能安排一次训练。";
+      dom.formError.textContent = "The weekly template needs at least one session and at most one per day.";
       return;
     }
 
@@ -2091,12 +1749,12 @@
         });
       } catch (error) {
         dom.formError.textContent = error.code === "invalid_replan_dates"
-          ? "重排起始日期必须位于周期开始与截止日期之间。"
+          ? "The reschedule start date must lie between the cycle start and end dates."
           : (error.code === "replan_recorded_after_deadline"
-            ? "截止日期之后已有训练记录，请将截止日期设在这些记录之后。"
+            ? "Sessions are already logged after that end date; set the end date after them."
             : (error.code === "invalid_replan_template"
-              ? "请检查周模板：至少需要一个训练日，且同一天只能安排一次训练。"
-              : "无法重排：" + error.message));
+              ? "Check the weekly template: at least one session, and at most one per day."
+              : "The plan could not be rescheduled: " + error.message));
         return;
       }
     }
@@ -2129,10 +1787,13 @@
     cycle.startDate = startDate;
     cycle.requestedEndDate = endDate;
     cycle.endDate = endDate;
-    cycle.priorities = String(form.get("priorities") || "bench,squat").split(",");
     cycle.schedule = null;
     cycle.id = settingsNewCycle ? "cycle-" + startDate + "-" + Date.now().toString(36) : cycle.id;
+    var wasDraft = cycle.status === "draft";
     cycle.status = "active";
+    if (settingsNewCycle || wasDraft || cycle.title === core.templateTitle(cycle.template)) {
+      cycle.title = core.templateTitle(template);
+    }
     cycle.template = template;
     if (!replanning) cycle.holidayOverrides = deepClone(settingsHolidayOverrides);
     cycle.sessionOverrides = settingsNewCycle ? {} : cycle.sessionOverrides || {};
@@ -2157,6 +1818,10 @@
       if (settingsNewCycle || Number(lift.current1rm) !== lifts[key].current) {
         lift.assessed1rm = lifts[key].current;
         lift.assessedOn = settingsNewCycle ? core.addDays(startDate, -1) : todayInShanghai();
+        // A corrected estimate restarts the reference line from that value.
+        if (!settingsNewCycle && cycle.status !== "draft") {
+          core.reanchorLift(cycle, key, lifts[key].current, todayInShanghai());
+        }
       }
       lift.current1rm = lifts[key].current;
       lift.target1rm = lifts[key].target;
@@ -2166,13 +1831,13 @@
     nextState.preferences.trainingTime = form.get("trainingTime") || "19:00";
     var previousChartArchive = viewingChartArchive;
     viewingChartArchive = -1;
-    var saved = await persist(settingsNewCycle ? "新周期已创建，旧周期已归档。" :
-      (replanning ? "剩余训练已按固定截止日期重新安排。" : "计划已重新生成。"), nextState);
+    var saved = await commit(nextState, settingsNewCycle ? "The new cycle was created and the previous one archived." :
+      (replanning ? "The remaining sessions were rescheduled to the fixed end date." : "The plan was regenerated."));
     if (saved !== true) viewingChartArchive = previousChartArchive;
     if (saved === true) {
       dom.settings.close();
     } else if (saved === false) {
-      dom.formError.textContent = "保存失败，当前计划未更改。请稍后重试。";
+      dom.formError.textContent = "Saving failed; the plan was not changed. Try again shortly.";
     } else {
       dom.settings.close();
     }
@@ -2201,7 +1866,7 @@
       durationMinutes: 90,
       reminderMinutes: 120
     };
-    download("miyaal-" + (selectedPlanKind === "learning" ? "learning-plan" : "fitness-plan") + ".ics",
+    download("miyaal-training-plan.ics",
       core.generateIcs(plan, preferences), "text/calendar;charset=utf-8");
   }
 
@@ -2216,33 +1881,9 @@
     );
   }
 
-  async function forceSave() {
-    if (!pendingConflictState) {
-      dom.conflict.close();
-      return;
-    }
-    try {
-      var latest = await store.loadPrivate();
-      pendingConflictState.version = latest ? latest.version : 0;
-      privateState = pendingConflictState;
-      pendingConflictState = null;
-      dom.conflict.close();
-      await persist("当前修改已覆盖服务器版本。");
-    } catch (error) {
-      showMessage("强制覆盖失败：" + error.message, "error");
-    }
-  }
-
-  async function reloadAfterConflict() {
-    pendingConflictState = null;
-    dom.conflict.close();
-    await loadOwnerPlan();
-    showMessage("已重新载入服务器版本。", "success");
-  }
-
   dom.auth.addEventListener("click", async function () {
     if (!store.configured) {
-      showMessage("请先在 _config.yml 配置 Supabase URL 与 Publishable Key。", "notice");
+      showMessage("Set the Supabase URL and publishable key in _config.yml first.", "notice");
       return;
     }
     dom.auth.disabled = true;
@@ -2254,28 +1895,22 @@
         availability = null;
       }
       if (!availability || availability.offline) {
-        showMessage("同步服务暂不可用，无法登录。请稍后重试。", "offline");
+        showMessage("The sync service is unavailable, so sign-in is not possible right now.", "offline");
         return;
       }
       await store.signIn();
     } catch (error) {
-      showMessage("GitHub 登录失败：" + error.message, "error");
+      showMessage("GitHub sign-in failed: " + error.message, "error");
     } finally {
       dom.auth.disabled = false;
     }
   });
   dom.updateBodyweight.addEventListener("click", openBodyweightDialog);
-  dom.edit.addEventListener("click", function () {
-    if (selectedPlanKind === "learning") {
-      openLearningSettings(selectedLearningPlanId);
-    } else {
-      openSettings(false);
-    }
-  });
+  dom.edit.addEventListener("click", function () { openSettings(false); });
   dom.newCycle.addEventListener("click", function () { openSettings(true); });
   dom.signOut.addEventListener("click", function () {
     store.signOut().catch(function (error) {
-      showMessage("退出失败：" + error.message, "error");
+      showMessage("Sign-out failed: " + error.message, "error");
     });
   });
   dom.exportIcs.addEventListener("click", exportIcs);
@@ -2297,7 +1932,6 @@
     calendarDragActive = false;
     Array.prototype.slice.call(dom.monthGrid.querySelectorAll(".is-dragging, .is-drop-target, .is-replace-target")).forEach(function (cell) {
       cell.classList.remove("is-dragging", "is-drop-target", "is-replace-target");
-      cell.removeAttribute("aria-grabbed");
     });
   }
 
@@ -2316,14 +1950,13 @@
 
   dom.monthGrid.addEventListener("dragstart", function (event) {
     var source = event.target.closest('[data-session-id][draggable="true"]');
-    if (!source || sessionMovePending) {
+    if (!source || savePending) {
       event.preventDefault();
       return;
     }
     draggedSessionId = source.dataset.sessionId;
     calendarDragActive = true;
     source.classList.add("is-dragging");
-    source.setAttribute("aria-grabbed", "true");
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", draggedSessionId);
@@ -2382,7 +2015,7 @@
     if (calendarDragActive || suppressCalendarClick) {
       return;
     }
-    var button = event.target.closest("[data-plan-session]") || event.target.closest("[data-session-id]");
+    var button = event.target.closest("[data-session-id]");
     if (button) {
       openDetails(button.dataset.sessionId);
     }
@@ -2397,7 +2030,6 @@
     button.addEventListener("click", closeDetails);
   });
   dom.settingsForm.addEventListener("submit", saveSettings);
-  dom.learningSettingsForm.addEventListener("submit", saveLearningSettings);
   dom.bodyweightForm.addEventListener("submit", saveBodyweight);
   app.querySelector("[data-plan-close-settings]").addEventListener("click", function () { dom.settings.close(); });
   app.querySelector("[data-plan-close-bodyweight]").addEventListener("click", function () {
@@ -2408,8 +2040,6 @@
   });
   dom.templateEditor.addEventListener("dragover", handleTemplateDrag);
   app.querySelector("[data-plan-cancel-settings]").addEventListener("click", function () { dom.settings.close(); });
-  app.querySelector("[data-plan-close-learning-settings]").addEventListener("click", function () { dom.learningSettings.close(); });
-  app.querySelector("[data-plan-cancel-learning-settings]").addEventListener("click", function () { dom.learningSettings.close(); });
   app.querySelector("[data-plan-add-template]").addEventListener("click", function () {
     var template = readTemplateEditor();
     template.push({
@@ -2423,7 +2053,7 @@
   app.querySelector("[data-plan-add-holiday]").addEventListener("click", function () {
     var date = dom.holidayDate.value;
     if (!date) {
-      dom.formError.textContent = "请选择需要覆盖的日期。";
+      dom.formError.textContent = "Pick the date to override.";
       return;
     }
     settingsHolidayOverrides[date] = dom.holidayType.value;
@@ -2444,6 +2074,16 @@
     pendingScheduleAdjustment = null;
   });
   app.querySelector("[data-plan-reload]").addEventListener("click", reloadAfterConflict);
+  app.querySelector("[data-plan-merge]").addEventListener("click", function () { resolveConflict("merge"); });
+  // Esc closes the dialog without choosing: drop the unsaved change so the
+  // page never shows a plan the server does not have.
+  dom.conflict.addEventListener("cancel", discardConflict);
+  dom.drawer.addEventListener("close", restoreDetailFocus);
+  dom.drawer.addEventListener("click", function (event) {
+    if (event.target === dom.drawer) {
+      closeDetails();
+    }
+  });
   window.addEventListener("resize", function () {
     window.clearTimeout(chartResizeTimer);
     chartResizeTimer = window.setTimeout(function () {
@@ -2453,23 +2093,14 @@
       }
     }, 120);
   });
-  app.querySelector("[data-plan-force-save]").addEventListener("click", forceSave);
+  app.querySelector("[data-plan-force-save]").addEventListener("click", function () { resolveConflict("overwrite"); });
   mobileQuery.addEventListener("change", function () {
     renderCalendar(displayPlan());
   });
-  document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && app.querySelector("dialog[open]")) {
-      return;
-    }
-    if (event.key === "Escape" && !dom.drawer.hidden) {
-      closeDetails();
-    }
-  });
-
   window.addEventListener("offline", function () {
     isOffline = true;
     render();
-    showMessage("网络已断开，当前计划切换为只读。", "offline");
+    showMessage("The network dropped; the plan is read-only until it returns.", "offline");
   });
   window.addEventListener("online", function () {
     if (!store.configured) {
@@ -2477,9 +2108,9 @@
     }
     var reload = isOwner ? loadOwnerPlan : loadPublicPlan;
     reload().then(function () {
-      showMessage("网络已恢复，计划已重新同步。", "success");
+      showMessage("The network is back and the plan was reloaded.", "success");
     }).catch(function (error) {
-      showMessage("重新同步失败：" + error.message, "error");
+      showMessage("The plan could not be reloaded: " + error.message, "error");
     });
   });
 

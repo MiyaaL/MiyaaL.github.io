@@ -1,7 +1,8 @@
 "use strict";
 
-const assert = require("assert");
-const core = require("../assets/js/plan-core.js");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const core = require("./helpers/legacy-core.js");
 const holidays = require("../assets/data/holidays/cn-2026.json");
 
 function configured() {
@@ -15,13 +16,7 @@ function configured() {
   return state;
 }
 
-const failures = [];
-function check(name, run) {
-  try { run(); console.log("PASS:", name); }
-  catch (error) { failures.push(name); console.error("FAIL:", name, error.message); }
-}
-
-check("saving or editing the same workout does not count it twice", () => {
+test("saving or editing the same workout does not count it twice", () => {
   const state = configured();
   const session = core.generate(state, [holidays]).sessions[0];
   const log = { mainSets: [{ weight: 80, reps: 1, rpe: 8, completed: true }] };
@@ -30,7 +25,7 @@ check("saving or editing the same workout does not count it twice", () => {
   assert.strictEqual(twice.activeCycle.lifts.bench.current1rm, once.activeCycle.lifts.bench.current1rm);
 });
 
-check("deload and missing RPE do not lower the strength estimate", () => {
+test("deload and missing RPE do not lower the strength estimate", () => {
   const state = configured();
   const session = core.generate(state, [holidays]).sessions.find(x => x.date === "2026-08-24");
   const next = core.recordSession(state, session, { mainSets: [{ weight: 50, reps: 5, rpe: 6, completed: true }] });
@@ -39,7 +34,7 @@ check("deload and missing RPE do not lower the strength estimate", () => {
   assert.strictEqual(core.recordSession(state, first, { mainSets: [{ weight: 60, reps: 1, rpe: null }] }).activeCycle.lifts.bench.current1rm, 80);
 });
 
-check("the cycle ends with goal attempts and routine strength work includes a non-maximal top set", () => {
+test("the cycle ends with goal attempts and routine strength work includes a non-maximal top set", () => {
   const state = configured();
   state.activeCycle.requestedEndDate = "2026-10-31";
   Object.assign(state.activeCycle.lifts.bench, { current1rm: 85.5, assessed1rm: 85.5 });
@@ -49,8 +44,8 @@ check("the cycle ends with goal attempts and routine strength work includes a no
   const plan = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
   const benchTest = plan.sessions.find(x => x.date === "2026-11-06" && x.workout.liftKey === "bench");
   const squatTest = plan.sessions.find(x => x.workout.liftKey === "squat" && x.isTest);
-  assert.strictEqual(benchTest.label, "杠铃卧推 · 周期目标");
-  assert.strictEqual(squatTest.label, "杠铃深蹲 · 周期目标");
+  assert.strictEqual(benchTest.label, "Bench press · Goal test");
+  assert.strictEqual(squatTest.label, "Back squat · Goal test");
   assert.deepStrictEqual([
     benchTest.workout.workSets.map(x => x.loadKg),
     squatTest.workout.workSets.map(x => x.loadKg)
@@ -59,7 +54,7 @@ check("the cycle ends with goal attempts and routine strength work includes a no
   assert(future.filter(x => /^load-/.test(x.phase.key)).every(x => {
     const work = x.workout.workSets;
     if (/volume$/.test(x.type)) return work.length === 1 && work[0].sets > 1;
-    return work.length === 2 && work[0].label === "非极限顶组" && work[0].sets === 1 && work[0].reps === 1 && work[0].rpe === 8 && work[1].sets > 1;
+    return work.length === 2 && work[0].label === "Submaximal top single" && work[0].sets === 1 && work[0].reps === 1 && work[0].rpe === 8 && work[1].sets > 1;
   }));
   assert(future.filter(x => x.phase.key === "deload").every(x => !x.workout.accessories.length));
   assert.deepStrictEqual([
@@ -71,13 +66,13 @@ check("the cycle ends with goal attempts and routine strength work includes a no
   assert.strictEqual(due.phase.key, "test");
   assert.deepStrictEqual(due.workout.workSets, benchTest.workout.workSets, "the current date does not substitute an assessment for the fixed goal attempt");
 
-  state.activeCycle.loadAdjustments.bench = { percentage: -0.05, afterDate: "2026-11-02" };
+  state.activeCycle.loadAdjustments = { bench: { percentage: -0.05, afterDate: "2026-11-02" } }; // legacy field, ignored and dropped
   const reduced = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
   const reducedBench = reduced.sessions.find(x => x.date === "2026-11-06" && x.workout.liftKey === "bench");
   assert.deepStrictEqual(reducedBench.workout.workSets.map(x => x.loadKg), [90, 95, 100], "legacy automatic load adjustments do not change target attempts");
 });
 
-check("generation preserves the selected deadline and explicit schedule adjustment", () => {
+test("generation preserves the selected deadline and explicit schedule adjustment", () => {
   const state = configured();
   state.activeCycle.requestedEndDate = "2026-10-31";
   state.activeCycle.endDate = "2027-06-05";
@@ -99,7 +94,7 @@ check("generation preserves the selected deadline and explicit schedule adjustme
   assert.strictEqual(core.generate(plan.state, [holidays], { asOfDate: "2026-09-22" }).cycle.endDate, plan.cycle.endDate);
 });
 
-check("measured strength gains do not shorten the selected cycle", () => {
+test("measured strength gains do not shorten the selected cycle", () => {
   let state = configured();
   const initial = core.generate(state, [holidays]);
   for (const [date, weight] of [["2026-09-07", 95], ["2026-09-14", 95], ["2026-09-09", 115], ["2026-09-16", 115]]) {
@@ -109,10 +104,9 @@ check("measured strength gains do not shorten the selected cycle", () => {
   }
   const plan = core.generate(state, [holidays], { asOfDate: "2026-09-16" });
   assert.strictEqual(plan.cycle.endDate, "2026-10-31");
-  assert.deepStrictEqual(plan.cycle.priorities, ["bench", "squat"]);
 });
 
-check("holiday gaps do not introduce a separate recovery phase", () => {
+test("holiday gaps do not introduce a separate recovery phase", () => {
   const plan = core.generate(configured(), [holidays]);
   const session = plan.sessions.find(x => x.date === "2026-10-14");
   assert.strictEqual(session.phase.key, "load-3");
@@ -120,7 +114,7 @@ check("holiday gaps do not introduce a separate recovery phase", () => {
   assert(!session.isTest);
 });
 
-check("deload removes accessories without crossing main lift types", () => {
+test("deload removes accessories without crossing main lift types", () => {
   const plan = core.generate(configured(), [holidays]);
   const light = plan.sessions.find(x => x.date === "2026-08-24");
   assert.strictEqual(light.workout.accessories.length, 0);
@@ -128,7 +122,7 @@ check("deload removes accessories without crossing main lift types", () => {
   assert(volumePush.workout.accessories.every(x => x.liftKey === volumePush.workout.liftKey));
 });
 
-check("actual RPE is recorded without adding an automatic load adjustment", () => {
+test("actual RPE is recorded without adding an automatic load adjustment", () => {
   const state = configured();
   const session = core.generate(state, [holidays]).sessions[0];
   const mainSets = session.workout.workSets.flatMap(set => Array.from({ length: set.sets }, (_, index) => ({
@@ -136,16 +130,16 @@ check("actual RPE is recorded without adding an automatic load adjustment", () =
   })));
   const next = core.recordSession(state, session, { mainSets });
   assert.deepStrictEqual(next.logs[session.id].mainSets.map(set => set.rpe), mainSets.map(set => set.rpe));
-  assert.strictEqual(next.activeCycle.loadAdjustments.bench, undefined);
+  assert.strictEqual(next.activeCycle.loadAdjustments, undefined);
 });
 
-check("accessory records remain intact without automatically changing future loads", () => {
+test("accessory records remain intact without automatically changing future loads", () => {
   const state = configured();
   const initial = core.generate(state, [holidays]);
   const first = initial.sessions.find(x => x.type === "pull");
   const expected = initial.sessions.find(x => x.type === "pull" && x.date > first.date);
   const accessories = [{
-    name: "哑铃弯举", weight: 10, sets: 2, reps: 12, rpe: 7,
+    name: "Dumbbell curl", weight: 10, sets: 2, reps: 12, rpe: 7,
     completed: true, allSetsCompleted: true, qualityConfirmed: true, incrementKg: 1
   }];
   const next = core.recordSession(state, first, { accessories });
@@ -153,35 +147,33 @@ check("accessory records remain intact without automatically changing future loa
   const result = core.generate(next, [holidays]);
   const following = result.sessions.find(x => x.id === expected.id);
   assert.deepStrictEqual(following.workout.accessories, expected.workout.accessories);
-  assert.strictEqual(following.workout.accessories.find(x => x.name === "哑铃弯举").loadKg, undefined);
+  assert.strictEqual(following.workout.accessories.find(x => x.name === "Dumbbell curl").loadKg, undefined);
   assert.deepStrictEqual(result.state.logs[first.id].accessories, accessories);
   assert.strictEqual(JSON.stringify(result.state.logs), originalLogs);
 });
 
-check("priority selection preserves the selected cycle boundary", () => {
+test("priority selection preserves the selected cycle boundary", () => {
   const state = configured();
   state.activeCycle.lifts.bench.target1rm = 84;
   state.activeCycle.lifts.squat.target1rm = 105;
   state.activeCycle.lifts.pullup.target1rm = 150;
   const plan = core.generate(state, [holidays], { asOfDate: "2026-08-03" });
   assert.strictEqual(plan.cycle.endDate, "2026-10-31");
-  state.activeCycle.priorities = ["pullup"];
   const pullupPriority = core.generate(state, [holidays]);
   assert.strictEqual(pullupPriority.cycle.endDate, plan.cycle.endDate);
-  assert.deepStrictEqual(pullupPriority.cycle.priorities, ["pullup"]);
 });
 
-check("removing the only measurement restores its fixed baseline", () => {
+test("removing the only measurement restores its fixed baseline", () => {
   let state = configured();
   const session = core.generate(state, [holidays]).sessions[0];
   state = core.recordSession(state, session, { mainSets: [{ weight: 90, reps: 1, rpe: 8 }] });
   assert(state.activeCycle.lifts.bench.current1rm > 80);
   state = core.recordSession(state, session, { mainSets: [{ weight: 90, reps: 1, rpe: null }] });
   assert.strictEqual(state.activeCycle.lifts.bench.current1rm, 80);
-  assert.strictEqual(state.activeCycle.loadAdjustments.bench, undefined);
+  assert.strictEqual(state.activeCycle.loadAdjustments, undefined);
 });
 
-check("a failed set preserves its log without replacing the fixed target attempt", () => {
+test("a failed set preserves its log without replacing the fixed target attempt", () => {
   let state = configured();
   state.activeCycle.requestedEndDate = "2026-10-03";
   const original = core.generate(state, [holidays]);
@@ -205,7 +197,7 @@ check("a failed set preserves its log without replacing the fixed target attempt
   assert.strictEqual(afterFailure.state.logs[failedSession.id].mainSets[0].completed, false);
 });
 
-check("editing a measurement is independent of input order", () => {
+test("editing a measurement is independent of input order", () => {
   let forward = configured(), reverse = configured();
   const sessions = core.generate(forward, [holidays]).sessions;
   const entries = [["2026-08-03", 77.5], ["2026-08-10", 80], ["2026-08-17", 82.5]];
@@ -222,7 +214,7 @@ check("editing a measurement is independent of input order", () => {
   assert(!JSON.stringify(snapshot).includes("bodyweightEntries"));
 });
 
-check("a bodyweight-only pullup maximum is a valid starting point", () => {
+test("a bodyweight-only pullup maximum is a valid starting point", () => {
   const state = configured();
   state.activeCycle.lifts.pullup.current1rm = 0;
   const pull = core.generate(state, [holidays]).sessions.find(x => x.type === "pull");
@@ -230,7 +222,7 @@ check("a bodyweight-only pullup maximum is a valid starting point", () => {
   assert(pull.workout.workSets.every(x => Number.isFinite(x.loadKg)));
 });
 
-check("legacy deferrals recover the original requested end exactly once", () => {
+test("legacy deferrals recover the original requested end exactly once", () => {
   const state = core.createDefaultState("2026-09-01");
   state.schemaVersion = 2;
   state.activeCycle.endDate = "2026-11-07";
@@ -254,7 +246,7 @@ check("legacy deferrals recover the original requested end exactly once", () => 
   assert.strictEqual(plan.cycle.endDate, "2026-11-07");
 });
 
-check("assisted pullups with negative extra load update measured capacity", () => {
+test("assisted pullups with negative extra load update measured capacity", () => {
   const state = configured();
   const pull = core.generate(state, [holidays]).sessions.find(x => x.type === "pull");
   const next = core.recordSession(state, pull, {
@@ -264,7 +256,7 @@ check("assisted pullups with negative extra load update measured capacity", () =
   assert.strictEqual(next.logs[pull.id].mainSets[0].rpeSource, "actual");
 });
 
-check("legacy target RPE values are not reinterpreted as actual measurements", () => {
+test("legacy target RPE values are not reinterpreted as actual measurements", () => {
   const state = configured();
   const session = core.generate(state, [holidays]).sessions[0];
   state.schemaVersion = 2;
@@ -284,11 +276,10 @@ check("legacy target RPE values are not reinterpreted as actual measurements", (
   assert.strictEqual(plan.state.activeCycle.lifts.bench.current1rm, 90);
 });
 
-check("an unconfigured selected priority leaves the deadline and setup status intact", () => {
+test("an unconfigured selected priority leaves the deadline and setup status intact", () => {
   let state = configured();
   state.activeCycle.lifts.pullup.current1rm = null;
   state.activeCycle.lifts.pullup.target1rm = null;
-  state.activeCycle.priorities = ["bench", "squat", "pullup"];
   const initial = core.generate(state, [holidays]);
   for (const [date, weight] of [["2026-09-07", 95], ["2026-09-14", 95], ["2026-09-09", 115], ["2026-09-16", 115]]) {
     state = core.recordSession(state, initial.sessions.find(x => x.date === date), {
@@ -299,5 +290,3 @@ check("an unconfigured selected priority leaves the deadline and setup status in
   assert.strictEqual(plan.cycle.endDate, "2026-10-31");
   assert(plan.sessions.filter(session => session.type === "pull").every(session => session.workout.needsSetup));
 });
-
-if (failures.length) process.exitCode = 1;

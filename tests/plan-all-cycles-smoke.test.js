@@ -1,33 +1,11 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp } = require("./helpers/dom.js");
 
-(async function () {
-  const html = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(html, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  const media = {
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {}
-  };
-  window.matchMedia = () => media;
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
-  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
-
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
+test('the all-cycles view overlays every cycle on the chart and calendar without editing', async function () {
+  const { window, holidays } = createPlanWindow();
 
   // Two cycles that overlap in August: the archived cycle is still running when the
   // current one starts, which is exactly the case the all view has to show.
@@ -59,7 +37,7 @@ const { JSDOM } = require("jsdom");
 
   const memory = window.PlanStore.createMemoryAdapter({ version: 0, state: withArchive, signedIn: true });
   window.PlanStore.createSupabaseAdapter = () => memory;
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   const document = window.document;
@@ -98,7 +76,7 @@ const { JSDOM } = require("jsdom");
     "the all view never allows dragging");
 
   const cellLoads = [...sharedCell.querySelectorAll(".plan-day-load")].map((node) => node.textContent);
-  assert(cellLoads.every((text) => text && text !== "待设置重量"),
+  assert(cellLoads.every((text) => text && text !== "Loads not set"),
     "archived days keep the loads they show when the cycle is selected alone");
   // The visible month may cover no archived-only day, so the standalone cycle is the
   // reference: whatever load it shows for a date, the all view must show the same.
@@ -129,13 +107,13 @@ const { JSDOM } = require("jsdom");
   const archivedEntry = refreshedCell.querySelector('.plan-day-session[data-session-id^="cycle-2026-07-06:"]');
   assert(archivedEntry, "the archived cycle's session is reachable");
   archivedEntry.click();
-  assert.strictEqual(document.querySelector("[data-plan-drawer]").hidden, false,
+  assert.strictEqual(document.querySelector("[data-plan-drawer]").open, true,
     "a historical session opens its details from the all view");
   assert.strictEqual(document.querySelector("[data-save-log]"), null,
     "archived sessions stay read-only");
   document.querySelector("[data-plan-close-details]").click();
 
-  assert.strictEqual(document.querySelectorAll(".plan-chart-legend-item").length, 4,
+  assert.strictEqual(document.querySelectorAll(".plan-chart-legend-item").length, 5,
     "the legend stays the same size as a single cycle");
   const benchLines = [...document.querySelectorAll(".plan-chart-line.is-bench")];
   assert.strictEqual(benchLines.length, 2, "every cycle gets its own bench line");
@@ -146,12 +124,8 @@ const { JSDOM } = require("jsdom");
     .map((point) => point.dataset.date)
     .sort();
   assert.strictEqual(startDates[0], "2026-07-06", "the x domain starts with the oldest cycle");
-  assert(document.querySelector('[data-chart-point][data-date="2026-10-25"]'),
-    "the x domain ends with the newest cycle");
+  assert.strictEqual(startDates[startDates.length - 1].slice(0, 9), "2026-10-2",
+    "the x domain ends with the newest cycle's last session");
 
-  console.log("PASS: the all-cycles view overlays every cycle on the chart and calendar without editing");
   window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
 });

@@ -1,7 +1,8 @@
 "use strict";
 
-const assert = require("assert");
-const PlanCore = require("../assets/js/plan-core.js");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const PlanCore = require("./helpers/legacy-core.js");
 const holidays2026 = require("../assets/data/holidays/cn-2026.json");
 
 function configuredState(start, end) {
@@ -18,7 +19,7 @@ function configuredState(start, end) {
   return state;
 }
 
-(function defaultWeekTemplateAndLoads() {
+test("default week template and loads", () => {
   const state = configuredState("2026-08-03", "2026-10-25");
   const plan = PlanCore.generate(state, [holidays2026]);
   assert.deepStrictEqual(
@@ -42,11 +43,10 @@ function configuredState(start, end) {
       );
     });
   });
-}());
+});
 
-(function movedPushVolumeDayUsesOnlyPushAccessories() {
+test("moved push volume day uses only push accessories", () => {
   const state = configuredState("2026-08-03", "2026-10-31");
-  state.activeCycle.priorities = ["bench", "squat"];
   const sessionId = state.activeCycle.id + ":push-volume:2026-09-18";
   const original = PlanCore.generate(state, [holidays2026], { asOfDate: "2026-09-17" })
     .sessions.find((candidate) => candidate.id === sessionId);
@@ -58,11 +58,11 @@ function configuredState(start, end) {
 
   assert.strictEqual(session.date, "2026-09-17");
   assert.strictEqual(session.type, "push-volume");
-  assert.strictEqual(session.workout.mainExercise, "杠铃卧推");
+  assert.strictEqual(session.workout.mainExercise, "Bench press");
   assert.deepStrictEqual(accessoryNames, [
-    "暂停卧推",
-    "绳索下压",
-    "侧平举"
+    "Paused bench press",
+    "Cable pushdown",
+    "Lateral raise"
   ], "a push workout must not borrow pull or squat accessories");
   assert(session.workout.accessories.every((accessory) => accessory.liftKey === "bench"));
   assert.deepStrictEqual(
@@ -70,9 +70,9 @@ function configuredState(start, end) {
     original.workout.accessories,
     "moving a workout to another weekday must not change its accessories"
   );
-}());
+});
 
-(function officialMakeupWorkdaysDoNotCreateTrainingSessions() {
+test("official makeup workdays do not create training sessions", () => {
   const state = configuredState("2026-09-01", "2026-10-20");
   const plan = PlanCore.generate(state, [holidays2026]);
   const dates = plan.sessions.map((session) => session.date);
@@ -83,9 +83,9 @@ function configuredState(start, end) {
   });
   assert(!plan.sessions.some((session) => session.holiday && session.holiday.kind === "makeup"));
   assert(dates.includes("2026-09-19"), "an ordinary weekend day still trains when the weekly template asks for it");
-}());
+});
 
-(function customTrainingDayRestoresTheWeeklyTemplateDuringAnOfficialHoliday() {
+test("custom training day restores the weekly template during an official holiday", () => {
   const state = configuredState("2026-09-01", "2026-10-20");
   state.activeCycle.holidayOverrides = { "2026-10-02": "work" };
   const plan = PlanCore.generate(state, [holidays2026]);
@@ -93,9 +93,9 @@ function configuredState(start, end) {
   assert(session, "an explicit training-day override must restore the holiday workout");
   assert.strictEqual(session.type, "push-volume");
   assert.strictEqual(session.sourceDate, "2026-10-02");
-}());
+});
 
-(function manualMoveOfOfficialHolidaySessionStillApplies() {
+test("manual move of official holiday session still applies", () => {
   const state = configuredState("2026-09-01", "2026-10-20");
   const sessionId = state.activeCycle.id + ":push-volume:2026-10-02";
   state.activeCycle.sessionOverrides[sessionId] = { action: "move", date: "2026-10-08" };
@@ -104,9 +104,9 @@ function configuredState(start, end) {
   assert(moved, "an existing manual move must survive the official makeup policy change");
   assert.strictEqual(moved.date, "2026-10-08");
   assert.strictEqual(moved.manualMove, true);
-}());
+});
 
-(function customHolidayOverridesCreateMakeupSession() {
+test("custom holiday overrides create makeup session", () => {
   const state = configuredState("2026-08-03", "2026-08-09");
   // Sunday is a rest day in the default template, so it can serve as a custom
   // workout day; Saturday now carries the squat volume session.
@@ -119,9 +119,9 @@ function configuredState(start, end) {
   const makeup = plan.sessions.find((session) => session.date === "2026-08-09" && session.type === "push-strength");
   assert.strictEqual(makeup.type, "push-strength");
   assert.strictEqual(makeup.holiday.movedFrom, "2026-08-03");
-}());
+});
 
-(function pullupUsesTotalSystemLoad() {
+test("pullup uses total system load", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   const plan = PlanCore.generate(state, [holidays2026]);
   const pull = plan.sessions.find((session) => session.type === "pull");
@@ -129,15 +129,15 @@ function configuredState(start, end) {
   const mainSet = pull.workout.workSets[0];
   assert.strictEqual(mainSet.loadKg, PlanCore.roundLoad((70 + 30) * mainSet.percentage - 70, 2.5));
   assert.strictEqual(pull.workout.workSets[0].loadKg % 2.5, 0);
-}());
+});
 
-(function e1rmEstimationRemainsAvailableWithoutAutomaticAdjustment() {
+test("e1rm estimation remains available without automatic adjustment", () => {
   const estimate = PlanCore.estimateOneRepMax(100, 1, 8);
   assert(Math.abs(estimate - 108.46) < 0.1);
   assert.strictEqual(PlanCore.suggestAdjustment, undefined);
-}());
+});
 
-(function publicSnapshotRemovesPrivateFields() {
+test("public snapshot removes private fields", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   state.logs.secret = {
     status: "completed",
@@ -151,16 +151,23 @@ function configuredState(start, end) {
   assert(!serialized.includes("bodyweightEntries"));
   assert(!serialized.includes("private"));
   assert(!Object.prototype.hasOwnProperty.call(snapshot, "logs"));
-  assert(!Object.prototype.hasOwnProperty.call(snapshot, "warnings"));
+  assert(!Object.prototype.hasOwnProperty.call(snapshot, "learningPlans"), "the learning planner is not published");
+  const withRestDay = PlanCore.normalizeState(state);
+  withRestDay.activeCycle.holidayOverrides = { "2026-08-10": "off" };
+  const restDayPlan = PlanCore.generate(withRestDay, [holidays2026]);
+  assert(restDayPlan.warnings.some((warning) => warning.includes("custom rest day")));
+  assert(!JSON.stringify(PlanCore.createPublicSnapshot(withRestDay, restDayPlan).warnings).includes("custom rest day"),
+    "warnings that name the owner's rest days are not published");
+  assert(!JSON.stringify(snapshot.performance).includes("bodyweight"), "published estimates carry no bodyweight");
   assert.strictEqual(snapshot.sessions.length, plan.sessions.length);
   const publicPull = snapshot.sessions.find((session) => session.workout.liftKey === "pullup");
   assert.strictEqual(publicPull.workout.loadVisibility, "owner");
   assert(publicPull.workout.workSets.every((set) => !Object.prototype.hasOwnProperty.call(set, "loadKg")));
   const publicBench = snapshot.sessions.find((session) => session.workout.liftKey === "bench");
   assert(publicBench.workout.workSets.some((set) => Object.prototype.hasOwnProperty.call(set, "loadKg")));
-}());
+});
 
-(function bodyweightRecordsAppendOverwriteAndRemainPrivate() {
+test("bodyweight records append overwrite and remain private", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   let updated = PlanCore.recordBodyweight(state, { date: "2026-08-20", value: 69.8 });
   updated = PlanCore.recordBodyweight(updated, { date: "2026-08-20", value: 69.5 });
@@ -176,9 +183,9 @@ function configuredState(start, end) {
     () => PlanCore.recordBodyweight(updated, { date: "2026-08-21", value: 0 }),
     /invalid_bodyweight_entry/
   );
-}());
+});
 
-(function normalizeMigratesActiveLegacyBodyweightsOnce() {
+test("normalize migrates active legacy bodyweights once", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   state.activeCycle.bodyweightEntries.push({ date: "2026-08-10", value: 69.4 });
   state.logs = {
@@ -204,9 +211,9 @@ function configuredState(start, end) {
   });
   assert(Object.prototype.hasOwnProperty.call(state.logs.backfill, "bodyweight"), "normalization must not mutate input");
   assert.deepStrictEqual(PlanCore.normalizeState(normalized), normalized, "migration must be idempotent");
-}());
+});
 
-(function normalizeMigratesArchivedLegacyBodyweightsAndSyncsOverview() {
+test("normalize migrates archived legacy bodyweights and syncs overview", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   const archivedCycle = PlanCore.createDefaultState("2026-04-06").activeCycle;
   archivedCycle.bodyweightEntries = [
@@ -240,9 +247,9 @@ function configuredState(start, end) {
     assert(!Object.prototype.hasOwnProperty.call(log, "bodyweight"));
   });
   assert.deepStrictEqual(PlanCore.normalizeState(normalized), normalized, "archive migration must be idempotent");
-}());
+});
 
-(function sessionLogsIgnoreBodyweightInput() {
+test("session logs ignore bodyweight input", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   const session = PlanCore.generate(state, [holidays2026]).sessions[0];
   const recorded = PlanCore.recordSession(state, session, {
@@ -253,9 +260,9 @@ function configuredState(start, end) {
 
   assert(!Object.prototype.hasOwnProperty.call(recorded.logs[session.id], "bodyweight"));
   assert.deepStrictEqual(recorded.activeCycle.bodyweightEntries, state.activeCycle.bodyweightEntries);
-}());
+});
 
-(function manualMoveAndRecordKeepStableSessionId() {
+test("manual move and record keep stable session id", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
   const first = plan.sessions[0];
@@ -270,9 +277,9 @@ function configuredState(start, end) {
   });
   assert.strictEqual(recorded.logs[first.id].status, "completed");
   assert(recorded.activeCycle.lifts.bench.current1rm > 100);
-}());
+});
 
-(function completedHistorySurvivesRegenerationAndTemplateChanges() {
+test("completed history survives regeneration and template changes", () => {
   let state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
   const completed = plan.sessions[0];
@@ -288,15 +295,15 @@ function configuredState(start, end) {
   assert(preserved, "completed session must remain visible after its template day is removed");
   assert.strictEqual(preserved.status, "completed");
   assert.strictEqual(JSON.stringify(preserved.workout), frozenWorkout);
-}());
+});
 
-(function completedAutomaticMakeupHistorySurvivesPolicyChange() {
+test("completed automatic makeup history survives policy change", () => {
   let state = configuredState("2026-09-01", "2026-10-20");
   const original = PlanCore.generate(state, []).sessions.find((session) => session.date === "2026-10-02");
   const recordedMakeup = JSON.parse(JSON.stringify(original));
   recordedMakeup.date = "2026-09-20";
   recordedMakeup.holiday = {
-    name: "国庆节",
+    name: "National Day",
     movedFrom: original.sourceDate,
     kind: "makeup"
   };
@@ -332,7 +339,7 @@ function configuredState(start, end) {
   legacySkipped.status = "skipped";
   const customMakeup = JSON.parse(JSON.stringify(legacyPlanned));
   customMakeup.id += ":custom-copy";
-  customMakeup.holiday.name = "自定义调休";
+  customMakeup.holiday.name = "Custom make-up day";
   const filtered = PlanCore.filterLegacyOfficialMakeups(
     [legacyPlanned, publicPreserved, legacySkipped, customMakeup],
     [holidays2026]
@@ -342,9 +349,9 @@ function configuredState(start, end) {
     [publicPreserved.id, legacySkipped.id, customMakeup.id]
   );
   assert.deepStrictEqual(PlanCore.filterLegacyOfficialMakeups([legacyPlanned], []), [legacyPlanned]);
-}());
+});
 
-(function highRpeDoesNotAutomaticallyAdjustTheNextSession() {
+test("high rpe does not automatically adjust the next session", () => {
   let state = configuredState("2026-08-03", "2026-08-30");
   const original = PlanCore.generate(state, [holidays2026]);
   const completed = original.sessions.find((session) => session.type === "push-strength");
@@ -359,39 +366,39 @@ function configuredState(start, end) {
   assert.strictEqual(next.workout.adjustment, undefined);
   assert.deepStrictEqual(next.workout, original.sessions.find((session) => session.id === next.id).workout);
   assert(next.workout.warmups.every((set) => set.loadKg < next.workout.workSets[0].loadKg));
-}());
+});
 
-(function accessoryRecordsDoNotAutomaticallyRewriteLaterPrescriptions() {
+test("accessory records do not automatically rewrite later prescriptions", () => {
   let state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
   const completed = plan.sessions.find((session) => session.type === "push-strength");
   state = PlanCore.recordSession(state, completed, {
     status: "completed",
     mainSets: [],
-    accessories: [{ name: "站姿推举", weight: 40, reps: 8, sets: 2, rpe: 7.5, qualityConfirmed: true, completed: true }]
+    accessories: [{ name: "Overhead press", weight: 40, reps: 8, sets: 2, rpe: 7.5, qualityConfirmed: true, completed: true }]
   });
   plan = PlanCore.generate(state, [holidays2026]);
   const nextPush = plan.sessions.find((session) =>
     session.date > completed.date && session.type === "push-strength"
   );
-  const press = nextPush.workout.accessories.find((accessory) => accessory.name === "站姿推举");
+  const press = nextPush.workout.accessories.find((accessory) => accessory.name === "Overhead press");
   assert.strictEqual(press.loadKg, undefined);
   assert.strictEqual(press.progression, undefined);
   assert.deepStrictEqual(state.logs[completed.id].accessories, [{
-    name: "站姿推举", weight: 40, reps: 8, sets: 2, rpe: 7.5, qualityConfirmed: true, completed: true
+    name: "Overhead press", weight: 40, reps: 8, sets: 2, rpe: 7.5, qualityConfirmed: true, completed: true
   }]);
-}());
+});
 
-(function icsContainsTimedEventsAndAlarm() {
+test("ics contains timed events and alarm", () => {
   const state = configuredState("2026-08-03", "2026-08-09");
   const plan = PlanCore.generate(state, [holidays2026]);
   const ics = PlanCore.generateIcs(plan, state.preferences);
   assert(ics.includes("DTSTART;TZID=Asia/Shanghai:20260803T190000"));
   assert(ics.includes("TRIGGER:-PT120M"));
-  assert(ics.includes("杠铃卧推"));
-}());
+  assert(ics.includes("Bench press"));
+});
 
-(function moveSessionUsesStableIdsAndRequiresReplacementConsent() {
+test("move session uses stable ids and requires replacement consent", () => {
   const state = configuredState("2026-08-03", "2026-08-30");
   const initial = PlanCore.generate(state, [holidays2026]);
   const source = initial.sessions.find((session) => session.date === "2026-08-07");
@@ -420,7 +427,7 @@ function configuredState(start, end) {
   assert.strictEqual(movedPlan.sessions.some((session) => session.id === target.id), false);
   assert.strictEqual(movedPlan.sessions.filter((session) => session.date === target.date).length, 1);
   assert.strictEqual(movedPlan.sessions.some((session) => session.date === source.date), false);
-  assert.strictEqual(movedPlan.warnings.some((warning) => warning.includes("训练冲突")), false);
+  assert.strictEqual(movedPlan.warnings.some((warning) => warning.includes("scheduling conflict")), false);
 
   const movedAgainState = PlanCore.moveSession(movedState, source.id, "2026-08-06", {
     holidayCalendars: [holidays2026]
@@ -430,9 +437,9 @@ function configuredState(start, end) {
   assert.strictEqual(movedAgainPlan.sessions.some((session) => session.id === target.id), false);
   assert.strictEqual(movedAgainPlan.sessions.filter((session) => session.id === source.id).length, 1);
   assert.strictEqual(movedState.activeCycle.sessionOverrides[source.id].date, target.date);
-}());
+});
 
-(function completedSessionMoveUpdatesItsFrozenDateAndKeepsItsLog() {
+test("completed session move updates its frozen date and keeps its log", () => {
   let state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
   const source = plan.sessions.find((session) => session.date === "2026-08-24");
@@ -451,12 +458,12 @@ function configuredState(start, end) {
   assert.strictEqual(originalSnapshotDate, "2026-08-24");
   assert.strictEqual(state.logs[source.id].sessionSnapshot.date, "2026-08-24", "input log must stay immutable");
   assert.strictEqual(movedState.logs[source.id].sessionSnapshot.date, "2026-08-27");
-  assert.strictEqual(movedState.activeCycle.loadAdjustments.bench, undefined);
+  assert.strictEqual(movedState.activeCycle.loadAdjustments, undefined);
   assert.strictEqual(moved.date, "2026-08-27");
   assert.strictEqual(moved.status, "completed");
-}());
+});
 
-(function recordedDestinationCannotBeReplacedAsPlanning() {
+test("recorded destination cannot be replaced as planning", () => {
   let state = configuredState("2026-08-03", "2026-08-30");
   let plan = PlanCore.generate(state, [holidays2026]);
   const source = plan.sessions.find((session) => session.date === "2026-08-07");
@@ -478,6 +485,4 @@ function configuredState(start, end) {
   assert.strictEqual(plan.sessions.find((session) => session.id === target.id).status, "completed");
   assert.strictEqual(plan.sessions.find((session) => session.id === source.id).date, source.date);
   assert.deepStrictEqual(state.activeCycle.sessionOverrides, {});
-}());
-
-console.log("PASS: PlanCore schedule, holiday, load, privacy, logging, and ICS tests");
+});

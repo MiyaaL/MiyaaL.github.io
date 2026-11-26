@@ -1,0 +1,11 @@
+{
+  "name": "miyaal.github.io",
+  "private": true,
+  "description": "Test tooling for the site's client-side scripts. The site itself is built by Jekyll.",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\""
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

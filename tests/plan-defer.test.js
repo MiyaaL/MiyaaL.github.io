@@ -1,7 +1,8 @@
 "use strict";
 
-const assert = require("assert");
-const PlanCore = require("../assets/js/plan-core.js");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const PlanCore = require("./helpers/legacy-core.js");
 
 function activeState() {
   const state = PlanCore.createDefaultState("2026-09-01");
@@ -14,7 +15,7 @@ function activeState() {
   return state;
 }
 
-(function defersSkippedAndFutureSessionsWithoutAddingExtraWorkouts() {
+test("defers skipped and future sessions without adding extra workouts", () => {
   let state = activeState();
   state.activeCycle.endDate = "2026-10-31";
   state.activeCycle.requestedEndDate = "2026-10-31";
@@ -24,7 +25,7 @@ function activeState() {
   const priorPull = before.sessions.find((session) => session.date === "2026-09-08");
   const untouched = before.sessions.find((session) => session.date === "2026-09-07");
   const followingPull = before.sessions.find((session) => session.date === "2026-09-22");
-  state = PlanCore.recordSession(state, source, { status: "skipped", notes: "临时有事" });
+  state = PlanCore.recordSession(state, source, { status: "skipped", notes: "Something came up" });
   state = PlanCore.recordSession(state, next, { status: "skipped" });
   state = PlanCore.recordSession(state, priorPull, { status: "completed", mainSets: [] });
   const input = JSON.parse(JSON.stringify(state));
@@ -52,9 +53,9 @@ function activeState() {
   assert.strictEqual(new Set(after.sessions.map((session) => session.date)).size, after.sessions.length);
   assert.strictEqual(after.cycle.scheduleAdjustments.length, 1);
   assert.strictEqual(after.cycle.scheduleAdjustments[0].days, 7);
-}());
+});
 
-(function movingAfterAdjustmentUsesTheSelectedFinalDate() {
+test("moving after adjustment uses the selected final date", () => {
   const state = activeState();
   const initial = PlanCore.generate(state, [], { asOfDate: "2026-09-20" });
   const source = initial.sessions.find((session) => session.date === "2026-09-15");
@@ -77,9 +78,9 @@ function activeState() {
   });
   const finalPlan = PlanCore.generate(deferredAgain, [], { asOfDate: "2026-09-20" });
   assert.strictEqual(finalPlan.sessions.find((session) => session.id === source.id).date, "2026-09-25");
-}());
+});
 
-(function compoundsLaterAdjustmentsFromTheCurrentScheduledDate() {
+test("compounds later adjustments from the current scheduled date", () => {
   const state = activeState();
   const initial = PlanCore.generate(state, [], { asOfDate: "2026-09-20" });
   const first = initial.sessions.find((session) => session.date === "2026-09-15");
@@ -97,11 +98,10 @@ function activeState() {
   assert.strictEqual(finalPlan.sessions.find((session) => session.id === second.id).date, "2026-09-25");
   assert.strictEqual(finalPlan.cycle.endDate, "2026-10-09");
   assert.strictEqual(finalPlan.sessions.length, initial.sessions.length);
-}());
+});
 
-(function advancesRemainingSessionsAndCycleEnd() {
+test("advances remaining sessions and cycle end", () => {
   const state = activeState();
-  state.activeCycle.priorities = ["pullup"];
   const initial = PlanCore.generate(state, [], { asOfDate: "2026-09-01" });
   const source = initial.sessions.find((session) => session.date === "2026-09-18");
   const next = initial.sessions.find((session) => session.date === "2026-09-21");
@@ -114,10 +114,10 @@ function activeState() {
   assert.strictEqual(finalPlan.sessions.find((session) => session.id === next.id).date, "2026-09-20");
   assert.strictEqual(finalPlan.cycle.endDate, "2026-09-29");
   assert.strictEqual(finalPlan.cycle.scheduleAdjustments[0].days, -1);
-  assert(finalPlan.cycle.schedule.reason.includes("已手动提前 1 天"));
-}());
+  assert(finalPlan.cycle.schedule.reason.includes("Manually moved forward by 1 days."));
+});
 
-(function rejectsAdvanceCollisionsAndRecordedFutureSessions() {
+test("rejects advance collisions and recorded future sessions", () => {
   let state = activeState();
   let plan = PlanCore.generate(state, [], { asOfDate: "2026-09-20" });
   const source = plan.sessions.find((session) => session.date === "2026-09-15");
@@ -137,6 +137,4 @@ function activeState() {
     () => PlanCore.adjustSchedule(state, source.id, source.date, { asOfDate: "2026-09-20" }),
     (error) => error.code === "invalid_schedule_adjust_date"
   );
-}());
-
-console.log("PASS: PlanCore adjusts remaining workouts earlier or later and preserves completed history");
+});

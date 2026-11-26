@@ -1,0 +1,20 @@
+{
+  "year": 2027,
+  "timezone": "Asia/Shanghai",
+  "partial": true,
+  "partialNote": "only New Year's Day (1 January) is listed; the State Council's 2027 arrangement, with its bridge days and make-up workdays, has not been added",
+  "source": {
+    "title": "Statutory date of New Year's Day; the State Council notice for 2027 is not yet included",
+    "url": null,
+    "publishedAt": null,
+    "documentNumber": null
+  },
+  "periods": [
+    {
+      "id": "new-year",
+      "name": "元旦",
+      "daysOff": ["2027-01-01"],
+      "workdays": []
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 "use strict";
 
-const assert = require("assert");
-const core = require("../assets/js/plan-core.js");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const core = require("./helpers/legacy-core.js");
 const holidays = require("../assets/data/holidays/cn-2026.json");
 
 function fixture() {
@@ -28,7 +29,7 @@ function fixture() {
 
 const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays: true, asOfDate: "2026-09-23" };
 
-(function fixedDeadlineAndHolidayContinuity() {
+test("fixed deadline and holiday continuity", () => {
   const state = fixture();
   const before = JSON.stringify(state);
   const original = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
@@ -60,15 +61,15 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
   const templateOf = (session) => session.id.split(":").slice(1).filter((part) => !/^replan-/.test(part)).join(":");
   assert.deepStrictEqual(plan.sessions.filter((session) => session.date < options.fromDate).map((session) => [templateOf(session), session.date]),
     original.sessions.filter((session) => session.date < options.fromDate).map((session) => [templateOf(session), session.date]));
-  const targetDates = plan.sessions.filter((session) => /周期目标/.test(session.label)).map((session) => [session.workout.liftKey, session.date]);
+  const targetDates = plan.sessions.filter((session) => /Goal test/.test(session.label)).map((session) => [session.workout.liftKey, session.date]);
   assert.deepStrictEqual(targetDates, [["pullup", "2026-10-27"], ["bench", "2026-10-30"], ["squat", "2026-10-31"]]);
   const planned = plan.sessions.find((session) => session.date === "2026-10-05");
   assert.throws(() => core.adjustSchedule(revised, planned.id, "2026-10-06"), { code: "schedule_deadline_locked" });
   const moved = core.moveSession(revised, planned.id, "2026-10-08", { holidayCalendars: [holidays], asOfDate: "2026-09-23" });
   assert.strictEqual(core.generate(moved, [holidays]).cycle.endDate, options.endDate, "a single move keeps the deadline");
-}());
+});
 
-(function recordedFutureAndRepeatedReplan() {
+test("recorded future and repeated replan", () => {
   const state = core.replanRemaining(fixture(), [holidays], options);
   const plan = core.generate(state, [holidays], { asOfDate: "2026-09-23" });
   const completed = plan.sessions.find((session) => session.date === "2026-10-05");
@@ -81,9 +82,9 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
   const saved = core.generate(JSON.parse(JSON.stringify(result.state)), [holidays], { asOfDate: "2026-10-06" });
   assert.deepStrictEqual(saved.sessions, result.sessions, "persisting and reloading must keep the same calendar");
   assert.throws(() => core.replanRemaining(state, [holidays], { ...options, endDate: "2026-10-04" }), { code: "replan_recorded_after_deadline" });
-}());
+});
 
-(function explicitDaysOffAndCustomTemplate() {
+test("explicit days off and custom template", () => {
   const state = fixture();
   state.activeCycle.holidayOverrides["2026-10-02"] = "off";
   const template = core.DEFAULT_TEMPLATE.map((item) => ({ ...item, weekday: item.type === "squat" ? 4 : item.weekday }));
@@ -93,11 +94,11 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
   assert(plan.sessions.some((session) => session.date === "2026-10-08" && session.type === "squat"));
   assert.throws(() => core.replanRemaining(state, [holidays], { ...options, fromDate: "2026-11-01" }), { code: "invalid_replan_dates" });
   assert.throws(() => core.replanRemaining(state, [holidays], { ...options, template: [template[0], template[0]] }), { code: "invalid_replan_template" });
-}());
+});
 
-(function retainedPrescriptionsDoNotReceiveAdjustmentsTwice() {
+test("retained prescriptions do not receive adjustments twice", () => {
   const state = fixture();
-  state.activeCycle.loadAdjustments.bench = { percentage: -0.05, afterDate: "2026-09-18" };
+  state.activeCycle.loadAdjustments = { bench: { percentage: -0.05, afterDate: "2026-09-18" } }; // legacy field, ignored and dropped
   const before = core.generate(state, [holidays], { asOfDate: options.asOfDate });
   let revised = core.replanRemaining(state, [holidays], options);
   for (let i = 0; i < 2; i += 1) {
@@ -109,9 +110,9 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
     }
     revised = core.replanRemaining(revised, [holidays], options);
   }
-}());
+});
 
-(function futureMakeupsCannotMoveIntoRetainedHistory() {
+test("future makeups cannot move into retained history", () => {
   const state = fixture();
   state.activeCycle.holidayOverrides = { "2026-09-24": "work", "2026-10-02": "off" };
   const revised = core.replanRemaining(state, [holidays], options);
@@ -119,18 +120,16 @@ const options = { fromDate: "2026-09-25", endDate: "2026-10-31", trainOnHolidays
   assert(plan.sessions.filter((session) => session.id.includes(":replan-"))
     .every((session) => session.date >= options.fromDate));
   assert.strictEqual(plan.sessions.filter((session) => session.date === "2026-09-24").length, 1);
-}());
+});
 
-(function aRecordedDeloadDoesNotRestartTheCalendarWave() {
+test("a recorded deload does not restart the calendar wave", () => {
   const state = fixture();
   const recorded = Object.values(state.logs)[0];
-  recorded.sessionSnapshot.phase = { key: "deload", label: "减量周", blockWeek: 3, weekIndex: 7 };
+  recorded.sessionSnapshot.phase = { key: "deload", label: "Deload week", blockWeek: 3, weekIndex: 7 };
   const revised = core.replanRemaining(state, [holidays], options);
   const plan = core.generate(revised, [holidays], { asOfDate: options.asOfDate });
   assert.strictEqual(plan.sessions.find((session) => session.date === "2026-09-25").phase.key, "deload",
     "a recorded session cannot restart the wave halfway through a calendar week");
   assert.strictEqual(plan.sessions.find((session) => session.date === "2026-09-28").phase.key, "load-1");
   assert.deepStrictEqual(plan.state.logs, core.normalizeState(state).logs);
-}());
-
-console.log("plan replan tests passed");
+});

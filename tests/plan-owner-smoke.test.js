@@ -1,36 +1,11 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp } = require("./helpers/dom.js");
 
-(async function () {
-  const html = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(html, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  window.matchMedia = () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {}
-  });
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.HTMLDialogElement.prototype.showModal = function () {
-    this.open = true;
-  };
-  window.HTMLDialogElement.prototype.close = function () {
-    this.open = false;
-  };
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
-
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
+test('simplified accessory logs preserve legacy data, workout guidance stays focused, and bodyweight carries across cycles', async function () {
+  const { window, holidays } = createPlanWindow({ today: "2026-08-20" });
 
   const state = window.PlanCore.createDefaultState("2026-08-03");
   state.activeCycle.endDate = "2026-10-25";
@@ -67,7 +42,7 @@ const { JSDOM } = require("jsdom");
     signedIn: true
   });
   window.PlanStore.createSupabaseAdapter = () => memory;
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
 
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.strictEqual(window.document.querySelector("[data-plan-owner-actions]").hidden, false);
@@ -104,17 +79,17 @@ const { JSDOM } = require("jsdom");
 
   cycleSelect.value = "all";
   cycleSelect.dispatchEvent(new window.Event("change"));
-  assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, "全量训练视图");
-  assert(window.document.querySelector("[data-plan-cycle-meta]").textContent.includes("2 个周期"));
+  assert.strictEqual(window.document.querySelector("[data-plan-title]").textContent, "All cycles");
+  assert(window.document.querySelector("[data-plan-cycle-meta]").textContent.includes("2 cycles"));
   assert.strictEqual(window.document.querySelectorAll(".plan-progress-row").length, 3,
     "one header row plus one row per cycle");
-  assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"][data-series="Bench Press"][data-cycle-label="Cycle 01"]'),
+  assert(window.document.querySelector('[data-chart-point][data-date="2026-04-06"][data-series="Bench press"][data-cycle-label="Cycle 01"]'),
     "the all view keeps the archived cycle on the chart");
-  assert(window.document.querySelector('[data-chart-point][data-series="Bench Press"][data-cycle-label="Cycle 02"]'),
+  assert(window.document.querySelector('[data-chart-point][data-series="Bench press"][data-cycle-label="Cycle 02"]'),
     "the all view keeps the current cycle on the chart");
   const legendItems = [...window.document.querySelectorAll(".plan-chart-legend-item")];
   assert.deepStrictEqual(legendItems.map((item) => item.querySelector("span").textContent),
-    ["Bodyweight", "Bench Press", "Weighted Pull-up", "Back Squat"],
+    ["Bench press", "Weighted pull-up", "Back squat", "Programmed", "Logged estimate"],
     "overlapping cycles keep one legend entry per lift");
   assert.strictEqual(window.document.querySelectorAll('[draggable="true"]').length, 0,
     "the all view is read-only");
@@ -141,7 +116,7 @@ const { JSDOM } = require("jsdom");
   );
   assert.strictEqual(window.document.querySelector(".plan-chart-svg").getAttribute("viewBox"), "0 0 420 260");
   assert(window.document.querySelector(".plan-chart-today-line"));
-  assert.strictEqual(window.document.querySelectorAll(".plan-chart-point-hit.is-today").length, 4);
+  assert.strictEqual(window.document.querySelectorAll('.plan-chart-point-hit[data-kind="today"]').length, 3);
   const chartPoint = window.document.querySelector("[data-chart-point]");
   chartPoint.dispatchEvent(new window.MouseEvent("mouseenter"));
   assert.strictEqual(window.document.querySelector("[data-chart-tooltip]").hidden, false);
@@ -224,7 +199,7 @@ const { JSDOM } = require("jsdom");
   const recordedSessionId = Object.keys(legacyState.logs)[0];
   const legacyAccessory = legacyState.logs[recordedSessionId].accessories[0];
   Object.assign(legacyAccessory, { rpe: 7.5, reps: 8, incrementKg: 1.25, qualityConfirmed: true, allSetsCompleted: true });
-  legacyState.logs[recordedSessionId].sessionSnapshot.workout.guidance = "不应再显示的旧版训练算法说明";
+  legacyState.logs[recordedSessionId].sessionSnapshot.workout.guidance = "Stored guidance that ordinary sessions must not show";
   const legacyPlan = window.PlanCore.generate(legacyState, [holidays]);
   await memory.save(bodyweightState.version, legacyState, window.PlanCore.createPublicSnapshot(legacyState, legacyPlan));
   await memory.signOut();
@@ -232,7 +207,7 @@ const { JSDOM } = require("jsdom");
   await memory.signIn();
   await new Promise(resolve => setTimeout(resolve, 50));
   window.document.querySelector('[data-session-id="' + recordedSessionId + '"]').click();
-  assert(!window.document.querySelector("[data-plan-detail-body]").textContent.includes("不应再显示的旧版训练算法说明"),
+  assert(!window.document.querySelector("[data-plan-detail-body]").textContent.includes("Stored guidance that ordinary sessions must not show"),
     "stored guidance must also be hidden on ordinary historical sessions");
   ["rpe", "increment", "quality"].forEach(field => {
     assert.strictEqual(window.document.querySelector("[data-accessory-" + field + "]"), null);
@@ -267,8 +242,8 @@ const { JSDOM } = require("jsdom");
   window.document.querySelector("[data-plan-edit]").click();
   assert.strictEqual(window.document.querySelector("[data-plan-settings]").open, true);
   assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="endDate"]').value, "2026-10-25", "editing preserves the user-selected cycle boundary");
-  assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value, "bench,squat");
-  window.document.querySelector('[data-plan-settings-form] [name="priorities"]').value = "bench,pullup,squat";
+  assert.strictEqual(window.document.querySelector('[data-plan-settings-form] [name="priorities"]'), null,
+    "the priority select never affected the plan and is gone");
   // The calendar may have been navigated forward while looking up the goal
   // attempt; replanning must start from today, not from the visible month.
   window.document.querySelector('[data-plan-settings-form] [name="replanFromDate"]').value = "2026-08-26";
@@ -281,7 +256,7 @@ const { JSDOM } = require("jsdom");
   await new Promise((resolve) => setTimeout(resolve, 50));
   const stateAfterSettings = await memory.loadPrivate();
   assert.strictEqual(stateAfterSettings.state.activeCycle.requestedEndDate, "2026-10-25");
-  assert.strictEqual(stateAfterSettings.state.activeCycle.priorities.join(","), "bench,pullup,squat");
+  assert.strictEqual(Object.hasOwn(stateAfterSettings.state.activeCycle, "priorities"), false);
   const publicSettings = (await memory.loadPublic()).record.snapshot;
   assert.strictEqual(publicSettings.cycle.endDate, stateAfterSettings.state.activeCycle.endDate);
   assert.strictEqual(publicSettings.cycle.requestedEndDate, "2026-10-25");
@@ -309,9 +284,5 @@ const { JSDOM } = require("jsdom");
   assert.strictEqual(stateAfterNewCycle.state.archivedCycles[0].cycle.status, "archived");
   assert.strictEqual(stateAfterNewCycle.state.archivedCycles[0].overview.cycle.status, "archived");
 
-  console.log("PASS: simplified accessory logs preserve legacy data, workout guidance stays focused, and bodyweight carries across cycles");
   window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
 });

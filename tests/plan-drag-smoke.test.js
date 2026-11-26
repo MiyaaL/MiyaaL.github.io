@@ -1,8 +1,8 @@
 "use strict";
 
-const assert = require("assert");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+const assert = require("node:assert");
+const { test } = require("node:test");
+const { createPlanWindow, startPlanApp } = require("./helpers/dom.js");
 
 function waitForRender() {
   return new Promise((resolve) => setTimeout(resolve, 50));
@@ -30,43 +30,8 @@ function drag(window, source, target) {
   source.dispatchEvent(dragend);
 }
 
-(async function () {
-  const page = fs.readFileSync("/site/_site/plan/index.html", "utf8");
-  const holidays = JSON.parse(fs.readFileSync("/site/assets/data/holidays/cn-2026.json", "utf8"));
-  const dom = new JSDOM(page, {
-    url: "https://miyaal.github.io/plan/",
-    runScripts: "outside-only",
-    pretendToBeVisual: true
-  });
-  const { window } = dom;
-  const NativeDate = window.Date;
-  const fixedNow = new NativeDate("2026-08-26T12:00:00+08:00").getTime();
-  window.Date = class FixedDate extends NativeDate {
-    constructor(...args) {
-      super(...(args.length ? args : [fixedNow]));
-    }
-    static now() {
-      return fixedNow;
-    }
-  };
-  window.matchMedia = () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {}
-  });
-  window.fetch = async () => ({ ok: true, json: async () => holidays });
-  window.HTMLDialogElement.prototype.showModal = function () {
-    this.open = true;
-  };
-  window.HTMLDialogElement.prototype.close = function () {
-    this.open = false;
-  };
-  window.URL.createObjectURL = () => "blob:test";
-  window.URL.revokeObjectURL = () => {};
-
-  window.eval(fs.readFileSync("/site/assets/js/plan-core.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-store.js", "utf8"));
-  window.eval(fs.readFileSync("/site/assets/js/plan-chart.js", "utf8"));
+test('owner calendar drag moves, confirms replacements, and updates Progress Overview dates', async function () {
+  const { window, holidays } = createPlanWindow({ today: "2026-08-26" });
 
   let state = window.PlanCore.createDefaultState("2026-08-03");
   state.activeCycle.endDate = "2026-10-25";
@@ -94,7 +59,7 @@ function drag(window, source, target) {
   const save = memory.save;
   memory.save = save;
   window.PlanStore.createSupabaseAdapter = () => memory;
-  window.eval(fs.readFileSync("/site/assets/js/plan-app.js", "utf8"));
+  startPlanApp(window);
   await waitForRender();
 
   const cell = (date) => window.document.querySelector(`[data-plan-date="${date}"]`);
@@ -103,38 +68,38 @@ function drag(window, source, target) {
   assert.strictEqual(cell("2026-08-28").draggable, true);
   assert.strictEqual(cell("2026-08-24").draggable, true, "completed sessions must support correcting their date");
   const originalPlannedX = window.document.querySelector(
-    '[data-chart-point][data-series="Bench Press"][data-date="2026-08-28"]'
+    '[data-chart-point][data-series="Bench press"][data-date="2026-08-28"]'
   ).dataset.x;
   const originalCompletedX = window.document.querySelector(
-    '[data-chart-point][data-series="Bench Press"][data-date="2026-08-24"]'
+    '[data-chart-point][data-series="Bench press"][data-date="2026-08-24"]'
   ).dataset.x;
   const confirmDialog = window.document.querySelector("[data-plan-move-confirm]");
 
   drag(window, cell("2026-08-28"), cell("2026-08-26"));
   assert.strictEqual(confirmDialog.open, false);
-  assert(window.document.querySelector("[data-plan-message]").textContent.includes("目标日期已有训练记录"));
+  assert(window.document.querySelector("[data-plan-message]").textContent.includes("already has a logged session"));
   assert.strictEqual((await memory.loadPrivate()).version, 0);
   assert.strictEqual(cell("2026-08-26").dataset.sessionId, completedTarget.id);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   cell("2026-08-28").click();
   const drawer = window.document.querySelector("[data-plan-drawer]");
-  assert.strictEqual(drawer.hidden, false);
+  assert.strictEqual(drawer.open, true);
   drawer.querySelector("[data-move-date]").value = "2026-08-25";
   drawer.querySelector("[data-move-session]").click();
   assert.strictEqual(confirmDialog.open, true, "detail rescheduling must use the same replacement confirmation");
   window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  assert.strictEqual(drawer.hidden, false, "Escape for a modal must not close the detail drawer behind it");
+  assert.strictEqual(drawer.open, true, "Escape for a modal must not close the detail drawer behind it");
   confirmDialog.querySelector("[data-plan-cancel-move]").click();
   window.document.querySelector("[data-plan-close-details]").click();
 
   const firstDraggedCell = cell("2026-08-28");
   drag(window, firstDraggedCell, cell("2026-08-25"));
   firstDraggedCell.click();
-  assert.strictEqual(window.document.querySelector("[data-plan-drawer]").hidden, true);
+  assert.strictEqual(window.document.querySelector("[data-plan-drawer]").open, false);
   assert.strictEqual(confirmDialog.open, true);
-  assert(confirmDialog.querySelector("[data-plan-move-confirm-message]").textContent.includes("2026年8月25日"));
-  assert(confirmDialog.querySelector("[data-plan-move-confirm-message]").textContent.includes("拉"));
+  assert(confirmDialog.querySelector("[data-plan-move-confirm-message]").textContent.includes("Aug 25, 2026"));
+  assert(confirmDialog.querySelector("[data-plan-move-confirm-message]").textContent.includes("Pull"));
   const beforeConfirmation = await memory.loadPrivate();
   assert.strictEqual(beforeConfirmation.version, 0, "opening confirmation must not save early");
   assert.deepStrictEqual(
@@ -157,12 +122,12 @@ function drag(window, source, target) {
   assert.strictEqual(cell("2026-08-25").dataset.sessionId, replacementSourceId);
   assert.strictEqual(window.document.querySelector(`[data-session-id="${replacementTargetId}"]`), null);
   const movedPlannedPoint = window.document.querySelector(
-    '[data-chart-point][data-series="Bench Press"][data-date="2026-08-25"]'
+    '[data-chart-point][data-series="Bench press"][data-date="2026-08-25"]'
   );
   assert(movedPlannedPoint);
   assert.notStrictEqual(movedPlannedPoint.dataset.x, originalPlannedX);
   assert.strictEqual(
-    window.document.querySelector('[data-chart-point][data-series="Bench Press"][data-date="2026-08-28"]'),
+    window.document.querySelector('[data-chart-point][data-series="Bench press"][data-date="2026-08-28"]'),
     null
   );
   assert.strictEqual(
@@ -189,12 +154,12 @@ function drag(window, source, target) {
   assert.strictEqual(cell("2026-08-24").dataset.sessionId, undefined);
   assert.strictEqual(cell("2026-08-27").dataset.sessionId, completedSource.id);
   const movedCompletedPoint = window.document.querySelector(
-    '[data-chart-point][data-series="Bench Press"][data-date="2026-08-27"]'
+    '[data-chart-point][data-series="Bench press"][data-date="2026-08-27"]'
   );
   assert(movedCompletedPoint);
   assert.notStrictEqual(movedCompletedPoint.dataset.x, originalCompletedX);
   assert.strictEqual(
-    window.document.querySelector('[data-chart-point][data-series="Bench Press"][data-date="2026-08-24"]'),
+    window.document.querySelector('[data-chart-point][data-series="Bench press"][data-date="2026-08-24"]'),
     null
   );
   publicRecord = await memory.loadPublic();
@@ -224,9 +189,5 @@ function drag(window, source, target) {
   assert.strictEqual(cell("2026-08-27").dataset.sessionId, undefined);
   assert.strictEqual(cell("2026-08-30").dataset.sessionId, completedSource.id);
 
-  console.log("PASS: owner calendar drag moves, confirms replacements, and updates Progress Overview dates");
   window.close();
-}()).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
 });
