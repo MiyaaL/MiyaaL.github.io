@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 06：Prompting、PEFT 与模型评估"
 date: 2026-01-20 09:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：Prompting、PEFT、LoRA、参数高效适配与模型评估。"
+description: "Prompting、PEFT、LoRA、参数高效适配与模型评估。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n
@@ -10,7 +10,7 @@ course_order: 6
 course_label: Week 6
 course_status: 完整记录
 permalink: /courses/cs224n/06-prompting-peft-evaluation/
-tags: [NLP, 模型训练, 模型评估]
+tags: [NLP, Training, Evaluation]
 math: true
 mermaid: false
 source_commit: b9c77fd

@@ -5,7 +5,13 @@
 
 <header class="site-header">
   <div class="container header-inner">
-    <a class="brand" href="{{ '/' | relative_url }}" aria-label="{{ site.title }} home">{{ site.title }}</a>
+    <a class="brand" href="{{ '/' | relative_url }}" aria-label="{{ site.title }} home">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <path class="brand-mark-letter" d="M11 47V17h8l11 16.5L41 17h8v30h-8V30.5L30 46 19 30.5V47Z"/>
+        <path class="brand-mark-slash" d="M52 15h5L46 49h-5Z"/>
+      </svg>
+      <span>{{ site.title }}</span>
+    </a>
 
     <nav class="site-nav" aria-label="Primary navigation">
       <a href="{{ '/' | relative_url }}"{% if page.url == '/' %} aria-current="page"{% endif %}>Home</a>

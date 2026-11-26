@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 03：Transformer 架构与变体"
 date: 2026-02-02 21:44:49 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：Transformer、归一化、激活函数、位置编码与注意力变体。"
+description: "Transformer、归一化、激活函数、位置编码与注意力变体。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336

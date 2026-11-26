@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 14：数据过滤与去重"
 date: 2026-02-17 21:18:18 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：KenLM、fastText、DSIR、文本过滤、MinHash 与局部敏感哈希。"
+description: "KenLM、fastText、DSIR、文本过滤、MinHash 与局部敏感哈希。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336
@@ -10,7 +10,7 @@ course_order: 14
 course_label: Lecture 14
 course_status: 完整记录
 permalink: /courses/cs336/14-data-filtering-deduplication/
-tags: [LLM, 数据工程]
+tags: [LLM, Data]
 math: true
 mermaid: false
 source_commit: 75581e4

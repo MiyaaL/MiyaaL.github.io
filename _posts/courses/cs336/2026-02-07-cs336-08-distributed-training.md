@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 08：torch.distributed 与并行策略"
 date: 2026-02-07 16:40:10 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：集合通信、torch.distributed，以及 DP、TP 与 PP。"
+description: "集合通信、torch.distributed，以及 DP、TP 与 PP。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336
@@ -10,7 +10,7 @@ course_order: 8
 course_label: Lecture 08
 course_status: 简要记录
 permalink: /courses/cs336/08-distributed-training/
-tags: [LLM, 分布式训练]
+tags: [LLM, Distributed Training]
 math: false
 mermaid: false
 source_commit: 75581e4

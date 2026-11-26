@@ -9,6 +9,17 @@
   --border-strong: #c7cdd4;
   --accent: #245da6;
   --accent-soft: rgba(36, 93, 166, 0.08);
+  --surface-raised: #ffffff;
+  --ok: #0f766e;
+  --ok-soft: rgba(15, 118, 110, 0.1);
+  --warn: #a15c07;
+  --warn-soft: rgba(161, 92, 7, 0.1);
+  --test: #6d4bc4;
+  --test-soft: rgba(109, 75, 196, 0.1);
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.08);
+  --radius: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
   --code-bg: #11161d;
   --code-text: #dce4ed;
   --header-bg: rgba(248, 249, 250, 0.96);
@@ -16,7 +27,7 @@
     radial-gradient(circle at 18% 12%, rgba(91, 126, 168, 0.1), transparent 29%),
     radial-gradient(circle at 82% 68%, rgba(111, 132, 166, 0.08), transparent 32%),
     #f4f6f9;
-  --starfield-opacity: 0.32;
+  --starfield-opacity: 0;
   --moon-face:
     radial-gradient(circle at 27% 34%, rgba(119, 112, 91, 0.2) 0 3%, transparent 4%),
     radial-gradient(circle at 36% 72%, rgba(124, 116, 91, 0.16) 0 4%, transparent 5%),
@@ -27,7 +38,7 @@
   --moon-inner-glow: rgba(255, 249, 220, 0.34);
   --moon-edge-glow: rgba(236, 242, 248, 0.52);
   --content-width: 1040px;
-  --reading-width: 720px;
+  --reading-width: 760px;
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", "PingFang SC",
@@ -48,6 +59,16 @@
   --border-strong: #3a434e;
   --accent: #78a9e6;
   --accent-soft: rgba(120, 169, 230, 0.1);
+  --surface-raised: rgba(22, 29, 41, 0.72);
+  --ok: #4fd1b5;
+  --ok-soft: rgba(79, 209, 181, 0.12);
+  --warn: #f0b354;
+  --warn-soft: rgba(240, 179, 84, 0.12);
+  --test: #b49cf5;
+  --test-soft: rgba(180, 156, 245, 0.14);
+  --danger: #f28b82;
+  --danger-soft: rgba(242, 139, 130, 0.12);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -16px rgba(0, 0, 0, 0.6);
   --code-bg: #080b0f;
   --code-text: #dce4ed;
   --header-bg: rgba(7, 11, 19, 0.94);
@@ -240,6 +261,16 @@ b {
   max-width: var(--reading-width);
 }
 
+/* Posts: the header shares the site container's left edge with the body. */
+.post-header.post-container {
+  width: min(calc(100% - 40px), var(--content-width));
+  max-width: none;
+}
+
+.post-header.post-container > * {
+  max-width: var(--reading-width);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -290,6 +321,9 @@ b {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   color: var(--text);
   font-size: 15px;
   font-weight: 600;
@@ -370,6 +404,20 @@ html[data-theme-mode="system"] .theme-system,
 html[data-theme-mode="light"] .theme-light,
 html[data-theme-mode="dark"] .theme-dark {
   display: block;
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.brand-mark-letter {
+  fill: currentColor;
+}
+
+.brand-mark-slash {
+  fill: var(--accent);
 }
 
 .eyebrow {
@@ -476,6 +524,16 @@ html[data-theme-mode="dark"] .theme-dark {
   color: var(--text-soft);
 }
 
+.expertise dd a {
+  color: var(--text);
+  text-decoration-color: var(--border-strong);
+}
+
+.expertise dd a:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
 .section {
   padding: 64px 0 96px;
 }
@@ -545,12 +603,19 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .post-entry-body h3 a::after {
+  display: inline-block;
   margin-left: 8px;
   color: var(--text-faint);
   content: "→";
   font-family: var(--font-mono);
   font-size: 0.72em;
   font-weight: 400;
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+.post-entry-body h3 a:hover::after {
+  color: var(--accent);
+  transform: translateX(3px);
 }
 
 .post-entry-body h3 a:hover {
@@ -569,7 +634,7 @@ html[data-theme-mode="dark"] .theme-dark {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 16px;
+  gap: 6px 8px;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -577,7 +642,9 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .tag-list a {
   display: inline-block;
-  padding: 3px 0;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--text-soft);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -587,8 +654,77 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .tag-list a:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
   color: var(--accent);
-  text-decoration: underline;
+}
+
+/* Course-series cards on the home page. */
+.series-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.series-card {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 20px 48px 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.series-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.series-card-kicker {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.series-card-title {
+  color: var(--text);
+  font-size: var(--entry-size);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.series-card-meta {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.series-card-latest {
+  margin-top: 6px;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.series-card-arrow {
+  position: absolute;
+  top: 20px;
+  right: 22px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+.series-card:hover .series-card-arrow {
+  color: var(--accent);
+  transform: translateX(3px);
 }
 
 .archive-hero {
@@ -920,8 +1056,19 @@ html[data-theme-mode="dark"] .theme-dark {
   height: auto;
   margin: 2em auto;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: #fff;
+}
+
+/* Lecture slides are white; on the dark theme they are dimmed so they sit in the
+   page instead of glaring, and return to full brightness on hover or focus. */
+:root[data-theme="dark"] .post-content img {
+  filter: brightness(0.9);
+  transition: filter 160ms ease;
+}
+
+:root[data-theme="dark"] .post-content img:hover {
+  filter: none;
 }
 
 .post-content hr {
@@ -969,6 +1116,7 @@ html[data-theme-mode="dark"] .theme-dark {
 .highlighter-rouge > .highlight {
   overflow: hidden;
   border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--code-bg);
 }
 
@@ -1272,6 +1420,10 @@ html[data-theme-mode="dark"] .theme-dark {
 
   .post-header {
     padding-top: 52px;
+  }
+
+  .post-header.post-container {
+    width: min(calc(100% - 28px), var(--content-width));
   }
 
   .back-link {

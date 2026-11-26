@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 03：RNN、LSTM 与 Seq2Seq"
 date: 2026-01-19 09:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：n-gram、RNN、LSTM、Seq2Seq 与 Attention。"
+description: "n-gram、RNN、LSTM、Seq2Seq 与 Attention。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n

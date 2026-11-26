@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 02：PyTorch 与资源估算"
 date: 2026-01-24 16:37:39 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：训练资源估算、PyTorch 张量、FLOPs、优化器与混合精度。"
+description: "训练资源估算、PyTorch 张量、FLOPs、优化器与混合精度。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336
@@ -10,7 +10,7 @@ course_order: 2
 course_label: Lecture 02
 course_status: 完整记录
 permalink: /courses/cs336/02-pytorch-resource-accounting/
-tags: [LLM, 模型训练]
+tags: [LLM, Training]
 math: true
 mermaid: false
 source_commit: 75581e4

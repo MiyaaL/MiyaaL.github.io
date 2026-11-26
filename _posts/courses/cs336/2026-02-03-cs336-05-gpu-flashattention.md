@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 05：GPU 性能与 FlashAttention"
 date: 2026-02-03 21:24:32 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：GPU 性能、低精度、算子融合、分块与 FlashAttention。"
+description: "GPU 性能、低精度、算子融合、分块与 FlashAttention。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336

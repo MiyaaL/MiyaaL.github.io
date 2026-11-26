@@ -10,9 +10,10 @@
 }(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  // Three lifts with very different loads share one chart, so each is plotted
-  // as the share of its own distance from the cycle's starting 1RM to its goal.
-  // Kilograms stay available in the tooltip.
+  // Each lift is plotted as the share of its own distance from the cycle's
+  // starting 1RM to its goal. A single cycle gets one small panel per lift: the
+  // programmed references are near-identical straight lines, so sharing one plot
+  // hides them behind each other. Several cycles keep one combined plot.
   var DAY_MS = 24 * 60 * 60 * 1000;
   var LIFTS = [
     { key: "bench", label: "Bench press", short: "Bench" },
@@ -225,6 +226,17 @@
     return String(value).replace(/-/g, ".");
   }
 
+  function renderPanelLegend(element) {
+    // The panels are titled with their lift, so the legend only explains marks.
+    element.innerHTML =
+      '<span class="plan-chart-legend-item is-key"><i class="is-line" aria-hidden="true"></i>' +
+      "<span>Programmed reference</span></span>" +
+      '<span class="plan-chart-legend-item is-key"><i class="is-dot" aria-hidden="true"></i>' +
+      "<span>Logged estimate</span></span>" +
+      '<span class="plan-chart-legend-item is-key"><i class="is-ring" aria-hidden="true"></i>' +
+      "<span>Tested 1RM</span></span>";
+  }
+
   function renderLegend(element, series) {
     // One entry per lift whatever the number of cycles, then the two mark types.
     var seen = {};
@@ -255,8 +267,14 @@
       detail.textContent = point.dataset.detail;
       tooltip.hidden = false;
       var renderedWidth = plot.clientWidth || width;
-      var x = Number(point.dataset.x) / width * renderedWidth;
-      var y = Number(point.dataset.y);
+      // Points live in one of several SVGs, so they are placed from their
+      // rendered position rather than their SVG coordinates.
+      var plotBox = plot.getBoundingClientRect ? plot.getBoundingClientRect() : null;
+      var pointBox = point.getBoundingClientRect ? point.getBoundingClientRect() : null;
+      var measured = plotBox && pointBox && (pointBox.width || pointBox.height);
+      var x = measured ? pointBox.left + pointBox.width / 2 - plotBox.left
+        : Number(point.dataset.x) / width * renderedWidth;
+      var y = measured ? pointBox.top + pointBox.height / 2 - plotBox.top : Number(point.dataset.y);
       tooltip.style.left = Math.max(96, Math.min(renderedWidth - 96, x)) + "px";
       tooltip.style.top = Math.max(18, y) + "px";
       tooltip.classList.toggle("is-below", y < 84);
@@ -315,6 +333,132 @@
     return labels;
   }
 
+  var CAPTIONS = {
+    panels: "Share of the distance from each lift's starting 1RM to its goal. The grey line is the " +
+      "programmed reference; dots are 1RM estimates from logged sessions.",
+    combined: "Share of the distance from each lift's starting 1RM to its goal, one line per cycle. " +
+      "Lines are the programmed reference; dots are 1RM estimates from logged sessions."
+  };
+  var PANEL_GAP = 24;
+  var PANEL_HEIGHT = 190;
+
+  function panelDomain(item) {
+    return percentDomain([item]);
+  }
+
+  function panelHtml(model, item, width, stacked) {
+    var height = PANEL_HEIGHT;
+    var margin = { top: 22, right: 14, bottom: 26, left: 46 };
+    var chartWidth = Math.max(1, width - margin.left - margin.right);
+    var chartHeight = height - margin.top - margin.bottom;
+    var cycleDays = Math.max(1, daysBetween(model.startDate, model.endDate));
+    var domain = panelDomain(item);
+    var domainSpan = Math.max(1, domain.maximum - domain.minimum);
+    var xFor = function (date) {
+      return margin.left + daysBetween(model.startDate, date) / cycleDays * chartWidth;
+    };
+    var yFor = function (value) {
+      return margin.top + (domain.maximum - value) / domainSpan * chartHeight;
+    };
+    var titleId = "plan-chart-panel-" + item.key;
+    var range = formatValue(item.start) + " → " + formatKg(item.goal, item.key);
+    var svg = [];
+    svg.push('<figure class="plan-chart-panel is-' + escapeXml(item.key) + '" data-chart-panel="' +
+      escapeXml(item.key) + '">');
+    svg.push('<figcaption class="plan-chart-panel-head"><span class="plan-chart-panel-name" id="' + titleId +
+      '"><i class="is-' + escapeXml(item.key) + '" aria-hidden="true"></i>' + escapeXml(item.label) +
+      '</span><span class="plan-chart-panel-range">' + escapeXml(range) + "</span></figcaption>");
+    svg.push('<svg class="plan-chart-svg" viewBox="0 0 ' + width + " " + height +
+      '" role="group" aria-labelledby="' + titleId + '">');
+
+    domain.ticks.forEach(function (tick) {
+      var y = yFor(tick);
+      var inside = tick === 0 || tick === 50 || tick === 100;
+      var outside = tick < 0 || tick > 100;
+      if (!inside && !outside) return;
+      svg.push('<line class="plan-chart-grid-line' + (tick === 100 ? " is-goal" : "") + '" x1="' + margin.left +
+        '" y1="' + y.toFixed(1) + '" x2="' + (margin.left + chartWidth) + '" y2="' + y.toFixed(1) + '"></line>');
+      svg.push('<text class="plan-chart-axis-label" x="' + (margin.left - 8) + '" y="' + (y + 4).toFixed(1) +
+        '" text-anchor="end">' + (tick === 100 ? "Goal" : (tick === 0 ? "Start" : tick + " %")) + "</text>");
+    });
+
+    var dates = stacked ? [model.startDate, model.endDate]
+      : [model.startDate, addDays(model.startDate, Math.round(cycleDays / 2)), model.endDate];
+    dates.forEach(function (date, index) {
+      var anchor = index === 0 ? "start" : index === dates.length - 1 ? "end" : "middle";
+      svg.push('<text class="plan-chart-axis-label" x="' + xFor(date).toFixed(1) + '" y="' + (height - 6) +
+        '" text-anchor="' + anchor + '">' + escapeXml(shortDate(date)) + "</text>");
+    });
+
+    if (dateInRange(model.today, model.startDate, model.endDate)) {
+      var todayX = xFor(model.today);
+      var todayAnchor = todayX > margin.left + chartWidth - 46 ? "end" : "start";
+      svg.push('<line class="plan-chart-today-line" x1="' + todayX.toFixed(1) + '" y1="' + margin.top +
+        '" x2="' + todayX.toFixed(1) + '" y2="' + (height - margin.bottom) + '"></line>');
+      svg.push('<text class="plan-chart-today-label" x="' + (todayAnchor === "end" ? todayX - 5 : todayX + 5).toFixed(1) +
+        '" y="' + (margin.top - 8) + '" text-anchor="' + todayAnchor + '">Today</text>');
+    }
+
+    var hits = [];
+    var path = item.points.map(function (point, index) {
+      return (index ? "L" : "M") + xFor(point.date).toFixed(2) + " " + yFor(point.percent).toFixed(2);
+    }).join(" ");
+    svg.push('<path class="plan-chart-line is-' + escapeXml(item.key) + ' is-programmed" d="' + path + '"></path>');
+    item.points.forEach(function (point) {
+      hits.push(hitTarget(item, point, xFor(point.date), yFor(point.percent), "planned", false));
+    });
+    item.actual.forEach(function (point) {
+      var x = xFor(point.date);
+      var y = yFor(point.percent);
+      svg.push('<circle class="plan-chart-actual is-' + escapeXml(item.key) + (point.isTest ? " is-test" : "") +
+        '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + (point.isTest ? 5.5 : 4) + '"></circle>');
+      hits.push(hitTarget(item, point, x, y, "actual", true));
+    });
+    if (item.today) {
+      hits.push(hitTarget(item, item.today, xFor(item.today.date), yFor(item.today.percent), "today", true));
+    }
+
+    if (item.actual.length) {
+      // The newest logged estimate is the number a reader wants, so it is
+      // written next to its dot instead of being left to the tooltip.
+      var latest = item.actual[item.actual.length - 1];
+      var latestX = xFor(latest.date);
+      var latestY = yFor(latest.percent);
+      var nearRight = latestX > margin.left + chartWidth - 76;
+      var above = latestY - margin.top > 22;
+      svg.push('<text class="plan-chart-latest-label is-' + escapeXml(item.key) + '" x="' +
+        (nearRight ? latestX - 8 : latestX + 8).toFixed(1) + '" y="' +
+        (above ? latestY - 9 : latestY + 18).toFixed(1) + '" text-anchor="' + (nearRight ? "end" : "start") + '">' +
+        escapeXml(formatKg(latest.value, item.key).replace(" added", "")) + "</text>");
+    } else {
+      // Sessions can be logged without producing an estimate (no RPE, or a
+      // deload), so the text speaks about estimates rather than sessions.
+      svg.push('<text class="plan-chart-none-label" x="' + (margin.left + chartWidth).toFixed(1) + '" y="' +
+        (margin.top + 18).toFixed(1) + '" text-anchor="end">No 1RM estimate logged yet</text>');
+    }
+
+    svg.push(hits.join(""));
+    svg.push("</svg></figure>");
+    return svg.join("");
+  }
+
+  function renderPanels(plot, model, width) {
+    // Three columns need about 230px each to keep the axis labels and the
+    // latest-estimate label apart; narrower plots stack the panels.
+    var stacked = width < 700;
+    var panelWidth = stacked ? width : Math.floor((width - PANEL_GAP * 2) / 3);
+    var html = ['<div class="plan-chart-panels' + (stacked ? " is-stacked" : "") + '">'];
+    model.series.forEach(function (item) {
+      html.push(panelHtml(model, item, panelWidth, stacked));
+    });
+    html.push("</div>");
+    html.push('<div class="plan-chart-tooltip" data-chart-tooltip role="status" hidden>' +
+      '<strong data-chart-tooltip-name></strong><span data-chart-tooltip-value></span>' +
+      '<small data-chart-tooltip-detail></small></div>');
+    plot.innerHTML = html.join("");
+    bindTooltips(plot, width);
+  }
+
   function render(rootElement, plan, options) {
     var settings = options || {};
     var model = settings.plans
@@ -337,9 +481,19 @@
 
     plot.hidden = false;
     empty.hidden = true;
-    renderLegend(legend, model.series);
+    var caption = rootElement.querySelector("[data-plan-chart-caption]");
+    if (caption) {
+      caption.textContent = model.multiCycle ? CAPTIONS.combined : CAPTIONS.panels;
+    }
 
     var width = Math.max(320, Math.round(plot.clientWidth || 960));
+    if (!model.multiCycle) {
+      renderPanelLegend(legend);
+      renderPanels(plot, model, width);
+      return model;
+    }
+    renderLegend(legend, model.series);
+
     var compact = width < 560;
     var height = Math.max(240, Math.round(plot.clientHeight || (compact ? 280 : 320)));
     var labelled = !model.multiCycle;

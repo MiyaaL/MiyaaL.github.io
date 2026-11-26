@@ -254,7 +254,14 @@
 }
 
 .course-status {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
   color: var(--text-soft);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 .course-outline-body h2 {
@@ -318,7 +325,9 @@
   padding: 13px 16px;
   border: 1px solid var(--border);
   border-left: 2px solid var(--border-strong);
-  margin-bottom: 2em;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin: 0 0 2em;
+  background: var(--surface-raised);
   color: var(--text-soft);
   font-size: 12px;
   line-height: 1.7;
@@ -434,8 +443,14 @@
   }
 
   .course-outline-meta {
-    grid-template-columns: auto 1fr;
-    gap: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+  }
+
+  .course-status {
+    margin-top: 0;
   }
 
   .series-navigation-header {

@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 05：预训练、RLHF 与 DPO"
 date: 2026-01-19 10:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：子词建模、预训练、指令微调、RLHF 与 DPO。"
+description: "子词建模、预训练、指令微调、RLHF 与 DPO。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n
@@ -10,7 +10,7 @@ course_order: 5
 course_label: Week 5
 course_status: 完整记录
 permalink: /courses/cs224n/05-pretraining-rlhf-dpo/
-tags: [NLP, 模型训练, 模型对齐]
+tags: [NLP, Training, Alignment]
 math: true
 mermaid: false
 source_commit: b9c77fd

@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 01：课程概览与 Tokenization"
 date: 2026-01-23 00:13:57 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：语言模型全栈概览、课程结构与 Tokenization 基础。"
+description: "语言模型全栈概览、课程结构与 Tokenization 基础。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336

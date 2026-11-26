@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 07：Question Answering 与 RAG"
 date: 2026-01-20 10:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：闭卷问答、模型幻觉、阅读理解、RAG 与检索器。"
+description: "闭卷问答、模型幻觉、阅读理解、RAG 与检索器。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n

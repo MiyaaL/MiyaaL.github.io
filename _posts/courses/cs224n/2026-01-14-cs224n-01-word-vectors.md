@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 01：词向量与 Word2Vec"
 date: 2026-01-14 09:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：词义表示、Word2Vec、共现矩阵、词向量评估与 NER。"
+description: "词义表示、Word2Vec、共现矩阵、词向量评估与 NER。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n

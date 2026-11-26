@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 04：Self-Attention 与 Transformer"
 date: 2026-01-14 11:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：Self-Attention、Transformer 结构、训练方法与架构局限。"
+description: "Self-Attention、Transformer 结构、训练方法与架构局限。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n

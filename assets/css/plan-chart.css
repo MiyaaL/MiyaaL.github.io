@@ -123,24 +123,40 @@
   background: var(--plan-chart-series, var(--text-soft));
 }
 
-.plan-chart-legend-item i.is-dot {
+.plan-chart-legend-item i.is-dot,
+.plan-chart-legend-item i.is-ring {
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
 
+.plan-chart-legend-item i.is-ring {
+  border: 2px solid var(--text-soft);
+  background: transparent;
+}
+
+.plan-chart-legend-item i.is-line {
+  background: var(--border-strong);
+}
+
+.plan-chart-panel-name i.is-bench,
+.plan-chart-latest-label.is-bench,
 .plan-chart-legend-item i.is-bench,
 .plan-chart-line.is-bench,
 .plan-chart-actual.is-bench {
   --plan-chart-series: var(--plan-chart-bench);
 }
 
+.plan-chart-panel-name i.is-pullup,
+.plan-chart-latest-label.is-pullup,
 .plan-chart-legend-item i.is-pullup,
 .plan-chart-line.is-pullup,
 .plan-chart-actual.is-pullup {
   --plan-chart-series: var(--plan-chart-pullup);
 }
 
+.plan-chart-panel-name i.is-squat,
+.plan-chart-latest-label.is-squat,
 .plan-chart-legend-item i.is-squat,
 .plan-chart-line.is-squat,
 .plan-chart-actual.is-squat {
@@ -150,7 +166,6 @@
 .plan-chart-plot {
   position: relative;
   width: 100%;
-  min-height: 320px;
   margin-top: 24px;
 }
 
@@ -159,6 +174,90 @@
   width: 100%;
   height: 320px;
   overflow: visible;
+}
+
+/* One panel per lift: the programmed references are near-identical lines, so
+   each lift gets its own plot instead of hiding behind the others. */
+.plan-chart-panels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.plan-chart-panels.is-stacked {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.plan-chart-panel {
+  min-width: 0;
+  padding: 14px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.plan-chart-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  padding: 0 14px 6px;
+}
+
+.plan-chart-panel-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.plan-chart-panel-name i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--plan-chart-series);
+}
+
+.plan-chart-panel-range {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.plan-chart-panel .plan-chart-svg {
+  height: auto;
+}
+
+/* In a panel the reference is context, not a series: one thin muted line. */
+.plan-chart-line.is-programmed {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+
+.plan-chart-latest-label {
+  fill: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.plan-chart-none-label {
+  fill: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
 }
 
 .plan-chart-grid-line,
@@ -249,8 +348,9 @@
   max-width: 250px;
   padding: 9px 11px;
   border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow);
   color: var(--text);
   pointer-events: none;
   transform: translate(-50%, calc(-100% - 14px));
@@ -331,12 +431,15 @@
 
 @media (max-width: 560px) {
   .plan-chart-plot {
-    min-height: 280px;
     margin-top: 20px;
   }
 
   .plan-chart-svg {
     height: 280px;
+  }
+
+  .plan-chart-panel .plan-chart-svg {
+    height: auto;
   }
 
   .plan-chart-tooltip {

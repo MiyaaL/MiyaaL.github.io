@@ -34,12 +34,9 @@ permalink: /courses/cs224n/
           <div class="course-outline-meta">
             <span>{{ post.course_label }}</span>
             <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%Y.%m.%d" }}</time>
+            {% if post.course_status and post.course_status != "完整记录" %}<span class="course-status" lang="en">{% if post.course_status == "简要记录" %}Outline{% elsif post.course_status == "部分课程记录" %}Partial{% elsif post.course_status == "合并课程记录" %}Combined{% else %}{{ post.course_status }}{% endif %}</span>{% endif %}
           </div>
           <div class="course-outline-body">
-            <div class="course-outline-label">
-              <span>{{ post.category }}</span>
-              {% if post.course_status == "部分课程记录" %}<span class="course-status">{{ post.course_status }}</span>{% endif %}
-            </div>
             <h2><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h2>
             <p>{{ post.description }}</p>
             <ul class="tag-list" aria-label="Tags">

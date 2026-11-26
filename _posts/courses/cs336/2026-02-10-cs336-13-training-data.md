@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 13：大模型训练数据"
 date: 2026-02-10 20:30:32 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：Common Crawl、C4、The Pile、RefinedWeb 与主流训练数据集。"
+description: "Common Crawl、C4、The Pile、RefinedWeb 与主流训练数据集。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336
@@ -10,7 +10,7 @@ course_order: 13
 course_label: Lecture 13
 course_status: 简要记录
 permalink: /courses/cs336/13-training-data/
-tags: [LLM, 数据工程]
+tags: [LLM, Data]
 math: false
 mermaid: false
 source_commit: 75581e4

@@ -75,40 +75,68 @@ test("logged sessions appear as actual estimates, separate from the programmed l
   assert.doesNotMatch(JSON.stringify(model), /bodyweight/i, "the chart model carries no bodyweight");
 });
 
-test("the rendered chart labels its axis by meaning and its lines directly", () => {
+test("a single cycle is drawn as one panel per lift", () => {
   const view = harness(960);
   chart.render(view.root, loggedPlan(), { today: "2026-11-26" });
-  const svg = view.plot.innerHTML;
-  assert.match(svg, /viewBox="0 0 960 320"/);
-  assert.match(svg, />Start<\/text>/);
-  assert.match(svg, />Goal<\/text>/);
-  assert.match(svg, />50 %<\/text>/);
-  assert.match(svg, /plan-chart-today-line/);
-  assert.strictEqual((svg.match(/class="plan-chart-line /g) || []).length, 3);
-  assert.strictEqual((svg.match(/class="plan-chart-end-label"/g) || []).length, 3);
-  assert.match(svg, /Bench press<tspan[^>]*>[\d.]+ kg<\/tspan>/);
-  assert.strictEqual((svg.match(/class="plan-chart-actual /g) || []).length, 3, "one marker per logged estimate");
-  assert.match(svg, /data-kind="actual"[^>]*data-value="[\d.]+ kg" data-percent="-?\d+ %"/);
-  assert.doesNotMatch(svg, /KG<\/text>/, "the shared kilogram axis is gone");
-  ["Bench press", "Weighted pull-up", "Back squat", "Programmed", "Logged estimate"].forEach((label) => {
+  const html = view.plot.innerHTML;
+  const panels = html.split('<figure class="plan-chart-panel ').slice(1);
+  assert.deepStrictEqual(panels.map((panel) => panel.match(/data-chart-panel="(\w+)"/)[1]),
+    ["bench", "pullup", "squat"]);
+  assert.match(html, /<div class="plan-chart-panels">/, "wide plots put the panels side by side");
+  panels.forEach((panel) => {
+    assert.match(panel, /viewBox="0 0 304 190"/, "three equal columns share the plot width");
+    assert.match(panel, />Start<\/text>/);
+    assert.match(panel, />Goal<\/text>/);
+    assert.match(panel, />50 %<\/text>/);
+    assert.strictEqual((panel.match(/plan-chart-today-line/g) || []).length, 1);
+    assert.strictEqual((panel.match(/class="plan-chart-line [^"]*is-programmed"/g) || []).length, 1,
+      "the programmed reference is one muted line");
+    assert.strictEqual((panel.match(/class="plan-chart-axis-label"[^>]*y="184"/g) || []).length, 3,
+      "start, middle and end dates sit under each panel");
+  });
+  assert.match(panels[0], /plan-chart-panel-name[^>]*>.*Bench press<\/span><span class="plan-chart-panel-range">90 → 100 kg</);
+  assert.match(panels[1], /plan-chart-panel-range">10 → \+20 kg added</);
+  assert.strictEqual((html.match(/class="plan-chart-actual /g) || []).length, 3, "one marker per logged estimate");
+  assert.match(panels[0], /class="plan-chart-latest-label is-bench"[^>]*>[\d.]+ kg<\/text>/,
+    "the newest logged estimate is labelled in kilograms");
+  assert.doesNotMatch(panels[0], /No 1RM estimate logged yet/);
+  assert.match(panels[1], /class="plan-chart-none-label"[^>]*>No 1RM estimate logged yet<\/text>/);
+  assert.doesNotMatch(panels[1], /plan-chart-latest-label/);
+  assert.match(html, /data-kind="actual"[^>]*data-value="[\d.]+ kg" data-percent="-?\d+ %"/);
+  assert.match(html, /tabindex="0"[^>]*data-kind="actual"/, "logged points stay keyboard reachable");
+  assert.doesNotMatch(html, /plan-chart-end-label/, "panel titles replace the colliding end labels");
+  assert.doesNotMatch(html, /KG<\/text>/, "there is no shared kilogram axis");
+  ["Programmed reference", "Logged estimate", "Tested 1RM"].forEach((label) => {
     assert.ok(view.legend.innerHTML.includes("<span>" + label + "</span>"), label + " is in the legend");
   });
+  assert.doesNotMatch(view.legend.innerHTML, /Bench press/, "lift names live in the panel titles");
+  assert.match(html, /data-chart-tooltip /, "one tooltip serves every panel");
 });
 
-test("a narrow plot keeps the labels inside the viewport", () => {
+test("a narrow plot stacks the panels and keeps their labels inside", () => {
   const view = harness(358);
   chart.render(view.root, loggedPlan(), { today: "2026-11-26" });
-  const svg = view.plot.innerHTML;
-  assert.match(svg, /viewBox="0 0 358 280"/);
-  assert.match(svg, />Bench<tspan/, "short lift names are used when space is tight");
-  const xs = [...svg.matchAll(/class="plan-chart-end-label" x="([\d.]+)"/g)].map((match) => Number(match[1]));
-  xs.forEach((x) => assert.ok(x < 358 - 80, "labels start early enough to fit their text"));
-  const ys = [...svg.matchAll(/class="plan-chart-end-label" x="[\d.]+" y="([\d.]+)"/g)].map((match) => Number(match[1])).sort((a, b) => a - b);
-  for (let index = 1; index < ys.length; index += 1) {
-    assert.ok(ys[index] - ys[index - 1] >= 15.9, "end labels do not overlap");
-  }
-  assert.strictEqual((svg.match(/class="plan-chart-leader"/g) || []).length >= 1, true,
-    "converging line ends are joined to their labels by leaders");
+  const html = view.plot.innerHTML;
+  assert.match(html, /<div class="plan-chart-panels is-stacked">/);
+  assert.strictEqual((html.match(/viewBox="0 0 358 190"/g) || []).length, 3, "each panel takes the full width");
+  const panel = html.split('<figure class="plan-chart-panel ')[1];
+  assert.strictEqual((panel.match(/class="plan-chart-axis-label"[^>]*y="184"/g) || []).length, 2,
+    "only the start and end dates are shown when space is tight");
+  [...html.matchAll(/class="plan-chart-latest-label[^"]*" x="([\d.]+)" y="([\d.]+)" text-anchor="(\w+)"/g)]
+    .forEach((match) => {
+      const x = Number(match[1]);
+      assert.ok(match[3] === "end" ? x > 60 : x < 358 - 70, "the estimate label fits inside its panel");
+      assert.ok(Number(match[2]) > 10 && Number(match[2]) < 170);
+    });
+});
+
+test("the caption explains the view that is drawn", () => {
+  const caption = { textContent: "" };
+  const view = harness(960);
+  const original = view.root.querySelector;
+  view.root.querySelector = (selector) => selector === "[data-plan-chart-caption]" ? caption : original(selector);
+  chart.render(view.root, loggedPlan(), { today: "2026-11-26" });
+  assert.match(caption.textContent, /grey line is the programmed reference/);
 });
 
 test("a tested max is marked as a measurement", () => {

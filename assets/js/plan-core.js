@@ -1411,6 +1411,8 @@
 
     if (cycle.status !== "archived") {
       var bodyweight = latestBodyweight(cycle);
+      // One sentence for all steep goals keeps the note short when several lifts share it.
+      var steep = [];
       ["bench", "pullup", "squat"].forEach(function (key) {
         var lift = cycle.lifts[key];
         var offset = key === "pullup" ? asNumber(bodyweight, null) : 0;
@@ -1420,12 +1422,13 @@
         var weeks = Math.max(1, daysBetween(cycle.startDate, cycle.endDate) / 7);
         var rate = ((target + offset) / (start + offset) - 1) / weeks;
         if (rate <= GOAL_RATE_WARNING + 1e-9) return;
-        var projected = programmedOneRepMax(lift, key, cycle, cycle.endDate, offset);
-        warnings.push(LIFT_LABELS[key] + " needs +" + (rate * 100).toFixed(1) + " % per week to reach " +
-          formatLoad(target, key) + "; more than about 0.5 % per week is optimistic at this level. " +
-          "The training reference ends at " + formatLoad(Math.round(projected * 10) / 10, key) +
-          " and only keeps pace while logged sessions confirm it.");
+        steep.push(LIFT_LABELS[key] + " needs +" + (rate * 100).toFixed(1) + " % per week to reach " +
+          formatLoad(target, key));
       });
+      if (steep.length) {
+        warnings.push("Ambitious goals: " + steep.join("; ") + ". More than about 0.5 % per week is " +
+          "optimistic at this level, so the training reference only keeps pace while logged sessions confirm it.");
+      }
     }
 
     if (cycle.schedule) warnings.push(cycle.schedule.reason);

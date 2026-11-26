@@ -1,9 +1,10 @@
 <footer class="site-footer">
   <div class="container footer-inner">
-    <p>© {{ site.time | date: '%Y' }} MiyaaL. Built with Jekyll &amp; GitHub Pages.</p>
+    <p>© {{ site.time | date: '%Y' }} Mingyang Li · Updated <time datetime="{{ site.time | date_to_xmlschema }}">{{ site.time | date: "%Y.%m.%d" }}</time></p>
     <div class="footer-links">
+      <a href="mailto:miyaa@x2robot.com" rel="me">Email</a>
+      <a href="https://github.com/MiyaaL" target="_blank" rel="me noopener">GitHub</a>
       <a href="{{ '/feed.xml' | relative_url }}">RSS</a>
-      <a href="https://github.com/MiyaaL" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
 </footer>

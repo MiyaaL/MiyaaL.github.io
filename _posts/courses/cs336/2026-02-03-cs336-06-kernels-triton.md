@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 06：CUDA、Triton 与 Kernel 优化"
 date: 2026-02-03 21:24:33 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：基准测试、性能分析、Kernel Fusion、CUDA、Triton 与 torch.compile。"
+description: "基准测试、性能分析、Kernel Fusion、CUDA、Triton 与 torch.compile。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336

@@ -114,8 +114,11 @@ test('simplified accessory logs preserve legacy data, workout guidance stays foc
     generated,
     { today: "2026-08-20" }
   );
-  assert.strictEqual(window.document.querySelector(".plan-chart-svg").getAttribute("viewBox"), "0 0 420 260");
-  assert(window.document.querySelector(".plan-chart-today-line"));
+  const panelSvgs = [...window.document.querySelectorAll(".plan-chart-panel .plan-chart-svg")];
+  assert.strictEqual(panelSvgs.length, 3, "a single cycle draws one panel per lift");
+  panelSvgs.forEach((svg) => assert.strictEqual(svg.getAttribute("viewBox"), "0 0 420 190",
+    "a narrow plot stacks full-width panels"));
+  assert.strictEqual(window.document.querySelectorAll(".plan-chart-today-line").length, 3);
   assert.strictEqual(window.document.querySelectorAll('.plan-chart-point-hit[data-kind="today"]').length, 3);
   const chartPoint = window.document.querySelector("[data-chart-point]");
   chartPoint.dispatchEvent(new window.MouseEvent("mouseenter"));

@@ -2,7 +2,7 @@
 title: "CS336 课程笔记 04：混合专家模型（MoE）"
 date: 2026-02-02 21:45:01 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS336 课程笔记：MoE 路由、专家规模、负载均衡、并行训练与 DeepSeek MoE。"
+description: "MoE 路由、专家规模、负载均衡、并行训练与 DeepSeek MoE。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336

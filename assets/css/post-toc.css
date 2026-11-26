@@ -2,24 +2,28 @@
   max-width: var(--reading-width);
 }
 
+/* Reading column on the left edge of the site container, contents rail on the
+   right, so the article lines up with the header and nothing sits in a gutter. */
 .post-body.has-post-toc {
   display: grid;
-  width: min(calc(100% - 40px), 1240px);
+  width: min(calc(100% - 40px), var(--content-width));
   max-width: none;
-  grid-template-columns: minmax(0, 1fr) minmax(0, var(--reading-width)) minmax(0, 1fr);
-  gap: 40px;
+  grid-template-columns: minmax(0, var(--reading-width)) minmax(0, 1fr);
+  gap: 56px;
   align-items: start;
 }
 
 .post-main {
   min-width: 0;
-  grid-column: 2;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .post-toc {
   min-width: 0;
   padding-top: 38px;
-  grid-column: 1;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .post-toc-panel {
@@ -129,9 +133,20 @@
 
 @media (max-width: 1080px) {
   .post-body.has-post-toc {
-    display: block;
-    width: min(calc(100% - 40px), var(--reading-width));
+    display: flex;
+    flex-direction: column;
+    width: min(calc(100% - 40px), var(--content-width));
+    max-width: none;
+    gap: 0;
+  }
+
+  .post-body.has-post-toc > * {
+    width: 100%;
     max-width: var(--reading-width);
+  }
+
+  .post-body.has-post-toc > .post-toc {
+    order: -1;
   }
 
   .post-toc {
@@ -167,7 +182,7 @@
 
 @media (max-width: 620px) {
   .post-body.has-post-toc {
-    width: min(calc(100% - 28px), var(--reading-width));
+    width: min(calc(100% - 28px), var(--content-width));
   }
 
   .post-toc-list {

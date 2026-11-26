@@ -463,7 +463,7 @@
           : "");
     }
 
-    renderProgress(plan.cycle);
+    renderProgress(plan);
     renderWarnings(plan);
     renderCycleSelect();
     renderTrajectory(displayTrajectoryPlan(plan));
@@ -502,34 +502,97 @@
     }).format(date);
   }
 
-  function liftProgressItemHtml(cycle, key, withLabel) {
+  function formatKgValue(value) {
+    return Number(value).toFixed(1).replace(/\.0$/, "");
+  }
+
+  // Where the programmed reference stands today, read from the same series the
+  // chart draws so the tile and the chart can never disagree.
+  function programmedToday(plan) {
+    var result = {};
+    if (!chart || !plan || !plan.cycle || plan.cycle.status === "archived") {
+      return result;
+    }
+    chart.buildSeries(plan, todayInShanghai()).series.forEach(function (item) {
+      if (item.today) {
+        result[item.key] = item.today.value;
+      }
+    });
+    return result;
+  }
+
+  function liftProgressModel(cycle, key, reference) {
     var lift = cycle.lifts[key] || {};
+    var hasCurrent = lift.current1rm != null && lift.current1rm !== "";
+    var hasTarget = lift.target1rm != null && lift.target1rm !== "";
     var current = Number(lift.current1rm || 0);
     var target = Number(lift.target1rm || 0);
     var start = lift.baseline1rm == null || lift.baseline1rm === "" ? current : Number(lift.baseline1rm);
-    // The bar shows the same quantity as the chart: how much of the distance
-    // from the cycle's starting 1RM to the goal has been covered.
-    var percentage = target > start
-      ? Math.min(100, Math.max(0, (current - start) / (target - start) * 100))
-      : (lift.target1rm != null && current >= target ? 100 : 0);
-    var suffix = key === "pullup" ? " kg added" : " kg";
-    return '<div class="plan-progress-item">' +
-      '<div class="plan-progress-label">' + (withLabel
-        ? '<strong>' + escapeHtml(core.LIFT_LABELS[key]) + "</strong>"
-        : "") +
-      '<span>' + (current ? current.toFixed(1).replace(".0", "") : "—") + " → " +
-      (target ? target.toFixed(1).replace(".0", "") : "—") + escapeHtml(suffix) + '</span></div>' +
-      '<div class="plan-progress-track" aria-hidden="true"><span style="--plan-progress:' +
-      percentage.toFixed(1) + '%"></span></div></div>';
+    var share = function (value) {
+      return target > start
+        ? Math.min(100, Math.max(0, (value - start) / (target - start) * 100))
+        : (hasTarget && value >= target ? 100 : 0);
+    };
+    var model = {
+      hasCurrent: hasCurrent,
+      hasTarget: hasTarget,
+      current: current,
+      target: target,
+      percentage: share(current),
+      marker: reference == null ? null : share(reference),
+      status: null
+    };
+    if (hasCurrent && hasTarget) {
+      // Loads are rounded to 2.5 kg, so a gap smaller than half a kilogram is noise.
+      var gap = reference == null ? 0 : Math.round((reference - current) * 10) / 10;
+      if (current >= target) {
+        model.status = { tone: "ok", text: "Goal reached" };
+      } else if (reference != null && gap >= 0.5) {
+        model.status = { tone: "warn", text: "Behind plan by " + formatKgValue(gap) + " kg" };
+      } else if (reference != null) {
+        model.status = { tone: "ok", text: "On track" };
+      }
+    }
+    return model;
   }
 
-  function liftProgressHtml(cycle) {
+  function progressTrackHtml(model) {
+    return '<div class="plan-progress-track' + (model.percentage <= 0 ? " is-at-start" : "") +
+      '" aria-hidden="true"><span style="--plan-progress:' + model.percentage.toFixed(1) + '%"></span>' +
+      (model.marker == null ? "" : '<i style="--plan-reference:' + model.marker.toFixed(1) + '%"></i>') + "</div>";
+  }
+
+  function liftProgressItemHtml(cycle, key, withLabel, reference) {
+    var model = liftProgressModel(cycle, key, reference);
+    var prefix = key === "pullup" ? "+" : "";
+    var unit = key === "pullup" ? " kg added" : " kg";
+    if (!withLabel) {
+      // Compact form for the all-cycles table: the numbers and the bar only.
+      return '<div class="plan-progress-item is-compact">' +
+        '<div class="plan-progress-label"><span>' + (model.hasCurrent ? formatKgValue(model.current) : "—") +
+        " → " + (model.hasTarget ? formatKgValue(model.target) : "—") + escapeHtml(unit) + "</span></div>" +
+        progressTrackHtml(model) + "</div>";
+    }
+    return '<div class="plan-progress-item" data-plan-lift="' + escapeHtml(key) + '">' +
+      '<div class="plan-progress-label"><strong>' + escapeHtml(core.LIFT_LABELS[key]) + "</strong>" +
+      (model.status ? '<span class="plan-progress-status is-' + model.status.tone + '">' +
+        escapeHtml(model.status.text) + "</span>" : "") + "</div>" +
+      '<p class="plan-progress-value"><b>' + (model.hasCurrent ? prefix + formatKgValue(model.current) : "—") +
+      "</b>" + escapeHtml(unit) + '<span class="plan-progress-goal">' +
+      (model.hasTarget ? "of " + prefix + formatKgValue(model.target) + " kg goal" : "no goal set") + "</span></p>" +
+      progressTrackHtml(model) +
+      (model.marker == null ? "" : '<p class="plan-progress-key"><i aria-hidden="true"></i>Programmed reference today</p>') +
+      "</div>";
+  }
+
+  function liftProgressHtml(plan) {
+    var reference = programmedToday(plan);
     return ["bench", "pullup", "squat"].map(function (key) {
-      return liftProgressItemHtml(cycle, key, true);
+      return liftProgressItemHtml(plan.cycle, key, true, reference[key]);
     }).join("");
   }
 
-  function renderProgress(cycle) {
+  function renderProgress(plan) {
     dom.progress.classList.toggle("is-all-cycles", Boolean(allCyclePlans));
     if (allCyclePlans) {
       // One cycle per row keeps several cycles short: the lift names sit in the column
@@ -553,7 +616,7 @@
         }).join("") + "</div>";
       return;
     }
-    dom.progress.innerHTML = liftProgressHtml(cycle);
+    dom.progress.innerHTML = liftProgressHtml(plan);
   }
 
   function renderTrajectory(plan) {
@@ -574,9 +637,24 @@
   function renderWarnings(plan) {
     var warnings = (plan.warnings || []).slice();
     dom.warnings.hidden = warnings.length === 0;
-    dom.warnings.innerHTML = "<ul>" + warnings.slice(0, 6).map(function (warning) {
-      return "<li>" + escapeHtml(warning) + "</li>";
-    }).join("") + "</ul>";
+    // The sentence describing the program is information, not a warning: it
+    // reads as a paragraph. Everything else is grouped under a "Note" label.
+    var about = [];
+    var notes = [];
+    warnings.slice(0, 6).forEach(function (warning) {
+      (/^Three build weeks/.test(warning) ? about : notes).push(warning);
+    });
+    var html = about.map(function (text) {
+      return '<p class="plan-note">' + escapeHtml(text) + "</p>";
+    }).join("");
+    if (notes.length) {
+      html += '<div class="plan-note-warn"><span class="plan-note-label">Note</span>' +
+        (notes.length === 1
+          ? "<p>" + escapeHtml(notes[0]) + "</p>"
+          : "<ul>" + notes.map(function (text) { return "<li>" + escapeHtml(text) + "</li>"; }).join("") + "</ul>") +
+        "</div>";
+    }
+    dom.warnings.innerHTML = html;
   }
 
   function renderCycleSelect() {
@@ -683,25 +761,29 @@
       var canDrag = Boolean(session && !allCyclePlans && isOwner && !isOffline);
       var attributes = ' data-plan-date="' + escapeHtml(date) + '"';
       var number = '<span class="plan-day-number">' + Number(date.slice(-2)) + "</span>";
+      var top = function (chip) {
+        return '<span class="plan-day-top">' + (chip || "<span></span>") + number + "</span>";
+      };
       if (entries.length === 1) {
         // A day with one session is a single button; the label carries what
         // the cell shows so the date and status are not lost to a screen reader.
         var aria = formatLongDate(date, true) + ", " + session.label + ", " + statusLabel(session.status) +
           (canDrag ? ", draggable to another date" : "");
-        cells.push('<button class="' + classes.join(" ") + '" type="button"' + attributes +
-          ' data-session-id="' + escapeHtml(session.id) + '"' + (canDrag ? ' draggable="true"' : "") +
-          ' aria-label="' + escapeHtml(aria) + '">' + number + daySessionCellHtml(entries[0]) + "</button>");
+        cells.push('<button class="' + classes.concat(sessionToneClasses(session)).join(" ") + '" type="button"' +
+          attributes + ' data-session-id="' + escapeHtml(session.id) + '"' + (canDrag ? ' draggable="true"' : "") +
+          ' aria-label="' + escapeHtml(aria) + '">' + top(sessionChipHtml(session)) +
+          daySessionCellHtml(entries[0]) + "</button>");
       } else if (entries.length) {
         // Several cycles can share a date in the all-cycles view; each session
         // is its own button so every one of them is reachable by keyboard.
-        cells.push('<div class="' + classes.join(" ") + ' has-sessions"' + attributes + ">" + number +
+        cells.push('<div class="' + classes.join(" ") + ' has-sessions"' + attributes + ">" + top("") +
           '<span class="plan-day-sessions">' + entries.map(function (entry) {
             return daySessionEntryHtml(entry, date);
           }).join("") + "</span></div>");
       } else {
         var holiday = holidayForDate(date);
-        cells.push('<div class="' + classes.join(" ") + '"' + attributes + ">" + number +
-          (holiday && holiday.type === "off"
+        cells.push('<div class="' + classes.join(" ") + ' is-rest"' + attributes + ">" +
+          top(holiday && holiday.type === "off"
             ? '<span class="plan-day-holiday" title="' + escapeHtml(holiday.name) + '">Holiday</span>' : "") +
           "</div>");
       }
@@ -709,14 +791,32 @@
     dom.monthGrid.innerHTML = cells.join("");
   }
 
+  // What a session's cell is tinted by: its outcome once it has one, otherwise
+  // the kind of week it belongs to.
+  function sessionTone(session) {
+    var phase = session.phase && session.phase.key;
+    if (session.status === "completed") return { key: "completed", label: "Done" };
+    if (session.status === "missed") return { key: "missed", label: "Missed" };
+    if (session.status === "skipped") return { key: "skipped", label: "Skipped" };
+    if (phase === "test" || phase === "retry") return { key: "test", label: phase === "retry" ? "Retry" : "Test" };
+    if (phase === "deload" || phase === "opener") return { key: "deload", label: phase === "opener" ? "Opener" : "Deload" };
+    return null;
+  }
+
+  function sessionToneClasses(session) {
+    var tone = sessionTone(session);
+    return tone ? ["is-" + tone.key] : [];
+  }
+
+  function sessionChipHtml(session) {
+    var tone = sessionTone(session);
+    return tone ? '<span class="plan-day-status is-' + tone.key + '">' + escapeHtml(tone.label) + "</span>" : "";
+  }
+
   function daySessionCellHtml(entry) {
     var session = entry.session;
     var html = '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>";
     html += '<span class="plan-day-load">' + escapeHtml(primaryLoad(session)) + "</span>";
-    if (session.status && session.status !== "planned") {
-      html += '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
-        escapeHtml(statusLabel(session.status)) + "</span>";
-    }
     if (session.holiday) {
       html += '<span class="plan-day-holiday">Make-up</span>';
     }
@@ -731,10 +831,7 @@
       '<span class="plan-day-cycle">' + escapeHtml(entry.ordinal) + "</span>" +
       '<strong class="plan-day-badge">' + escapeHtml(shortTypeLabel(session.type)) + "</strong>" +
       '<span class="plan-day-load">' + escapeHtml(primaryLoad(session)) + "</span>" +
-      (session.status && session.status !== "planned"
-        ? '<span class="plan-day-status is-' + escapeHtml(session.status) + '">' +
-          escapeHtml(statusLabel(session.status)) + "</span>"
-        : "") + "</button>";
+      sessionChipHtml(session) + "</button>";
   }
 
   function renderAgenda(plan, map) {
@@ -753,12 +850,14 @@
       }).format(new Date(date + "T12:00:00+08:00"));
       var content = entries.length ? entries.map(function (entry) {
         var session = entry.session;
-        return '<button class="plan-agenda-session" type="button" data-session-id="' +
-          escapeHtml(session.id) + '"><strong>' + (entry.ordinal
+        return '<button class="plan-agenda-session' + sessionToneClasses(session).map(function (name) {
+          return " " + name;
+        }).join("") + '" type="button" data-session-id="' +
+          escapeHtml(session.id) + '" aria-label="' + escapeHtml(dateLabel + ", " + session.label + ", " +
+            statusLabel(session.status)) + '"><span class="plan-agenda-title"><strong>' + (entry.ordinal
             ? '<span class="plan-day-cycle">' + escapeHtml(entry.ordinal) + "</span> " : "") +
-          escapeHtml(session.label) + '</strong><span>' +
-          escapeHtml(primaryLoad(session) + " · " + (session.phase && session.phase.label || "") + " · " +
-            statusLabel(session.status)) +
+          escapeHtml(session.label) + "</strong>" + sessionChipHtml(session) + '</span><span class="plan-agenda-meta">' +
+          escapeHtml([primaryLoad(session), session.phase && session.phase.label].filter(Boolean).join(" · ")) +
           "</span></button>";
       }).join("") : '<span class="plan-agenda-rest">' +
         (holidayForDate(date) && holidayForDate(date).type === "off" ? "Public holiday" : "Rest day") +

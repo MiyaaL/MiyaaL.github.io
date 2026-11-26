@@ -128,7 +128,9 @@ test("past unlogged sessions are missed, and a layoff steps the wave back", () =
 test("the plan warns when the goal needs more than about 0.5 % a week", () => {
   const steep = generate(sampleState(core), "2026-11-02").warnings.join("\n");
   assert.match(steep, /Bench press needs \+0\.9 % per week to reach 100 kg/);
-  assert.match(steep, /The training reference ends at/);
+  assert.match(steep, /only keeps pace while logged sessions confirm it/);
+  assert.strictEqual(generate(sampleState(core), "2026-11-02").warnings.filter((text) => /per week/.test(text)).length, 1,
+    "several steep goals share one sentence");
   const modest = generate(sampleState(core, { lifts: { bench: [90, 94], pullup: [10, 13], squat: [110, 115] } }),
     "2026-11-02").warnings.join("\n");
   assert.doesNotMatch(modest, /per week/);

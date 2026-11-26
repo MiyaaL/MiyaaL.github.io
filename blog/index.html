@@ -8,7 +8,7 @@ permalink: /blog/
 {% assign cs224n_posts = published_posts | where: "series", "Stanford CS224N" %}
 {% assign cs336_posts = published_posts | where: "series", "Stanford CS336" %}
 {% assign derivation_posts = published_posts | where_exp: "post", "post.tags contains 'Derivations'" %}
-{% assign essay_posts = published_posts | where_exp: "post", "post.tags contains '随笔'" %}
+{% assign essay_posts = published_posts | where_exp: "post", "post.tags contains 'Essays'" %}
 {% assign all_tags = "" | split: "" %}
 {% for post in published_posts %}
   {% if post.tags %}
@@ -74,7 +74,7 @@ permalink: /blog/
             <span class="topic-directory-kicker">PERSONAL</span>
           </div>
           <div class="topic-directory-items">
-            <a class="topic-directory-link" href="{{ '/blog/' | relative_url }}?tag={{ '随笔' | url_encode }}">
+            <a class="topic-directory-link" href="{{ '/blog/' | relative_url }}?tag={{ 'Essays' | url_encode }}">
               <span class="topic-directory-copy">
                 <span class="topic-directory-title">Essays</span>
                 <span class="topic-directory-meta">{{ essay_posts.size }} {% if essay_posts.size == 1 %}essay{% else %}essays{% endif %} · Personal notes</span>

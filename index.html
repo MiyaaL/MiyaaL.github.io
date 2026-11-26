@@ -5,6 +5,8 @@ description: "Research on LLM and VLA infrastructure, performance modeling, and 
 permalink: /
 ---
 {% assign published_posts = site.posts | where_exp: "post", "post.draft != true" %}
+{% assign article_posts = published_posts | where_exp: "post", "post.series == nil" %}
+{% assign series_groups = published_posts | where_exp: "post", "post.series" | group_by: "series" %}
 
 <section class="hero">
   <div class="container hero-grid">
@@ -42,10 +44,28 @@ permalink: /
 
     {% if published_posts.size > 0 %}
       <div class="post-list">
-        {% for post in published_posts limit: 6 %}
+        {% for post in article_posts limit: 4 %}
           {% include post-card.html post=post %}
         {% endfor %}
       </div>
+
+      {% if series_groups.size > 0 %}
+        <div class="series-cards" aria-label="Course note series">
+          {% for group in series_groups %}
+            {% assign series_posts = group.items | sort: "course_order" %}
+            {% assign first_post = series_posts | first %}
+            {% assign latest_post = series_posts | last %}
+            {% assign series_url = "/courses/" | append: first_post.series_slug | append: "/" %}
+            <a class="series-card" href="{{ series_url | relative_url }}">
+              <span class="series-card-kicker">COURSE NOTES</span>
+              <span class="series-card-title">{{ group.name }}</span>
+              <span class="series-card-meta">{{ group.items.size }} notes · {{ first_post.course_label }} – {{ series_posts.last.course_label }}</span>
+              <span class="series-card-latest" lang="{{ latest_post.lang | default: 'zh-CN' }}">Latest · {{ latest_post.title }}</span>
+              <span class="series-card-arrow" aria-hidden="true">→</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
     {% else %}
       <div class="empty-state">
         <p>Articles are in preparation.</p>

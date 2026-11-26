@@ -54,7 +54,7 @@ Markdown 文章可以从 `_drafts/template.md` 复制；HTML 技术报告可以�
 title: "文章标题"
 date: 2026-07-30 12:00:00 +0800
 description: "用一句话说明文章解决的问题。"
-tags: [CUDA, 性能优化]
+tags: [GPU, Inference]
 math: false
 mermaid: false
 ---

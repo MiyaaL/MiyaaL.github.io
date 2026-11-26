@@ -2,7 +2,7 @@
 title: "CS224N 课程笔记 02：反向传播与依存句法"
 date: 2026-01-14 10:00:00 +0800
 last_modified_at: 2026-11-26 12:00:00 +0800
-description: "CS224N 课程笔记：梯度计算、反向传播、短语结构与依存句法分析。"
+description: "梯度计算、反向传播、短语结构与依存句法分析。"
 category: 课程笔记
 series: Stanford CS224N
 series_slug: cs224n
@@ -10,7 +10,7 @@ course_order: 2
 course_label: Week 2
 course_status: 简要记录
 permalink: /courses/cs224n/02-backprop-and-dependency-parsing/
-tags: [NLP, 模型训练]
+tags: [NLP, Training]
 math: false
 mermaid: false
 source_commit: b9c77fd
