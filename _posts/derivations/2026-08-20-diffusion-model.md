@@ -2,7 +2,7 @@
 title: "Diffusion Models 与 Flow Matching：从概率路径到生成采样"
 date: 2026-08-20 12:00:00 +0800
 description: "本文从概率路径、向量场和连续性方程出发，推导 Flow Matching、Score Matching 与 Diffusion Models 的训练和采样方法。"
-tags: [Derivations, Diffusion Models, Flow Matching]
+tags: [Derivations, Diffusion Models]
 math: true
 mermaid: false
 ---
@@ -133,7 +133,7 @@ for k = 0, ..., n - 1:
 return x
 ```
 
-![MIT 6.S184 讲义中的 Flow Model Euler 采样流程](/assets/posts/diffusion-model/flow-model-euler-method.png)
+![MIT 6.S184 讲义中的 Flow Model Euler 采样流程](/assets/posts/diffusion-model/flow-model-euler-method.webp)
 
 > 第三方材料：Peter Holderrieth 与 Ezra Erives，MIT 6.S184 讲义第 9 页 Algorithm 1；课程材料采用 [CC BY-NC-SA](https://diffusion.csail.mit.edu/2026/) 许可。
 
@@ -825,7 +825,7 @@ $$
 
 ### 8.2 CFG 的推导
 
-对 Gaussian path，Bayes 公式给出 guided score：
+由 Bayes 公式 $p_t(x\mid y)=p_t(x)\,p_t(y\mid x)/p(y)$，对 $x$ 取对数梯度后与 $x$ 无关的 $p(y)$ 消失，guided score 可以分解为（这一步对任意概率路径成立）：
 
 $$
 \nabla_x\log p_t(x\mid y)
@@ -833,7 +833,7 @@ $$
 +\nabla_x\log p_t(y\mid x).
 $$
 
-利用 $u_t=A_ts_t+B_tx$，guided 向量场可以写成
+在 Gaussian path 下，再利用 $u_t=A_ts_t+B_tx$，guided 向量场可以写成
 
 $$
 u_t(x\mid y)

@@ -1,47 +1,50 @@
 ---
 title: "CS336 课程笔记 06：CUDA、Triton 与 Kernel 优化"
 date: 2026-02-03 21:24:33 +0800
-last_modified_at: 2026-02-17 21:18:18 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS336 课程笔记：基准测试、性能分析、Kernel Fusion、CUDA、Triton 与 torch.compile。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336
 course_order: 6
 course_label: Lecture 06
-course_status: 完整记录
+course_status: 简要记录
 permalink: /courses/cs336/06-kernels-triton/
-tags: [GPU, Triton]
+tags: [LLM, GPU]
 math: false
 mermaid: false
 source_commit: 75581e4
 ---
 > 本文是 [Stanford CS336（Spring 2025）](https://stanford-cs336.github.io/spring2025/)的个人学习笔记，并非课程官方材料。课程截图及相关材料版权归 Stanford University 与课程作者所有。
 
-## 1. GPU 简介
+## 1. GPU 执行与存储层级回顾
 
-| 组件 | 类型 | 作用域 | 容量（A100） | 关键特性 |
-|------|------|--------|-------------|--------|
-| **Grid** | 逻辑 | 整个 GPU | 用户定义 | 包含多个 Thread Blocks |
-| **Thread Block** | 逻辑 | Block 内 | ≤1024 线程 | 可同步；调度到单个 SM |
-| **Warp** | 逻辑 | Warp 内 | 32 线程 | 硬件调度单位；SIMT 执行 |
-| **SM** | 物理 | 单个 SM | 108 个/卡 | 执行 Blocks；含计算单元 + 片上存储 |
-| **Shared Memory** | 物理（可配） | Block 内共享 | 最大 164KB | 显式管理；用于协作通信 |
-| **L1 Cache** | 物理（可配） | SM 内 | 与 Shared 共享 192KB | 缓存全局内存；可绕过 |
-| **L2 Cache** | 物理 | 全 GPU 共享 | 40MB | 统一缓存；服务所有 SM |
-| **Global Memory** | 物理 | 全 GPU | 40–80GB | 主存；高带宽、高延迟 |
+写kernel之前先回顾一下GPU的执行模型和存储层级（以A100为例，这部分是个人补充，不是本讲的课件内容）：
 
-- **关键说明**
-    - **Shared Memory 与 L1 Cache**：同一块物理 SRAM，通过 `cudaFuncSetCacheConfig()` 配置比例。
-    - **Block 调度**：一个 Block 固定在一个 SM 上执行；一个 SM 可驻留多个 Blocks。
-    - **Warp 执行**：SM 的 Warp 调度器在就绪 Warps 间切换，隐藏内存延迟。
-    - **内存路径**：Global → L2 → (L1 或 Shared) → Register；Shared 不经过 L2。
-    - **无 CPU 式伪共享**：GPU 无 MESI 协议，合并写入同一 cache line 是高效且推荐的。
+| 组件 | 类型 | 容量（A100） | 关键特性 |
+|------|------|-------------|--------|
+| **Grid** | 逻辑 | 用户定义 | 一次kernel launch的全部Thread Blocks |
+| **Thread Block** | 逻辑 | ≤1024 线程 | Block内线程可同步、可共享Shared Memory；整体调度到单个SM |
+| **Warp** | 逻辑 | 32 线程 | 硬件调度单位；SIMT 执行 |
+| **SM** | 物理 | 108 个/卡 | 执行 Blocks；含计算单元 + 片上存储 |
+| **Shared Memory** | 物理（可配） | 最大 164KB | 每个Block私有；由程序显式读写 |
+| **L1 Cache** | 物理（可配） | 与 Shared 共享 192KB | 每个SM一份；缓存全局内存 |
+| **L2 Cache** | 物理 | 40MB | 所有SM共享 |
+| **Global Memory** | 物理 | 40–80GB | 显存（HBM）；容量大、延迟高 |
+
+几点说明：
+
+- **Shared Memory 与 L1 Cache**：同一块物理 SRAM，比例可配（较新的架构上通过 `cudaFuncSetAttribute` 的 `cudaFuncAttributePreferredSharedMemoryCarveout` 设置）。
+- **Block 调度**：一个 Block 固定在一个 SM 上执行；一个 SM 可驻留多个 Blocks。
+- **Warp 执行**：SM 的 Warp 调度器在就绪 Warps 间切换，隐藏内存延迟。
+- **内存路径**：Global → L2 → L1 → Register。Shared Memory 不是缓存层级，数据由 kernel 显式拷入、读写。
+- **无 CPU 式伪共享**：GPU 无 MESI 协议，合并写入同一 cache line 是高效且推荐的。
 
 ## 2. Benchmark and Profiling
 
 ### 2.1 Benchmark
 
-比较简单，就是统计预热后的算子平均运行时间
+比较简单，就是统计预热后的算子平均运行时间。注意GPU调用是异步的，计时前后要`torch.cuda.synchronize()`。
 
 ### 2.2 Profiling
 
@@ -59,7 +62,7 @@ source_commit: 75581e4
 
 ## 5. Triton Kernel
 
-triton是openAI发展出的DSL，它的编程逻辑单元是thread block，而不像cuda kernel那样是thread
+Triton是OpenAI开发的DSL，它的编程逻辑单元是thread block，而不像cuda kernel那样是thread
 
 | 功能 | CUDA | Triton |
 | - | - | - |
@@ -70,13 +73,14 @@ triton是openAI发展出的DSL，它的编程逻辑单元是thread block，而�
 
 ## 6. torch.compile
 
-可以直接使用torch编译函数，生成更优化的kernel，同时代码改动量还很少。参考[官方教材](https://docs.pytorch.org/tutorials/intermediate/torch_compile_tutorial.html)
+可以直接使用torch编译函数，生成更优化的kernel，同时代码改动量还很少。参考[官方教程](https://docs.pytorch.org/tutorials/intermediate/torch_compile_tutorial.html)
 
-torch.compile默认使用的编译后端就是triton，所以在profile中看到triton字样的热点函数是正常的。
+torch.compile默认的编译后端是TorchInductor，它在GPU上生成的就是Triton kernel（CPU上生成C++/OpenMP代码），所以在profile中看到triton字样的热点函数是正常的。
 
 ## 7. 总结
 
 当你写一个kernel的时候，可能需要考虑几种方式：
+
 | kernel实现 | 特点 | 代码改动量 | 性能 |
 | - | - | - | - |
 | **manual** | 手写 | 中 | 最差 |

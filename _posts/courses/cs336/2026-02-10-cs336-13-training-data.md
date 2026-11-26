@@ -1,14 +1,14 @@
 ---
 title: "CS336 课程笔记 13：大模型训练数据"
 date: 2026-02-10 20:30:32 +0800
-last_modified_at: 2026-02-17 21:18:18 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS336 课程笔记：Common Crawl、C4、The Pile、RefinedWeb 与主流训练数据集。"
 category: 课程笔记
 series: Stanford CS336
 series_slug: cs336
 course_order: 13
 course_label: Lecture 13
-course_status: 完整记录
+course_status: 简要记录
 permalink: /courses/cs336/13-training-data/
 tags: [LLM, 数据工程]
 math: false
@@ -24,10 +24,10 @@ source_commit: 75581e4
 训练阶段：
 
 - 预训练：使用原始文本（例如，来自网络的文档）进行训练
-- 训练中期：使用更多高质量数据进行训练以增强能力
-- 训练后：根据指令跟随数据进行微调（或进行强化学习）以进行指令跟随
+- mid-training：使用更多高质量数据进行训练以增强能力
+- post-training：根据指令跟随数据进行微调（或进行强化学习）以进行指令跟随
 
-## 2. 主流模型数据集
+## 2. 数据集演进
 
 ### 2.1 BERT
 
@@ -35,7 +35,7 @@ source_commit: 75581e4
 
 ### 2.2 GPT-2 WebText
 
-WebText：来自Reddit论坛的帖子
+WebText：Reddit上karma不低于3的帖子所链接的外部网页的正文（不是帖子本身）
 
 ### 2.3 Common Crawl
 
@@ -49,10 +49,11 @@ WebText：来自Reddit论坛的帖子
 ### 2.5 T5 C4（T5 - Colossal Clean Crawled Corpus）
 
 对爬虫数据做筛选，例如：
+
 - 保留以标点符号结尾且字数大于等于 5 个单词的行。
 - 删除少于3句话的页面
 - 删除包含任何“不雅词汇”的页面
-- 使用语言检测功能过滤非英语文本（英语文本的概率为 0.99）
+- 使用langdetect过滤非英语文本（判定为英语的概率≥0.99才保留）
 
 ### 2.6 GPT-3
 
@@ -65,6 +66,7 @@ Common Crawl + WebText2 + 维基百科 + 书籍语料
 ### 2.8 Gopher MassiveText
 
 MassiveText数据集用于训练Gopher，语料来源有：
+
 - MassiveWeb
 - C4
 - 书籍
@@ -76,10 +78,11 @@ MassiveText数据集用于训练Gopher，语料来源有：
 
 - Common Crawl
 - C4
-- github
+- GitHub
 - 维基百科
-- arxiv
-- ...
+- 书籍（Gutenberg、Books3）
+- arXiv
+- StackExchange
 
 ### 2.10 RefinedWeb
 
@@ -89,8 +92,11 @@ MassiveText数据集用于训练Gopher，语料来源有：
 
 - Common Crawl
 - C4
+- The Stack（代码）
+- Reddit
+- peS2o（学术论文）
+- Project Gutenberg
 - 维基百科
-- ...
 
 ### 2.12 DCLM
 

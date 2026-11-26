@@ -8,14 +8,14 @@ permalink: /courses/cs336/
 
 <section class="course-hero">
   <div class="container course-container">
-    <p class="eyebrow">COURSE NOTES / 课程笔记</p>
+    <p class="eyebrow">COURSE NOTES</p>
     <h1>Stanford CS336</h1>
     <p class="course-lead">Language Modeling from Scratch · Spring 2025</p>
     <p class="course-intro">一组按课程进度整理的中文学习笔记，从 Tokenization 与 Transformer 出发，覆盖 GPU Kernel、分布式训练、Scaling Laws、推理系统、训练数据与模型对齐。</p>
     <dl class="course-facts">
-      <div><dt>课程</dt><dd><a href="https://stanford-cs336.github.io/spring2025/" target="_blank" rel="noopener">Stanford CS336 Spring 2025 ↗</a></dd></div>
-      <div><dt>笔记</dt><dd>{{ course_posts.size }} 篇 · 中文</dd></div>
-      <div><dt>主题</dt><dd>LLM · Systems · Training</dd></div>
+      <div><dt>Course</dt><dd><a href="https://stanford-cs336.github.io/spring2025/" target="_blank" rel="noopener">Stanford CS336 Spring 2025 ↗</a></dd></div>
+      <div><dt>Notes</dt><dd>{{ course_posts.size }} notes · Chinese</dd></div>
+      <div><dt>Topics</dt><dd>LLM · Systems · Training</dd></div>
     </dl>
     <p class="course-disclaimer">本系列为个人学习笔记，并非课程官方材料。笔记文字为个人整理；课程名称、讲义截图和相关材料的权利归 Stanford University 及课程作者所有，仅用于学习记录。</p>
   </div>
@@ -24,8 +24,8 @@ permalink: /courses/cs336/
 <section class="course-content">
   <div class="container course-container">
     <div class="course-section-heading">
-      <p class="eyebrow">SYLLABUS / 笔记目录</p>
-      <h2>课程目录</h2>
+      <p class="eyebrow">SYLLABUS</p>
+      <h2>Lecture Notes</h2>
     </div>
 
     <ol class="course-outline">
@@ -42,7 +42,7 @@ permalink: /courses/cs336/
             </div>
             <h2><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h2>
             <p>{{ post.description }}</p>
-            <ul class="tag-list" aria-label="文章标签">
+            <ul class="tag-list" aria-label="Tags">
               {% for tag in post.tags %}
                 <li><a href="{{ '/blog/' | relative_url }}?tag={{ tag | url_encode }}">#{{ tag }}</a></li>
               {% endfor %}
@@ -53,9 +53,9 @@ permalink: /courses/cs336/
     </ol>
 
     <aside class="course-migration-note">
-      <h2>关于本系列</h2>
+      <h2>About this series</h2>
       <p>本系列由个人课程笔记仓库的最终版本迁移，迁移基准提交为 <code>75581e4</code>。文章保留首次提交日期，并统一了标题层级、图片路径、LaTeX 块级渲染与文章目录。</p>
-      <p>源仓库中的 <code>lecture_11.md</code> 为空，因此没有发布 Lecture 11，也未补写内容。Lecture 15 与 16 依照源文件合并为一篇。</p>
+      <p>源仓库中的 <code>lecture_11.md</code> 为空，因此没有发布 Lecture 11，也未补写内容。Lecture 15 与 16 依照源文件合并为一篇，且只整理了其中 SFT 与 RLHF 算法的部分。第 16 讲之后的内容（后续课程与嘉宾讲座）没有笔记，本系列未覆盖。</p>
       <p>按迁移要求，<code>assignments/</code>、FLOPS 表格、作业正文及 assignment 专用图片均未合入本站。</p>
     </aside>
   </div>

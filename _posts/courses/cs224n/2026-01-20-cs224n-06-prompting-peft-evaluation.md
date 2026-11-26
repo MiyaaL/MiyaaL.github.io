@@ -1,7 +1,7 @@
 ---
 title: "CS224N 课程笔记 06：Prompting、PEFT 与模型评估"
 date: 2026-01-20 09:00:00 +0800
-last_modified_at: 2026-01-20 09:00:00 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS224N 课程笔记：Prompting、PEFT、LoRA、参数高效适配与模型评估。"
 category: 课程笔记
 series: Stanford CS224N
@@ -10,7 +10,7 @@ course_order: 6
 course_label: Week 6
 course_status: 完整记录
 permalink: /courses/cs224n/06-prompting-peft-evaluation/
-tags: [NLP, 模型适配]
+tags: [NLP, 模型训练, 模型评估]
 math: true
 mermaid: false
 source_commit: b9c77fd
@@ -23,13 +23,13 @@ source_commit: b9c77fd
 
 前面主要介绍了一下大模型的涌现能力，随着模型越来越大，GPT1.0->GPT3.0，大模型开始具备few-shot learning(少样本学习)能力。模型可以通过用户提供的少量样本对规律进行学习，而无需更新模型权重，例如：
 
-![CS224N few-shot learning（图 1）](/assets/posts/cs224n/week-06/week6-1.png)
+![模型性能随 prompt 中示例个数变化的曲线](/assets/posts/cs224n/week-06/week6-1.webp)
 
 这里横轴是所谓的"shot"个数，纵轴是模型performance，在0点(也就是zero-shot)到1点(one-shot)时存在较为明显的阶跃，之后逐渐平缓。
 
 ### 1.2 Prompting
 
-区别与传统的fine-tuning(微调)，few-shot Prompting并不需要进行权重的更新。
+区别于传统的fine-tuning(微调)，few-shot Prompting并不需要进行权重的更新。
 
 - Prompting的效果有时要依赖于prompt本身的编写方式，效果不好时更换更加容易理解的prompt可能会取得不错的提升。
 - 除了直接给模型提供模板输出的prompt方式，也可以提供**Chain-of-Thought(CoT) Prompting**，也就是思维链提示词。可以帮助模型更好地理解问题给出正确的回答。
@@ -37,6 +37,7 @@ source_commit: b9c77fd
 > CoT Prompting也可以做zero-shot
 
 基于prompt的学习有很多缺点：
+
 - 效率低下，每次模型推理时都需要去处理prompt
 - 模型性能差，一般来说prompt比fine-tuning的效果差
 - 对于prompt提示词较为敏感，甚至对于样例的输入顺序也比较敏感
@@ -46,24 +47,27 @@ source_commit: b9c77fd
 
 **fine-tuning**和**parameter efficient fine-tuning**的区别在于更新权重的规模，**fine-tuning**会在微调时几乎更新所有模型权重，而**parameter efficient fine-tuning**则只会更新一小部分：
 
-![CS224N parameter efficient fine-tuning (PEFT)（图 2）](/assets/posts/cs224n/week-06/week6-2.png)
+![全量微调与参数高效微调更新参数范围的对比](/assets/posts/cs224n/week-06/week6-2.webp)
 
 **PEFT**的优点在于：
+
 - 不需要全量更新所有参数，效率更高，更省钱
 - 现今SOTA模型，大部分都存在参数过量的问题，只调部分关键参数不会带来性能损耗
-- 全量参数SFT(监督微调)有副作用，会对参数进行密集更新，可能破坏与训练知识，导致泛化能力下降
+- 全量参数SFT(监督微调)有副作用，会对参数进行密集更新，可能破坏预训练知识，导致泛化能力下降
 
-PEFT方法的核心idea就是：**模型网络是稀疏的**，那么就有两种思路：
-- 仅更新部分关键权重，对模型做剪枝，仅对剪枝完毕的稀疏子网络进行更新。可以参考这篇文章：https://zhuanlan.zhihu.com/p/1932393310833612574
+PEFT方法的核心idea就是：**微调所需要的更新是冗余的**（稀疏或者低秩），那么就有两种思路：
+
+- 仅更新部分关键权重，对模型做剪枝，仅对剪枝完毕的稀疏子网络进行更新。可以参考[这篇文章](https://zhuanlan.zhihu.com/p/1932393310833612574)
 - 低秩更新，也就是LoRA
 
 ### 1.4 Sparse subnetworks (稀疏子网络)
 
 常见的稀疏化方法就是剪枝，剪枝的关键指标就是权重的量级大小，在模型剪枝时，会阶段性移除某一部分小量级权重(例如通过添加binary mask的方式)，如此剪枝多轮，最终达到PEFT训练目标：
 
-![CS224N Sparse subnetworks (稀疏子网络)（图 3）](/assets/posts/cs224n/week-06/week6-3.png)
+![迭代式按权重大小剪枝的流程](/assets/posts/cs224n/week-06/week6-3.webp)
 
 剪枝一般可以如下分类：
+
 #### 1.4.1 按剪枝粒度(Granularity)
 
 | 类型 | 描述 | 特点 |
@@ -94,14 +98,16 @@ PEFT方法的核心idea就是：**模型网络是稀疏的**，那么就有两�
 
 核心idea就是认为**预训练模型的权重更新在微调过程中具有低秩特性**，假设full fine-tuning的更新权重为$\Delta W$ (通常非常大)，那么由于$\Delta W$是低秩矩阵，对应更新过程可以压缩为：
 
-![CS224N low rank adaptation (LoRA)（图 4）](/assets/posts/cs224n/week-06/week6-4.png)
+![LoRA 在冻结权重旁增加低秩矩阵 B、A 的结构](/assets/posts/cs224n/week-06/week6-4.webp)
 
 LoRA训练时：
+
 - 原始权重$W_0 \in \mathbb{R}^{d \times k}$被**冻结**(不参与训练)
 - 新增两个低秩矩阵$B$和$A$，**仅训练这两个小矩阵**
 - 前向传播时实际使用：$h = W_0 x + \Delta W x = W_0 x + \alpha BAx$
 
 LoRA的优点如下：
+
 | 优势 | 说明 |
 |------|------|
 | **参数效率高** | 仅需训练 0.1%~1% 的原始参数量(例如：7B 模型只需新增 ~4M 参数) |
@@ -112,18 +118,19 @@ LoRA的优点如下：
 
 下图可以看到LoRA的参数更新量是很少的(相对FT来说)，并且E2E NLG Challenge分数表现更高，这也是现在的主流方法，经常用于transformer self-attention模块。
 
-![CS224N low rank adaptation (LoRA)（图 5）](/assets/posts/cs224n/week-06/week6-5.png)
+![LoRA 与全量微调等方法的可训练参数量和 E2E NLG 分数对比](/assets/posts/cs224n/week-06/week6-5.webp)
 
 LoRA中低秩矩阵的秩可以低到什么程度呢？答案是即使在r=1时，也可以保持较好性能：
 
-![CS224N low rank adaptation (LoRA)（图 6）](/assets/posts/cs224n/week-06/week6-6.png)
+![不同秩 r 下 LoRA 的性能对比](/assets/posts/cs224n/week-06/week6-6.webp)
 
-这充分说明full fine-tuning的更新权重$\Delta W$是非常非常稀疏的。这里还介绍了一种LoRA的变种**QLoRA**，就是在LoRA的基础上加了量化，不再展开。
+这说明full fine-tuning的更新权重$\Delta W$的有效秩很低。这里还介绍了一种LoRA的变种**QLoRA**，就是在LoRA的基础上加了量化，不再展开。
 
 ### 1.6 An input perspective of adaptation
 
 这里主要指的是从输入角度来对模型进行tuning。介绍了两种方法：
-- Prefix-Tuning：在模型参数添加前缀并冻结预训练模型权重，只训练这部分前缀。
+
+- Prefix-Tuning：冻结预训练模型权重，在每一层的输入前添加可训练的前缀向量，只训练这部分前缀。
 - Prompt-Tuning：在模型输入前添加一个**virtual tokens**作为prompt，只训练这部分**virtual tokens**的embedding。
 
 #### 1.6.1 Prefix-Tuning
@@ -133,14 +140,14 @@ LoRA中低秩矩阵的秩可以低到什么程度呢？答案是即使在r=1时�
 #### 1.6.2 Prompt-Tuning
 
 这里注意**Prompt-Tuning**与上文的**Prompting**不是一回事。区别如下：
+
 | 特性 | **Prompting(In-context Learning)** | **Prompt-Tuning** |
 |------|--------------------------------------|-------------------|
-| **是否需要训练** | ❌ 不需要，直接推理 | ✅ 需要训练(仅训练 prompt 向量) |
+| **是否需要训练** | 不需要，直接推理 | 需要训练(仅训练 prompt 向量) |
 | **Prompt 形式** | 离散文本(人类可读，如 `"Q: ... A: ..."`) | 连续向量(soft prompt，不可读，随机初始化) |
 | **参数更新** | 模型完全冻结，无任何参数更新 | 模型主干冻结，仅更新 prompt 的 embedding 向量 |
 | **典型场景** | GPT-3/4 的 zero-shot / few-shot 推理 | 微调 T5、BART、LLaMA 等 encoder-decoder 或 decoder-only 模型 |
-| **灵活性** | 依赖模型已有知识，无法适应新任务分布 | 可通过训练让模型适配特定下游任务 |
-| **性能表现** | 在超大模型(如 GPT-4)上效果好，小模型上弱 | 即使在中等规模模型(如 T5-base)上也能有效提升性能 |
+| **灵活性** | 依赖模型已有知识 | 可通过训练让模型适配特定下游任务 |
 | **代表工作** | GPT-3 (Brown et al., 2020) | Prompt Tuning (Lester et al., 2021) |
 
 ### 1.7 A functional perspective of adaptation
@@ -153,32 +160,30 @@ $$
 
 只不过，**adapters**是一种“**轻量级、旁路式、用于微调的FFN**”，而不是用来替代transformer中原有的FFN模块。
 
-![CS224N A functional perspective of adaptation（图 7）](/assets/posts/cs224n/week-06/week6-7.png)
+![adapter 模块插入 Transformer 层的位置与内部结构](/assets/posts/cs224n/week-06/week6-7.webp)
 
 - **adapters**可以在比**fine-tuning**少训练2个量级参数的前提下达到几乎一致的模型性能表现。
-- **adapters**也可以用来做语言方面的适配，例如使用美式英语预料预训练的模型可以通过**adapters**来适配到英式英语。
+- **adapters**也可以用来做语言方面的适配，例如使用美式英语语料预训练的模型可以通过**adapters**来适配到英式英语。
 
-之前介绍的LoRA、prefix tuning、adapters都可以通过函数形式表示：
+之前介绍的LoRA、prefix tuning、adapters都可以通过统一的函数形式表示（见 <https://openreview.net/pdf?id=0RDcd5Axok>）：
 
-> https://openreview.net/pdf?id=0RDcd5Axok
-
-![CS224N A functional perspective of adaptation（图 8）](/assets/posts/cs224n/week-06/week6-8.png)
+![LoRA、prefix tuning 与 adapters 的统一函数形式对照表](/assets/posts/cs224n/week-06/week6-8.webp)
 
 ### 1.8 Other variants of (efficient) adaptation
 
 简单介绍了一下知识蒸馏：
 
-![CS224N Other variants of (efficient) adaptation（图 9）](/assets/posts/cs224n/week-06/week6-9.png)
+![teacher 模型向 student 模型做知识蒸馏的示意](/assets/posts/cs224n/week-06/week6-9.webp)
 
 ## 2 Benchmarking and Evaluation
 
-这里略过详细介绍，仅记录takeways：
+这里略过详细介绍，仅记录takeaways：
 
 1. 封闭式任务(Closed-ended tasks)
     - 需思考评估什么：如任务多样性(diversity)、任务难度(difficulty)等维度。
     - 要关注外部效度(external validity)——即评估结果是否能推广到真实场景。
 2. 开放式任务(Open-ended tasks)
-    - 可使用内容重叠指标(content overlap metrics)，尤其在输出多样性较低的场景中有用。例如N-gram overlap metrics，对于机器翻译、文献总结、对话、故事生成等等足够开放、多样性的任务，上述指标很难去进行评估。
+    - 可使用内容重叠指标(content overlap metrics)，尤其在输出多样性较低的场景中有用。例如N-gram overlap metrics（BLEU、ROUGE）。从机器翻译、摘要到对话、故事生成，任务越开放、合理输出越多样，这类指标就越不可靠。
     - 可使用语义重叠指标(Semantic overlap metrics)，比content会更加宽泛一些。
     - 可使用基于模型的指标(Model-based metrics)，直接使用embedding向量来进行比较，例如计算向量间的余弦相似度、散度等等。这种评估方法也不完全可靠。
     - 无参考评估方法(reference-free measures)正在进步，但仍不可靠，需谨慎使用。

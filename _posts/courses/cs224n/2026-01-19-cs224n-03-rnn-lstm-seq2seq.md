@@ -1,7 +1,7 @@
 ---
 title: "CS224N 课程笔记 03：RNN、LSTM 与 Seq2Seq"
 date: 2026-01-19 09:00:00 +0800
-last_modified_at: 2026-01-19 09:00:00 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS224N 课程笔记：n-gram、RNN、LSTM、Seq2Seq 与 Attention。"
 category: 课程笔记
 series: Stanford CS224N
@@ -10,7 +10,7 @@ course_order: 3
 course_label: Week 3
 course_status: 完整记录
 permalink: /courses/cs224n/03-rnn-lstm-seq2seq/
-tags: [NLP, 序列模型]
+tags: [NLP]
 math: true
 mermaid: false
 source_commit: b9c77fd
@@ -19,7 +19,7 @@ source_commit: b9c77fd
 
 ## 1 n-gram Language Models
 
-n-gram语言模型采用滑动窗口来统计窗口n内的单次出现频率，并近似认为统计频率就是下一个词不同可能性的出现概率。例如"students opened their <u>books</u>"中的"books"在"students opened their"后出现了100次，而“students opened their”短语总共出现了10000次，那么n-gram模型在做推理预测时"books"的概率就是1%。
+n-gram语言模型采用滑动窗口来统计窗口n内的单词出现频率，并近似认为统计频率就是下一个词不同可能性的出现概率。例如"students opened their <u>books</u>"中的"books"在"students opened their"后出现了100次，而“students opened their”短语总共出现了10000次，那么n-gram模型在做推理预测时"books"的概率就是1%。
 
 这样做会带来问题：
 
@@ -27,9 +27,7 @@ n-gram语言模型采用滑动窗口来统计窗口n内的单次出现频率，�
 - 若续写的短句之前没有在训练集出现过，甚至根本无法预测下一个词。这时减小n的大小可能是一种规避的办法
 - n-gram统计模型模型成本较高。增加n或者语料类型，可以增强模型表现，但都会显著增加模型大小。减小n，吐字语义会更加混乱无意。
 
-> [!NOTE]
->
-> Y. Bengio, et al. (2000/2003): A Neural Probabilistic Language Model
+> **注：** Y. Bengio, et al. (2000/2003): A Neural Probabilistic Language Model
 >
 > 这篇论文中，对n-gram模型进行了改进。解决了单词出现频率稀疏的问题，并且不再需要存储所有的n-grams。但它仍然使用固定尺寸的窗口，并且窗口内的每个单词，使用的都是不一样的权重，缺乏对称性，并且这导致窗口并不能开的很大，无法处理任意长度的输入。
 
@@ -51,7 +49,7 @@ $$
 
 它来源于交叉熵损失函数：
 
-![CS224N Evaluating Language Models（模型评估）（图 1）](/assets/posts/cs224n/week-03/week3-1.png)
+![perplexity 等于交叉熵损失取指数的推导](/assets/posts/cs224n/week-03/week3-1.webp)
 
 比较奇怪为什么这里的交叉熵并没有做“交叉”，而只是计算了信息量，一般意义上的交叉熵：
 
@@ -69,7 +67,7 @@ $$
 
 RNN采用了完全一致的权重来进行推理，每一次推理需要保存的只有中间隐藏层状态，如下图所示
 
-![CS224N 模型结构（图 2）](/assets/posts/cs224n/week-03/week3-2.png)
+![RNN 语言模型按时间步展开的结构](/assets/posts/cs224n/week-03/week3-2.webp)
 
 ### 3.2 模型特点
 
@@ -91,7 +89,7 @@ RNN的优点主要是：
 
 RNN采用交叉熵损失函数来做训练，因为采用了one-hot的编码形式，所以交叉熵简化为了对数计算的形式：
 
-![CS224N 损失函数（图 3）](/assets/posts/cs224n/week-03/week3-3.png)
+![RNN 每个时间步的交叉熵损失及其平均](/assets/posts/cs224n/week-03/week3-3.webp)
 
 #### 3.3.2 teacher forcing
 
@@ -101,21 +99,21 @@ RNN采用"teacher forcing"方式进行训练，其核心概念是每个迭代步
 
 RNN也可以采用SGD类似的思想，每过一段语句，便进行梯度的更新，反馈到模型权重上，而不是整个语料库都做完之后才去计算交叉熵损失$J(\theta)$。一般来讲，为了训练效率，反向传播时要对传播的链长做截断（20步左右）。
 
-![CS224N 反向传播（图 4）](/assets/posts/cs224n/week-03/week3-4.png)
+![RNN 沿时间反向传播的梯度计算](/assets/posts/cs224n/week-03/week3-4.webp)
 
 #### 3.3.4 训练问题：梯度消失和梯度爆炸
 
-##### 3.3.4.1 梯度消失
+**梯度消失**
 
-训练时由于求导的链式法则，假如导数存在一些极端小数时，乘在一起由于计算精度问题就会变为0。对于标量求导来说，这很容易理解，对于矩阵向量来说，可以通过特征值的方式来进行理解。
+训练时由于求导的链式法则，梯度是很多个Jacobian连乘的结果：如果这些因子的模长普遍小于1，连乘之后梯度会随距离指数衰减，远处时间步对当前梯度的贡献就趋近于0。对于标量求导来说，这很容易理解，对于矩阵向量来说，可以通过特征值的方式来进行理解。
 
-![CS224N 梯度消失（图 5）](/assets/posts/cs224n/week-03/week3-5.png)
+![链式法则下跨多个时间步的梯度连乘](/assets/posts/cs224n/week-03/week3-5.webp)
 
-![CS224N 梯度消失（图 6）](/assets/posts/cs224n/week-03/week3-6.png)
+![权重矩阵特征值小于 1 时梯度指数衰减的推导](/assets/posts/cs224n/week-03/week3-6.webp)
 
-上述梯度消失会让信息的传递无法跨越长程，模型的权重被限制只能在小范围内更新，如此训练出的模型也无法进行长程依赖语句的推理预测。解决方案：有很多RNN的变种，LSTM、SSM等等，可以捕获长程依赖。
+上述梯度消失会让信息的传递无法跨越长程，模型的权重被限制只能在小范围内更新，如此训练出的模型也无法进行长程依赖语句的推理预测。解决方案：LSTM、GRU等带门控的RNN变种可以更好地捕获长程依赖。
 
-##### 3.3.4.2 梯度爆炸
+**梯度爆炸**
 
 与梯度消失类似，当求导链上的部分梯度极端大时，由于计算问题将会导致梯度爆炸，同样无法训练到长程依赖。
 
@@ -139,9 +137,9 @@ RNN也可以采用SGD类似的思想，每过一段语句，便进行梯度的�
 
 LSTM的模型架构如下图所示：
 
-![CS224N 模型结构（图 7）](/assets/posts/cs224n/week-03/week3-7.png)
+![LSTM 的三个门与 cell state 更新公式](/assets/posts/cs224n/week-03/week3-7.webp)
 
-![CS224N 模型结构（图 8）](/assets/posts/cs224n/week-03/week3-8.png)
+![LSTM 单元内部的信息流示意](/assets/posts/cs224n/week-03/week3-8.webp)
 
 ### 4.3 梯度消失的问题
 
@@ -149,26 +147,26 @@ LSTM的模型架构如下图所示：
 
 #### 4.3.1 ResNet
 
-ResNet(Residual connections)，也叫做skip-connections。核心idea就是将原本的输入$x^{(t)}$直接喂给输入，跳过中间的网络结构，这样做的好处在于可以让训练更加容易，避免梯度消失。
+ResNet(Residual connections)，也叫做skip-connections。核心idea就是将原本的输入$x^{(t)}$直接加到输出上，跳过中间的网络结构，这样做的好处在于可以让训练更加容易，避免梯度消失。
 
-![CS224N ResNet（图 9）](/assets/posts/cs224n/week-03/week3-9.png)
+![残差连接的结构示意](/assets/posts/cs224n/week-03/week3-9.webp)
 
 #### 4.3.2 DenseNet
 
 DenseNet(Dense connections)，类似ResNet，DenseNet比ResNet更加稠密一点，每一层输入都要连接到后续网络层：
 
-![CS224N DenseNet（图 10）](/assets/posts/cs224n/week-03/week3-10.png)
+![DenseNet 稠密连接的结构示意](/assets/posts/cs224n/week-03/week3-10.webp)
 
 #### 4.3.3 HighwayNet
 
 也类似于ResNet，只不过加了门控来限制输入$x^{(t)}$对跳过连接的权重
 
-![CS224N HighwayNet（图 11）](/assets/posts/cs224n/week-03/week3-11.png)
+![Highway 连接的门控结构示意](/assets/posts/cs224n/week-03/week3-11.webp)
 
-ResNet也有自己的问题：
+残差连接与归一化的摆放位置有关：
 
-- Pre-Norm: 解决了梯度消失，但是深层网络容易出现表示崩溃，层间特征趋同，模型表达能力受限
-- Post-Norm: 缓解了表示崩溃，但重新引入了梯度消失风险，训练难度大。
+- Pre-Norm：归一化不在残差通路上，梯度传播更顺畅，训练更稳定
+- Post-Norm：归一化在残差通路上，深层时训练更难，通常需要warmup
 
 ## 5 双向RNN
 
@@ -178,9 +176,9 @@ ResNet也有自己的问题：
 
 ### 5.2 模型结构
 
-![CS224N 模型结构（图 12）](/assets/posts/cs224n/week-03/week3-12.png)
+![双向 RNN 用于情感分类的结构](/assets/posts/cs224n/week-03/week3-12.webp)
 
-![CS224N 模型结构（图 13）](/assets/posts/cs224n/week-03/week3-13.png)
+![双向 RNN 前向与后向隐藏状态拼接的公式](/assets/posts/cs224n/week-03/week3-13.webp)
 
 ### 5.3 模型特点
 
@@ -194,7 +192,7 @@ ResNet也有自己的问题：
 
 ### 6.2 模型结构
 
-![CS224N 模型结构（图 14）](/assets/posts/cs224n/week-03/week3-14.png)
+![多层 RNN 的堆叠结构](/assets/posts/cs224n/week-03/week3-14.webp)
 
 ### 6.3 模型特点
 
@@ -213,18 +211,18 @@ seq2seq模型是一种条件语言模型：
 
 ### 7.2 模型结构
 
-![CS224N 模型结构（图 15）](/assets/posts/cs224n/week-03/week3-15.png)
+![seq2seq 机器翻译的 encoder-decoder 结构](/assets/posts/cs224n/week-03/week3-15.webp)
 
 ### 7.3 训练方式
 
 要想训练seq2seq模型：
 
-- 简单方法需要一个大的平行语料库，分别对应这原语句$x$和目标语句$y$。
-- 现在也发展出了”无监督NMT(Neural Machine Translation)“、数据增强等等方案，无需上述语料库
+- 简单方法需要一个大的平行语料库，分别对应着原语句$x$和目标语句$y$。
+- 现在也发展出了“无监督NMT(Neural Machine Translation)”、数据增强等等方案，无需上述语料库
 
 训练格式如下图，这里可以发现在Encoder中并不计算交叉熵损失，而是在Decoder中才去计算。下述结构也可以堆叠多层，不再赘述。
 
-![CS224N 训练方式（图 16）](/assets/posts/cs224n/week-03/week3-16.png)
+![seq2seq 端到端训练时 decoder 各步的损失](/assets/posts/cs224n/week-03/week3-16.webp)
 
 ## 8 RNN瓶颈-Attention RNN
 
@@ -238,11 +236,11 @@ seq2seq模型是一种条件语言模型：
 
 ### 8.1 模型结构
 
-![CS224N 模型结构（图 17）](/assets/posts/cs224n/week-03/week3-17.png)
+![带 attention 的 seq2seq 在 decoder 某一步的计算示意](/assets/posts/cs224n/week-03/week3-17.webp)
 
-![CS224N 模型结构（图 18）](/assets/posts/cs224n/week-03/week3-18.png)
+![attention 分数、分布与输出的计算公式](/assets/posts/cs224n/week-03/week3-18.webp)
 
-这里可以看到，Attention做的事情主要是对Encoder每一层隐藏层状态$h_i$在当前Decoder块的隐藏层状态$s_t$方向进行了投影，并最终加权求和，与$s_t$合并为一个向量并参与到下一次Decoder计算中。这可以有效地让模型关注到长程信息，**可以理解为attention在这里对跳过连接做了加权控制，是一种ResNet的变种。**
+这里可以看到，Attention做的事情主要是用当前Decoder的隐藏层状态$s_t$与Encoder每个时间步的隐藏层状态$h_i$做内积得到分数，softmax后对$h_i$加权求和，与$s_t$合并为一个向量并参与到下一次Decoder计算中。这可以有效地让模型关注到长程信息，可以把它理解为一种带权重的跳过连接：decoder可以直接访问encoder的任意位置。
 
 ### 8.2 模型特点
 
@@ -250,11 +248,11 @@ Attention增强的RNN结构，本质上还是RNN，具备如下特点：
 
 - 通过Attention来捕获长程依赖。
 - 符合人类阅读习惯，Attention更像是查表而并非记忆。
-- Attention并行性非常好，并且对模型表达能力提升明显。
-- Attention的存在帮助解决了梯度消失的问题（与ResNet一样的跳过连接方式）。
+- Attention本身的计算并行性很好，并且对模型表达能力提升明显。
+- Attention的存在帮助解决了梯度消失的问题（与残差连接类似，提供了到远处状态的直接通路）。
 - 有一定的可解释性，检查Attention中的投影信息或者Attention score，就可以发现推理时模型关注了哪些前置语句的信息。
 - 计算复杂度提高，为了计算Attention，需要不断计算矩阵向量乘法（gemv）。
 
 ## 9 本节小结
 
-![CS224N 本节小结（图 19）](/assets/posts/cs224n/week-03/week3-19.png)
+![本周内容小结](/assets/posts/cs224n/week-03/week3-19.webp)

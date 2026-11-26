@@ -1,7 +1,7 @@
 ---
 title: "CS224N 课程笔记 04：Self-Attention 与 Transformer"
 date: 2026-01-14 11:00:00 +0800
-last_modified_at: 2026-01-14 11:00:00 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS224N 课程笔记：Self-Attention、Transformer 结构、训练方法与架构局限。"
 category: 课程笔记
 series: Stanford CS224N
@@ -26,7 +26,7 @@ source_commit: b9c77fd
 
 ### 1.1 模型结构
 
-![CS224N 模型结构（图 1）](/assets/posts/cs224n/week-04/week4-1.png)
+![self-attention 中 query、key、value 的计算步骤](/assets/posts/cs224n/week-04/week4-1.webp)
 
 ### 1.2 模型特点
 
@@ -35,7 +35,7 @@ source_commit: b9c77fd
 | 位置编码形式   | 编码方法                                                     | 优点                                                         | 缺点                                               |
 | -------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------- |
 | 绝对位置编码   | $\tilde{x}_i=x_i+p_i$，直接在embedding向量$x_i$上添加初始输入$p_i$ | 计算简单，也可以直接concat起来而不是add                      | 效果可能一般                                       |
-| 正弦位置编码   | ![CS224N 模型特点（图 2）](/assets/posts/cs224n/week-04/week4-2.png) | 使用了周期编码，绝对位置可能并不重要。周期性可能带来较好的可扩展性。 | 不可学习，编码值与输入完全无关。扩展性也一般       |
+| 正弦位置编码   | ![正弦位置编码的公式](/assets/posts/cs224n/week-04/week4-2.webp) | 使用了周期编码，绝对位置可能并不重要。周期性可能带来较好的可扩展性。 | 不可学习，编码值与输入完全无关。扩展性也一般       |
 | 可学习位置编码 | $p_i$全部设置为可学习参数                                    | 可学习，编码值与输入相关                                     | 不可扩展，每多一个位置，就要增加学习权重的尺寸维度 |
 | RoPE           |                                                              | 相对位置编码，与绝对位置无关。是现在主流位置编码方法         |                                                    |
 
@@ -51,12 +51,12 @@ $$
 
 添加上述3点后，完整的自注意力block长这样：
 
-![CS224N 模型特点（图 3）](/assets/posts/cs224n/week-04/week4-3.png)
+![加入位置编码、FFN 与因果掩码后的 self-attention block](/assets/posts/cs224n/week-04/week4-3.webp)
 
 > - 自注意力: self-attention
-> - 位置编码: RoPE
+> - 位置编码: 如 RoPE
 > - 非线性: FFN
-> - 因果掩码: casual mask
+> - 因果掩码: causal mask
 
 ## 2 transformer
 
@@ -64,9 +64,9 @@ $$
 
 这里将attention换成了多头注意力（MHA）。
 
-![CS224N 模型结构（图 4）](/assets/posts/cs224n/week-04/week4-4.png)
+![Transformer decoder block 的结构图](/assets/posts/cs224n/week-04/week4-4.webp)
 
-单头注意力的缺点在于，$softmax(QK^T)$是在token维度做的归一化，随着序列长度增加，会逐渐变得难以捕捉局部信息。最直接的办法就是在token维度分段做$attention \;|\; softmax$，这也就是MHA的思想。
+单头注意力每个位置只有一组注意力分布，很难同时关注多种不同的关系（例如语法关系和指代关系）。MHA的做法是在feature维度上把$d$维拆成$h$个头，每个头有自己的$Q_l$、$K_l$、$V_l$（维度$d/h$），各自独立做一次attention。
 
 $$
 o_l
@@ -75,7 +75,7 @@ o_l
     \right)XV_l
 $$
 
-最终的输出就是$concat(o_l), l \in [0,h)$。
+最终的输出就是把各个头的$o_l$（$l \in [0,h)$）拼接起来，再过一个线性层。
 
 ### 2.2 训练方法
 
@@ -89,8 +89,8 @@ $$
 
 $$
 \begin{aligned}
-o &= \frac{x-\mu}{\sqrt{\sigma} + \epsilon}\,\gamma + \beta, \\
-\mu &= \sum_{j=1}^{d} x_j, \\
+o &= \frac{x-\mu}{\sigma + \epsilon}\,\gamma + \beta, \\
+\mu &= \frac{1}{d}\sum_{j=1}^{d} x_j, \\
 \sigma &= \sqrt{\frac{1}{d}\sum_{j=1}^{d}(x_j-\mu)^2}.
 \end{aligned}
 $$
@@ -108,15 +108,15 @@ $$
 
 一般模型中可以由多个transformer block堆叠而成。
 
-> Transformer Encoder block 和 Decoder block的唯一区别就是Encoder block没有因果掩码
+> 在不含cross-attention的情况下，Transformer Encoder block 和 Decoder block的区别就是Encoder block没有因果掩码
 
 ### 2.4 Transformer Encoder-Decoder
 
 transformer也可以组成上周所讲的seq2seq形式，在Encoder-Decoder中添加一个交叉注意力，如下图所示：
 
-![CS224N Transformer Encoder-Decoder（图 5）](/assets/posts/cs224n/week-04/week4-5.png)
+![Transformer encoder-decoder 与 cross-attention 的结构图](/assets/posts/cs224n/week-04/week4-5.webp)
 
-假设Encoder输出为$H=[h_1;...;h_n]$，Decoder输出为$Z=[z_1;...;z_n]$，那么cross-attention计算如下：
+假设Encoder输出为$H=[h_1;...;h_n]$，Decoder的隐藏层状态为$Z=[z_1;...;z_m]$，那么cross-attention计算如下：
 
 $$
 o_{\text{cross-attention}} = \operatorname{softmax}\!\left(ZQ(HK)^{T}\right)HV
@@ -130,8 +130,8 @@ $$
 
 现在绝大多数的语言模型都使用pre-norm，下图右：
 
-![CS224N 训练不稳定性（Pre vs Post norm）（图 6）](/assets/posts/cs224n/week-04/week4-6.png)
+![post-norm 与 pre-norm 的 block 结构对比](/assets/posts/cs224n/week-04/week4-6.webp)
 
 ### 3.2 平方复杂度（self-attention）
 
-self-attention中$QK^T$的计算复杂度为$O(n^2d)$，其中$n$是token维度，代表序列长度，$d$是feature也就是特征维度。这样的平方复杂度决定了self-attention的计算成本较为高昂。尤其是相对于RNN、LSTM、SSM、Mamba等线性模型来说，平方复杂度显得不那么划算，但这仍然是目前的主流架构。
+self-attention中$QK^T$的计算复杂度为$O(n^2d)$，其中$n$是token维度，代表序列长度，$d$是feature也就是特征维度。这样的平方复杂度决定了self-attention的计算成本较为高昂。尤其是相对于RNN、LSTM、SSM（如Mamba）等序列长度线性复杂度的模型来说，平方复杂度显得不那么划算，但这仍然是目前的主流架构。

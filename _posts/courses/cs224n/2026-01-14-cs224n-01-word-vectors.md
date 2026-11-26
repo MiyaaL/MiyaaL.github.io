@@ -1,7 +1,7 @@
 ---
 title: "CS224N 课程笔记 01：词向量与 Word2Vec"
 date: 2026-01-14 09:00:00 +0800
-last_modified_at: 2026-01-14 09:00:00 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS224N 课程笔记：词义表示、Word2Vec、共现矩阵、词向量评估与 NER。"
 category: 课程笔记
 series: Stanford CS224N
@@ -10,7 +10,7 @@ course_order: 1
 course_label: Week 1
 course_status: 完整记录
 permalink: /courses/cs224n/01-word-vectors/
-tags: [NLP, 表征学习]
+tags: [NLP]
 math: true
 mermaid: false
 source_commit: b9c77fd
@@ -78,7 +78,7 @@ P(o \mid c)
   \label{1.2.2} \tag{1.2.2}
 $$
 
-这里相当于做了一个类似与$softmax$的求权操作，$exp$指数操作保证了非负性，而大V对应的是词表范围的的归一化。
+这里相当于做了一个类似于softmax的归一化操作，$\exp$指数操作保证了非负性，分母是在整个词表$V$范围内的归一化。
 
 有了$P$、$L$、$J$函数，接着通过极小化$J$函数，我们便可以从初始的$θ$不断迭代，拿到我们想要的最终的$θ$。我们期望的$θ$应该是包含了词表内所有单词向量$v$、$u$的一个大矩阵，维度应该是：[vocabulary size, feature size]。上述迭代过程假如用梯度下降可以表达为：
 
@@ -110,7 +110,7 @@ $$
   \label{1.2.5} \tag{1.2.5}
 $$
 
-而$k$的采样遵循$unigram \;distribution$概率分布：
+而$k$的采样遵循unigram分布的$3/4$次方：
 
 $$
 P(w) = \frac{U(w)^{3/4}}{Z}
@@ -125,7 +125,7 @@ $$
 
 可以想见，式 $\eqref{1.2.4}$ 的计算矩阵是相当稀疏的，在矩阵更新时要尽可能的避免全量更新（因为其稀疏特征）。这里可以采用基于窗口的共现矩阵来进行局部更新：
 
-![CS224N 共现矩阵（co-occurrence matrix）（图 1）](/assets/posts/cs224n/week-01/week1-1.png)
+![基于窗口统计的词共现矩阵示例](/assets/posts/cs224n/week-01/week1-1.webp)
 
 而在训练时保留这样一个稀疏矩阵是非常占空间的，可以采用SVD分解来进行矩阵压缩：
 
@@ -136,7 +136,7 @@ $$
   - 对原始计数设置最大值
   - 直接忽略功能性词汇
 - 设置渐进性的窗口，例如离中心词更近的词有更多的影响
-- 可以用相关系数来代替原始计数，对负采样单词的相关系数设置为0
+- 可以用相关系数（如Pearson相关系数）来代替原始计数，并把负值置为0
 
 ### 2.4 如何评估词向量
 
@@ -192,12 +192,12 @@ $$
 
 ### 2.6 深度学习分类-命名实体识别 Named Entity Recognition（NER）
 
-依上述[2.4.2](#242-外在评估extrinsic)所述，NER是一种外在评估，这里介绍了一个简单的NER实现：基于窗口的词性分类。其核心思想就是利用已经被手工标注好词性的文本进行分类训练，训练的大小限定在一个窗口范围内。如下图所示：
+依上述[2.4.2](#242-外在评估extrinsic)所述，NER是一种外在评估，这里介绍了一个简单的NER实现：基于窗口的实体类别分类。其核心思想就是利用已经被手工标注好实体类别的文本进行分类训练，训练的大小限定在一个窗口范围内。如下图所示：
 
-![CS224N 深度学习分类-命名实体识别 Named Entity Recognition（NER）（图 2）](/assets/posts/cs224n/week-01/week1-2.png)
+![以中心词 Paris 为例的窗口词向量拼接示意](/assets/posts/cs224n/week-01/week1-2.webp)
 
 上图中的$x$就是NER中的模型输入，为了让Paris也就是这里的$x$归类到我们之前已经划定好的Location类别中，需要对x与类别标签进行内积计算，最终计算每个标签对应的score，得到分类结果，如下图所示：
 
-![CS224N 深度学习分类-命名实体识别 Named Entity Recognition（NER）（图 3）](/assets/posts/cs224n/week-01/week1-3.png)
+![窗口向量经隐藏层后计算各实体类别得分的网络结构](/assets/posts/cs224n/week-01/week1-3.webp)
 
 上述结构多层堆叠，便是神经网络的概念。

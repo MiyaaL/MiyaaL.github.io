@@ -1,7 +1,7 @@
 ---
 title: "CS224N 课程笔记 05：预训练、RLHF 与 DPO"
 date: 2026-01-19 10:00:00 +0800
-last_modified_at: 2026-01-19 10:00:00 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS224N 课程笔记：子词建模、预训练、指令微调、RLHF 与 DPO。"
 category: 课程笔记
 series: Stanford CS224N
@@ -10,7 +10,7 @@ course_order: 5
 course_label: Week 5
 course_status: 完整记录
 permalink: /courses/cs224n/05-pretraining-rlhf-dpo/
-tags: [NLP, 模型训练]
+tags: [NLP, 模型训练, 模型对齐]
 math: true
 mermaid: false
 source_commit: b9c77fd
@@ -53,12 +53,13 @@ source_commit: b9c77fd
 
 ### 1.5 预训练方法
 
-主要是有3中预训练类型：
-![CS224N 预训练方法（图 1）](/assets/posts/cs224n/week-05/week5-1.png)
+主要是有3种预训练类型：
+
+![encoder、encoder-decoder 与 decoder 三类预训练架构](/assets/posts/cs224n/week-05/week5-1.webp)
 
 #### 1.5.1 Pretraining encoders
 
-encoder可以看到完整地上下文信息，因此不能单独拿来做自回归生成式语言模型，但可以用来做masked LM，也就是“完形填空”。比较经典的就是BERT(Bidirectional Encoder Representations from Transformers) Masked LM。BERT的预训练成本非常高昂，但是微调的成本却比较低。这可以让BERT一次预训练，在不同的任务中多次微调。也有很多BERT微调的扩展模型，例如：RoBERTa、SpanBERT等等。
+encoder可以看到完整的上下文信息，因此不能单独拿来做自回归生成式语言模型，但可以用来做masked LM，也就是“完形填空”。比较经典的就是BERT(Bidirectional Encoder Representations from Transformers) Masked LM。BERT的预训练成本非常高昂，但是微调的成本却比较低。这可以让BERT一次预训练，在不同的任务中多次微调。也有很多BERT微调的扩展模型，例如：RoBERTa、SpanBERT等等。
 
 #### 1.5.2 Pretraining encoder-decoders
 
@@ -80,23 +81,26 @@ decoder可以用**language modeling**来做训练，代表性的就是**GPT**(Ge
 - scaling有助于识别模型规模与数据之间的trade-off
 - scaling可以帮助我们做出模型架构的取舍
 
-一般来说，模型的规模(parameters)与训练模型所需的数据量(tokens)在一个量级，且呈正相关，但也不绝对，例如Chinchilla使用了70 Billion参数规模，却使用1.4 Trillion tokens来做训练。
+一般来说，模型的规模(parameters)与训练所需的数据量(tokens)应该同步增长。按Chinchilla的结论，token数大约应是参数量的20倍：Chinchilla本身是70 Billion参数，使用了1.4 Trillion tokens来做训练。
 
 ## 2 post-training
 
 ### 2.1 finetuning
+
 为什么需要**finetuning**，其实是因为经海量数据预训练后的模型无法满足user的多种任务需求。finetuning和pretraining都可以采用问答方式来进行训练。
 
-![CS224N finetuning（图 2）](/assets/posts/cs224n/week-05/week5-2.png)
+![预训练与微调两个阶段的示意](/assets/posts/cs224n/week-05/week5-2.webp)
 
-#### 2.1.2 multi-task benchmark
-现在也有很多大型benchmark，例如MMLU(Massive Multitask Language
-Understanding)、BIG-Bench等等，可以用来评估模型微调的能力。他们都包含多种不同类型的任务，可以从不同方面对模型做有效评估。
+#### 2.1.1 multi-task benchmark
 
-#### 2.1.3 Instruction finetuning
+现在也有很多大型benchmark，例如MMLU(Massive Multitask Language Understanding)、BIG-Bench等等，可以用来评估模型微调的能力。他们都包含多种不同类型的任务，可以从不同方面对模型做有效评估。
+
+#### 2.1.2 Instruction finetuning
+
 **指令微调**：在带有指令提示和相应输出的标记数据集上微调大模型的技术，通过提供一组概述所需操作的指南或指令，使预训练模型适应执行特定任务。
 
 例如：
+
 - 指令：“你是一个乐于助人、尊重他人且诚实的助手。始终尽可能有帮助地回答，同时确保安全。你的回答不应包含任何有害、不道德、种族主义、性别歧视、恶毒、危险或非法的内容。请确保你的回答在社会上不带有偏见，并且具有积极的性质。如果一个问题没有意义，或事实不连贯，请解释原因，而不是回答错误的内容。如果你不知道问题的答案，请不要分享错误信息。”
 - 上下文：<<输入你的上下文>>
 - 问题：<<输入你的问题>>
@@ -104,42 +108,45 @@ Understanding)、BIG-Bench等等，可以用来评估模型微调的能力。他
 
 指令微调之前模型可能无法正确回答问题：
 
-![CS224N Instruction finetuning（图 3）](/assets/posts/cs224n/week-05/week5-3.png)
+![指令微调前模型未按指令作答的例子](/assets/posts/cs224n/week-05/week5-3.webp)
 
 微调之后，可以正确回答：
 
-![CS224N Instruction finetuning（图 4）](/assets/posts/cs224n/week-05/week5-4.png)
+![指令微调后模型正确作答的例子](/assets/posts/cs224n/week-05/week5-4.webp)
 
 ### 2.2 Reinforcement Learning from Human Feedback (RLHF)
+
 #### 2.2.1 场景
+
 指令微调后，部分任务可能仍然无法满足用户需求，例如有些问题的答案可能本身就是开放性的，没有正确之分。为了满足用户喜好，这时就需要RLHF：
 
-![CS224N 场景（图 5）](/assets/posts/cs224n/week-05/week5-5.png)
+![同一问题存在多个合理回答、需要按人类偏好选择的例子](/assets/posts/cs224n/week-05/week5-5.webp)
 
 #### 2.2.2 强化学习简单原理
-这里非常简要的过了一下强化学习的原理，假设现在有一个Reward数据集，包含了所有人类偏好的回答方式，Reward的数据越大越好。那么我们期望最终达成的目标就是最大化LLM回答的Reward：
 
-![CS224N 强化学习简单原理（图 6）](/assets/posts/cs224n/week-05/week5-6.png)
+这里非常简要的过了一下强化学习的原理，假设对模型的每个回答$s$都能拿到一个人类给出的奖励$R(s)$，奖励越大越好。那么我们期望最终达成的目标就是最大化LLM回答的Reward：
 
-那么参数更新的方式可以以梯度下降为例：
+![最大化期望奖励的目标函数](/assets/posts/cs224n/week-05/week5-6.webp)
 
-![CS224N 强化学习简单原理（图 7）](/assets/posts/cs224n/week-05/week5-7.png)
+那么参数更新的方式可以以梯度上升为例：
+
+![对期望奖励做梯度上升的参数更新公式](/assets/posts/cs224n/week-05/week5-7.webp)
 
 其中梯度可以挪到期望的内部：
 
-![CS224N 强化学习简单原理（图 8）](/assets/posts/cs224n/week-05/week5-8.png)
+![利用 log-derivative trick 改写期望奖励梯度的推导](/assets/posts/cs224n/week-05/week5-8.webp)
 
-![CS224N 强化学习简单原理（图 9）](/assets/posts/cs224n/week-05/week5-9.png)
+![梯度写成期望内部形式的结果](/assets/posts/cs224n/week-05/week5-9.webp)
 
 最终经过蒙特卡洛采样期望可以约等于离散数据的采样：
 
-![CS224N 强化学习简单原理（图 10）](/assets/posts/cs224n/week-05/week5-10.png)
+![用蒙特卡洛采样近似期望的公式](/assets/posts/cs224n/week-05/week5-10.webp)
 
 那么$\theta$的更新方式就变为了：
 
-![CS224N 强化学习简单原理（图 11）](/assets/posts/cs224n/week-05/week5-11.png)
+![基于采样的策略梯度参数更新公式](/assets/posts/cs224n/week-05/week5-11.webp)
 
-这样梯度的计算就与$R(s)$函数彻底解耦了，只有参数的更新需要求导。
+这样就不需要对$R(s)$求导了，$R(s)$可以是任意不可导的黑盒函数，只需要对$\log p_\theta(s)$求导。
 
 #### 2.2.3 训练方式
 
@@ -152,7 +159,7 @@ Understanding)、BIG-Bench等等，可以用来评估模型微调的能力。他
 
 - 获取预训练模型$p^{PT}(s)$，通过大量数据集训练得到，泛化性较好但特化性不足
 - 获取奖励模型$RM_{\phi}(s)$，通过人类评分比较数据集训练得到
-- 以参数$p_{\theta}^{RL}(s)$初始化模型
+- 用$p^{PT}$的参数初始化待训练的模型$p_{\theta}^{RL}(s)$
 - 开始训练并通过如下方式进行更新：
 
 $$
@@ -164,7 +171,7 @@ R(s)
   \label{2.1} \tag{2.1}
 $$
 
-其中KL散度被定义为如下公式，作为防止RLHF训练参数偏移预训练参数过多而添加的惩罚项。
+其中第二项是下面这个对数概率比，它在$s \sim p_{\theta}^{RL}$下的期望就是$\mathrm{KL}(p_{\theta}^{RL} \,\Vert\, p^{PT})$，作为防止RLHF训练后的模型偏离预训练模型过多而添加的惩罚项。
 
 $$
 \log\!\left(
@@ -173,11 +180,11 @@ $$
 \label{2.2} \tag{2.2}
 $$
 
-可以看出，当$p_{\theta}^{RL}(s)$和$p^{PT}(s)$越是接近，或者完全一致时，惩罚项将越趋近于0。
+可以看出，当$p_{\theta}^{RL}(s)$和$p^{PT}(s)$越是接近，或者完全一致时，惩罚项的期望将越趋近于0。
 
 ### 2.3 RL + Reward Modeling 限制
 
-- 用户偏好以及基于用户偏好训出的RM是不可靠的：有时模型会为了提供看起来权威或者有帮助的回答，与事实真相相去甚远，产生幻觉。这是一种所谓的"Reward Hacking"(奖励黑客)，指RL中模型利用奖励函数的一些歧义或者捷径来获得高奖励单并未真正对任务和数据集进行学习。
+- 用户偏好以及基于用户偏好训出的RM是不可靠的：有时模型会为了提供看起来权威或者有帮助的回答，与事实真相相去甚远，产生幻觉。这是一种所谓的"Reward Hacking"(奖励黑客)，指RL中模型利用奖励函数的一些歧义或者捷径来获得高奖励但并未真正对任务和数据集进行学习。
 
 ### 2.4 Direct Preference Optimization(DPO)
 
@@ -210,8 +217,9 @@ J_{\mathrm{DPO}}(\theta)
   \label{2.4} \tag{2.4}
 $$
 
-其中，$y_w$表示"win"，$RM_{\theta}(x,y_w)$为正，越大表示正反馈越大；$y_l$表示"loss"，$RM_{\theta}(x,y_l)$为负，越小表示负反馈越大。
-3. 我们假设奖励函数可以由下述方式表示，因为它更符合式 $\eqref{2.3}$ 的表达形式，并且$Z(x)$也可以满足奖励函数的任意形式。
+其中，$y_w$表示被偏好的回答（"win"），$y_l$表示不被偏好的回答（"lose"）。奖励的绝对值和正负没有意义，起作用的只有两者之差：差越大，$y_w$胜出的概率越高。
+
+3. 式 $\eqref{2.3}$ 的最优策略有闭式解，反过来可以把奖励函数用策略表示出来，其中$Z(x)$是只与$x$有关的归一化项：
 
 $$
 RM_{\theta}(x,\hat{y})
@@ -243,27 +251,24 @@ J_{\mathrm{DPO}}(\theta)
 \label{2.6} \tag{2.6}
 $$
 
-    - 可以看到，与$y_w$和$y_l$均无关的$Z(x)$被我们约掉了，这是Bradley-Terry模型下最大的一个假设。
-    - 式 $\eqref{2.6}$ 的表达形式说明Bradley-Terry模型下loss的计算完全不依赖于Reward模型，而仅与参数$p$有关。它描述了"winning sample"和"losing sample"在RL(强化学习模型)与PT(预训练模型)参数存在gap时对损失的贡献情况。随着RL的进行，损失函数$J_{DPO}(\theta)$逐步趋近于0。
+    - 可以看到，$Z(x)$与$y_w$和$y_l$均无关，而Bradley-Terry模型只依赖两个奖励之差，所以$Z(x)$在做差时直接消掉了，不需要计算。
+    - 式 $\eqref{2.6}$ 说明loss的计算完全不依赖于单独的Reward模型，而仅与策略$p_\theta^{RL}$和$p^{PT}$有关：相对于预训练模型，提高$y_w$的概率、降低$y_l$的概率，loss就会下降。
 
-下图展示了RLHF和DPO的流程区别，开源大模型现在几乎全部使用了DPO而不是RLHF。
-![CS224N Direct Preference Optimization(DPO)（图 12）](/assets/posts/cs224n/week-05/week5-12.png)
+下图展示了RLHF和DPO的流程区别。DPO流程简单，在开源模型的对齐中使用很广泛。
+
+![RLHF 与 DPO 的训练流程对比](/assets/posts/cs224n/week-05/week5-12.webp)
 
 ### 2.5 人类偏好数据来源
 
-- 海外廉价劳动力
-- AI反馈？
+- 外包的人工标注
+- 用模型给出反馈（AI feedback）
 
 ### 2.6 总结
-| 维度 | Prompt Engineering（提示工程） | Instruction Tuning（指令微调） | RLHF（Reinforcement Learning from Human Feedback） | DPO（Direct Preference Optimization） |
-|------|-------------------------------|-------------------------------|--------------------------------------------------|--------------------------------------|
-| **核心思想** | 通过精心设计输入提示（prompt）引导模型生成期望输出，不修改模型参数。 | 在预训练模型基础上，使用带指令-响应对的数据进行有监督微调（SFT），使模型学会遵循指令。 | 利用人类对模型输出的偏好标注，通过强化学习优化策略，使模型输出更符合人类偏好。 | 将偏好数据直接用于监督式训练，绕过显式的奖励建模和强化学习，直接优化策略。 |
-| **是否修改模型参数** | ❌ 否 | ✅ 是 | ✅ 是 | ✅ 是 |
-| **训练阶段** | 推理阶段（无需训练） | 微调阶段（有监督训练） | 两阶段：<br>1. SFT（可选）<br>2. 奖励模型训练 + PPO 强化学习 | 单阶段：直接在偏好数据上优化策略 |
-| **所需数据类型** | 无（仅需设计 prompt） | 指令-响应对（如 “写一首诗” → “……”） | 人类偏好对（如 response A ≻ response B） | 人类偏好对（同 RLHF） |
-| **是否需要人类标注** | ❌ 否（但依赖人工设计） | ✅ 是（需高质量指令-答案对） | ✅ 是（需大量偏好比较） | ✅ 是（需偏好对） |
-| **计算开销** | 极低 | 中等（标准微调） | 高（需训练奖励模型 + PPO 训练，不稳定） | 低（单次监督训练，稳定高效） |
-| **主要优点** | - 快速迭代<br>- 无需训练<br>- 灵活适应不同任务 | - 提升指令遵循能力<br>- 效果显著且稳定<br>- 可作为 RLHF 的基础 | - 能对齐复杂人类偏好（如安全性、有用性）<br>- 曾是主流对齐方法 | - 避免 RL 不稳定性<br>- 训练更简单高效<br>- 性能媲美甚至超越 RLHF |
-| **主要缺点** | - 效果依赖 prompt 设计技巧<br>- 泛化能力有限<br>- 对复杂任务效果差 | - 无法直接优化“偏好”（只能模仿示例）<br>- 需大量高质量标注数据 | - 训练流程复杂<br>- PPO 收敛困难<br>- 计算资源消耗大 | - 理论假设较强（如 Bradley-Terry 偏好模型）<br>- 对数据质量敏感 |
-| **典型应用场景** | 快速原型验证、零样本/少样本推理、API 调用 | 通用助手微调（如 Alpaca、WizardLM） | 高质量对话系统（如 InstructGPT、Claude、早期 ChatGPT） | 新一代开源模型对齐（如 Zephyr、LLaMA-3-DPO） |
-| **代表工作/模型** | Chain-of-Thought, Self-Consistency | FLAN, T0, Alpaca | InstructGPT (OpenAI), Claude (Anthropic) | DPO 论文 (Rafailov et al., 2023), Zephyr-7B, LLaMA-3 |
+
+| 维度 | Prompting | Instruction Tuning | RLHF | DPO |
+| --- | --- | --- | --- | --- |
+| 是否更新模型参数 | 否 | 是 | 是 | 是 |
+| 所需数据 | 无（只需设计prompt） | 指令-回答对 | 偏好对（A优于B） | 偏好对（同RLHF） |
+| 训练流程 | 无 | 有监督微调 | 先训练奖励模型，再用RL（如PPO）优化策略 | 直接在偏好数据上做有监督训练 |
+| 主要优点 | 迭代快，不需要训练 | 简单稳定，提升指令遵循能力 | 可以直接优化人类偏好 | 不需要奖励模型和RL，流程简单 |
+| 主要缺点 | 效果依赖prompt写法 | 只能模仿示例，无法直接优化偏好 | 流程复杂，训练不稳定，开销大 | 依赖Bradley-Terry偏好模型的假设和偏好数据的质量 |

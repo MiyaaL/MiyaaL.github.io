@@ -1,7 +1,7 @@
 ---
 title: "CS336 课程笔记 01：课程概览与 Tokenization"
 date: 2026-01-23 00:13:57 +0800
-last_modified_at: 2026-02-17 21:18:18 +0800
+last_modified_at: 2026-11-26 12:00:00 +0800
 description: "CS336 课程笔记：语言模型全栈概览、课程结构与 Tokenization 基础。"
 category: 课程笔记
 series: Stanford CS336
@@ -10,7 +10,7 @@ course_order: 1
 course_label: Lecture 01
 course_status: 完整记录
 permalink: /courses/cs336/01-overview-tokenization/
-tags: [LLM, Tokenization]
+tags: [LLM]
 math: false
 mermaid: false
 source_commit: 75581e4
@@ -22,9 +22,9 @@ source_commit: 75581e4
 ## 1. Overview
 
 - 现在LLM随着scaling尺度越来越大，基建已经变得越来越庞大，越来越难以用简单一门课程讲清楚所有细节，也越来越难以手搓出一个能用的预训练模型
-- scaling尺度增加，attention和FFN在计算上的主导地位会发生变化，FFN的计算比重会随着模型增加越来越大，甚至超过80%，如下图所示：
+- scaling尺度增加，attention和FFN在计算上的主导地位会发生变化，FFN的计算比重会随着模型增加越来越大，在最大的模型上达到约80%，如下图所示：
 
-![CS336 1. Overview（图 1）](/assets/posts/cs336/lecture-01/lecture_01_1.png)
+![不同规模模型中 attention 与 FFN 的 FLOPs 占比](/assets/posts/cs336/lecture-01/lecture_01_1.webp)
 
 - scaling尺度增加，模型会涌现越来越智能的现象
 
@@ -34,7 +34,7 @@ source_commit: 75581e4
 
 - 业界的LLM，一般需要考虑：
 
-![CS336 2.1 课程目标（图 2）](/assets/posts/cs336/lecture-01/lecture_01_2.png)
+![业界 LLM 研发需要考虑的各个环节](/assets/posts/cs336/lecture-01/lecture_01_2.webp)
 
 - 本门课程的目标是手搓一个可以work的"full pipeline"，主要包括以下几个部分：
     1. **tokenization**
@@ -45,7 +45,7 @@ source_commit: 75581e4
 
 tokenization实际上就是把自然语句分割、转化为一些整数拼接的序列(或者反过来)：
 
-![CS336 2.2 Tokenization（图 3）](/assets/posts/cs336/lecture-01/lecture_01_3.png)
+![字符串与整数序列之间的 encode / decode 示意](/assets/posts/cs336/lecture-01/lecture_01_3.webp)
 
 - 本门课程使用的是[Byte-Pair Encoding (BPE) tokenizer](https://arxiv.org/abs/1508.07909)
 - 也有一些其他的"Tokenizer-free"训练方法，不过主流LLM用的很少，这里不展开
@@ -60,8 +60,8 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
     - **Placement of normalization**: pre-norm versus post-norm: 归一化方式，影响训练
     - **MLP**: dense, mixture of experts: 就是一个FFN
     - **Attention**: full, sliding window, linear: attention变种
-    - **Lower-dimensional attention**: group-query attention (GQA), multi-head latent attention (MLA): 低秩注意力
-    - **State-space models**: SSM，线性模型
+    - **Lower-dimensional attention**: grouped-query attention (GQA), multi-head latent attention (MLA): 低秩注意力
+    - **State-space models**: SSM，序列长度线性复杂度的非注意力架构
 
 ### 2.4 Training
 
@@ -85,7 +85,7 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
 - 推理可能会部署后运行多次，而训练成功后一般不会再去训练
 - 一般将推理划分为：prefill和decode
 
-![CS336 2.6 Inference（图 4）](/assets/posts/cs336/lecture-01/lecture_01_4.png)
+![推理的 prefill 与 decode 两个阶段](/assets/posts/cs336/lecture-01/lecture_01_4.webp)
 
 - prefill: 一般是compute bound，可以一次完成，也可以分片多次完成(chunked prefill)
 - decode: 一次吐一个token，需要多轮迭代完成输出任务，优化方法：
@@ -97,9 +97,7 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
 
 - 应该在小模型上去试运行，并依靠小模型来预测大模型的超参设置、损失的收敛情况等等
 
-### 2.8 Data
-
-#### 2.8.1 Evaluation
+### 2.8 Evaluation
 
 应该如何来评估一个模型的好坏？
 - **Perplexity**: 困惑度
@@ -109,12 +107,12 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
 - **LM-as-a-judge**: evaluate generative tasks 专门的语言模型来评判
 - **Full system**: RAG, agents 整系统评估，例如添加RAG、agents这种下游任务
 
-#### 2.8.2 Data curation && Data processing
+### 2.9 Data curation 与 Data processing
 
 - 数据来源一般是网页爬虫、获取专门的授权数据
 - 数据处理一般包括：转换(all -> text)、过滤(去除有害信息)、去重(精简数据集)
 
-### 2.9 alignment (模型对齐)
+### 2.10 Alignment（模型对齐）
 
 对齐的目标主要是：
 - 让LM遵循指令
@@ -123,21 +121,21 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
 
 这里主要是两个模块：SFT和RLHF
 
-#### 2.9.1 SFT (Supervised FineTuning, 有监督微调)
+#### 2.10.1 SFT (Supervised FineTuning, 有监督微调)
 
 利用人工标注数据，对模型进行微调，SFT会更新模型权重
 
-#### 2.9.2 RLHF (Reinforcement Learning from Human Feedbacks)
+#### 2.10.2 RLHF (Reinforcement Learning from Human Feedback)
 
-- 给出一系列回答，并提升人类更加偏好的回答方式，来对模型进行强化学习训练，RLHF会更行模型权重
+- 给出一系列回答，并提升人类更加偏好的回答方式，来对模型进行强化学习训练，RLHF会更新模型权重
 - 可以用专门的评判模型来对RLHF结果做评判
-- 算法：**PPO**(Proximal Policy Optimization)、**DPO**(Direct Policy Optimization)、**GRPO**(Group Relative Preference Optimization)等等
+- 算法：**PPO**(Proximal Policy Optimization)、**DPO**(Direct Preference Optimization)、**GRPO**(Group Relative Policy Optimization)等等
 
 ## 3. Tokenization
 
 ### 3.1 An example
 
-输入可能是"**Hello, 🌍! 你好!**"，经过tokenizer之后可能是 **[15496, 11, 995, 0]**(也有可能是反过来)，由此可见tokenization的主要功能是提供encode和decode方法，实现string<-->integer之间相互转换。
+输入可能是"**Hello, world!**"，经过GPT-2 tokenizer之后是 **[15496, 11, 995, 0]**，decode则反向进行，由此可见tokenization的主要功能是提供encode和decode方法，实现string<-->integer之间相互转换。
 
 ### 3.2 交互展示界面
 
@@ -155,11 +153,11 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
 ### 3.4 Byte-based tokenization
 
 这是基于字节编码的分词器，缺点也比较明显：
-- 虽然词表较小，一般就是256(也就是一个char的)大小，但是压缩率很差，因为每一个字符都对应一个编码，压缩率为1，encode之后的序列会变得非常长，而transformer是在token维度平方复杂度的...
+- 虽然词表较小，一般就是256(也就是一个char的)大小，但是压缩率很差，因为每个字节对应一个token（一个中文字符在UTF-8下要占3个token），压缩率为1，encode之后的序列会变得非常长，而transformer是在token维度平方复杂度的...
 
 ### 3.5 Word-based tokenization
 
-这时基于单词来进行分词，一个单词就是一个token，缺点也比较明显：
+这是基于单词来进行分词，一个单词就是一个token，缺点也比较明显：
 - 单词数量非常大，会让词表变得很臃肿
 - 很多词很少用，词表的使用效率低
 - 词表大小不固定，有可能会有新词产生
@@ -167,7 +165,7 @@ tokenization实际上就是把自然语句分割、转化为一些整数拼接�
 ### 3.6 BPE(Byte Pair Encoding) tokenization
 
 - 核心idea：在原始文本上训练分词器，自动生成词汇表
-- 训练方法：将每个字节视为一个token(也就是首先以Byte-based为基础)，然后依次merge合并相邻token中最常见的一对，再次开启循环，直到达到了预定的```num_merges```次数
+- 训练方法：将每个字节视为一个token(也就是首先以Byte-based为基础)，然后依次merge合并相邻token中最常见的一对，再次开启循环，直到达到了预定的`num_merges`次数
 - 使用方法：使用上述tokenizer进行encode时也需要对输入的string进行merge，decode时就不需要了，直接map过去即可
 
 ### 3.7 总结

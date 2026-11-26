@@ -8,14 +8,14 @@ permalink: /courses/cs224n/
 
 <section class="course-hero">
   <div class="container course-container">
-    <p class="eyebrow">COURSE NOTES / 课程笔记</p>
+    <p class="eyebrow">COURSE NOTES</p>
     <h1>Stanford CS224N</h1>
     <p class="course-lead">Natural Language Processing with Deep Learning · Spring 2025</p>
     <p class="course-intro">一组按课程进度整理的中文学习笔记，内容覆盖词向量、序列模型、Transformer、预训练与对齐、参数高效适配，以及问答和检索增强。</p>
     <dl class="course-facts">
-      <div><dt>课程</dt><dd><a href="https://web.stanford.edu/class/archive/cs/cs224n/cs224n.1254/" target="_blank" rel="noopener">Stanford CS224N Spring 2025 ↗</a></dd></div>
-      <div><dt>笔记</dt><dd>{{ course_posts.size }} 篇 · 中文</dd></div>
-      <div><dt>主题</dt><dd>NLP · Deep Learning · LLM</dd></div>
+      <div><dt>Course</dt><dd><a href="https://web.stanford.edu/class/archive/cs/cs224n/cs224n.1254/" target="_blank" rel="noopener">Stanford CS224N Spring 2025 ↗</a></dd></div>
+      <div><dt>Notes</dt><dd>{{ course_posts.size }} notes · Chinese</dd></div>
+      <div><dt>Topics</dt><dd>NLP · Deep Learning · LLM</dd></div>
     </dl>
     <p class="course-disclaimer">本系列为个人学习笔记，并非课程官方材料。笔记文字为个人整理；课程名称、讲义截图和相关材料的权利归 Stanford University 及课程作者所有，仅用于学习记录。</p>
   </div>
@@ -24,8 +24,8 @@ permalink: /courses/cs224n/
 <section class="course-content">
   <div class="container course-container">
     <div class="course-section-heading">
-      <p class="eyebrow">SYLLABUS / 笔记目录</p>
-      <h2>课程目录</h2>
+      <p class="eyebrow">SYLLABUS</p>
+      <h2>Lecture Notes</h2>
     </div>
 
     <ol class="course-outline">
@@ -42,7 +42,7 @@ permalink: /courses/cs224n/
             </div>
             <h2><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h2>
             <p>{{ post.description }}</p>
-            <ul class="tag-list" aria-label="文章标签">
+            <ul class="tag-list" aria-label="Tags">
               {% for tag in post.tags %}
                 <li><a href="{{ '/blog/' | relative_url }}?tag={{ tag | url_encode }}">#{{ tag }}</a></li>
               {% endfor %}
@@ -53,7 +53,7 @@ permalink: /courses/cs224n/
     </ol>
 
     <aside class="course-migration-note">
-      <h2>关于本系列</h2>
+      <h2>About this series</h2>
       <p>本系列由个人课程笔记仓库的最终版本迁移，迁移基准提交为 <code>b9c77fd</code>。文章保留原始更新时间，并在迁移过程中统一了标题层级、图片路径、术语格式与 LaTeX 渲染。</p>
       <p>Week 7 为部分课程记录，正文涵盖 Question Answering、RAG 与检索器；原笔记未包含 Model Analysis and Interpretability 内容，因此未作补写。</p>
     </aside>
