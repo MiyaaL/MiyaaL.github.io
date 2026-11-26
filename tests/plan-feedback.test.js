@@ -11,6 +11,7 @@ const CALENDARS = [holidays(2026), holidays(2027)];
 const generate = (state, asOfDate) => core.generate(state, CALENDARS, { asOfDate });
 const on = (plan, date) => plan.sessions.find((session) => session.date === date);
 const loads = (session) => session.workout.workSets.map((set) => set.loadKg);
+const addDays = (date, days) => new Date(Date.parse(date) + days * 864e5).toISOString().slice(0, 10);
 
 function logThrough(state, lastDate, overrides) {
   const dates = generate(state, "2026-11-02").sessions.map((session) => session.date)
@@ -32,17 +33,65 @@ test("new cycles run the feedback program and name themselves after the template
   assert.ok(generate(state, "2026-11-02").sessions.every((session) => session.program === core.FEEDBACK_PROGRAM));
 });
 
-test("the reference never runs more than 3 % ahead of the measured 1RM", () => {
-  const state = sampleState(core);
-  const plan = generate(state, "2026-11-02");
-  plan.sessions.forEach((session) => {
-    const lift = plan.cycle.lifts[session.workout.liftKey];
-    const offset = session.workout.liftKey === "pullup" ? 72 : 0;
-    assert.ok(session.workout.planned1rm + offset <= (lift.current1rm + offset) * 1.03 + 0.06,
-      session.date + " stays within the readiness cap");
+test("the reference due now never runs more than 3 % ahead of the measured 1RM", () => {
+  // Nothing is ever logged. Whatever date the plan is viewed on, the sessions
+  // of that week are held to what has been shown so far.
+  ["2026-11-02", "2026-12-07", "2027-01-11"].forEach((today) => {
+    const plan = generate(sampleState(core), today);
+    plan.sessions.filter((session) => session.date >= today && session.date <= addDays(today, 6)).forEach((session) => {
+      const lift = plan.cycle.lifts[session.workout.liftKey];
+      const offset = session.workout.liftKey === "pullup" ? 72 : 0;
+      assert.ok(session.workout.planned1rm + offset <= (lift.current1rm + offset) * 1.03 + 0.06,
+        session.date + " stays within the readiness cap when viewed on " + today);
+    });
   });
-  // Nothing is logged, so the late-cycle reference stops at the cap instead of the goal.
-  assert.strictEqual(on(plan, "2027-01-18").workout.planned1rm, 92.7);
+  // Viewed late with nothing logged, the long layoff has held the line at the start.
+  assert.strictEqual(on(generate(sampleState(core), "2027-01-18"), "2027-01-18").workout.planned1rm, 90);
+});
+
+test("today's cap does not flatten the weeks that have not arrived yet", () => {
+  const plan = generate(sampleState(core), "2026-11-02");
+  const strength = plan.sessions.filter((session) => session.type === "push-strength" && /^load-/.test(session.phase.key));
+  const references = strength.map((session) => session.workout.planned1rm);
+  assert.ok(references[references.length - 1] > 97, "the last build week is written near the goal, not at 103 % of the start");
+  references.forEach((value, index) => {
+    if (index) assert.ok(value >= references[index - 1], "the reference never steps down between build weeks");
+  });
+  const last = strength[strength.length - 1];
+  assert.ok(Math.max(...loads(last)) >= 87.5, "late strength days carry a heavy top single");
+  // Each week ahead may add at most the weekly ceiling on top of the cap.
+  plan.sessions.filter((session) => session.workout.liftKey === "bench").forEach((session) => {
+    const weeksAhead = Math.floor((Date.parse(session.date) - Date.parse("2026-11-02")) / 6048e5);
+    assert.ok(session.workout.planned1rm <= 90 * 1.03 * (1 + 0.01 * weeksAhead) + 0.06, session.date);
+  });
+});
+
+test("work logged before the cycle adopted the program still confirms its reference", () => {
+  let state = sampleState(core, { program: "legacy" });
+  ["2026-11-02", "2026-11-09"].forEach((date) => {
+    const plan = generate(state, date);
+    state = logAsPrescribed(core, plan.state, on(plan, date));
+  });
+  state = core.adoptFeedbackProgram(state, "2026-11-26");
+  const plan = generate(state, "2026-11-26");
+  assert.deepStrictEqual(plan.performance.bench.map((entry) => entry.date), ["2026-11-02", "2026-11-09"],
+    "both strength days count as observations");
+  assert.ok(plan.cycle.lifts.bench.current1rm >= 90, "finished work never lowers the estimate");
+});
+
+test("adopting the program mid-cycle does not put two deload weeks back to back", () => {
+  const state = core.adoptFeedbackProgram(sampleState(core, { program: "legacy" }), "2026-11-26");
+  const plan = generate(state, "2026-11-26");
+  const weeks = {};
+  plan.sessions.filter((session) => session.type === "push-strength").forEach((session) => {
+    weeks[session.date] = session.phase.key;
+  });
+  const keys = Object.keys(weeks).sort().map((date) => weeks[date]);
+  keys.forEach((key, index) => {
+    assert.ok(!(key === "deload" && keys[index - 1] === "deload"), "deload follows deload at index " + index);
+  });
+  assert.strictEqual(weeks["2026-11-23"], "deload", "the calendar wave's deload stays where it was");
+  assert.match(weeks["2026-11-30"], /^load-/, "the week after it builds again");
 });
 
 test("completing prescribed work lets the cap rise with it", () => {
@@ -181,10 +230,15 @@ test("the wave is counted back from each lift's test with no deload before the t
 });
 
 test("attempts are based on what the lifter can do, capped at the goal", () => {
-  const untrained = generate(sampleState(core), "2026-11-02");
+  // Viewed in the test week with nothing logged all cycle, the attempts stop at the cap.
+  const untrained = generate(sampleState(core), "2027-01-25");
   const bench = untrained.sessions.find((session) => session.isTest && session.workout.liftKey === "bench");
   assert.deepStrictEqual(loads(bench), [85, 90, 92.5], "92/97/100 % of 1.03 × the current 90 kg");
   assert.match(bench.workout.guidance, /goal of 100 kg is above 103 %/);
+  // Seen from the start of the cycle the same test is still written toward the goal.
+  const ahead = generate(sampleState(core), "2026-11-02").sessions
+    .find((session) => session.isTest && session.workout.liftKey === "bench");
+  assert.deepStrictEqual(loads(ahead), [92.5, 97.5, 100]);
   const trained = generate(logThrough(sampleState(core), "2027-01-18"), "2027-01-19");
   const ready = trained.sessions.find((session) => session.isTest && session.workout.liftKey === "bench");
   assert.deepStrictEqual(loads(ready), [92.5, 97.5, 100], "once the work is done the last attempt is the goal");

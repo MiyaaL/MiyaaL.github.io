@@ -154,7 +154,7 @@
   var LEGACY_SCHEDULE_REASON = "Three build weeks then a deload on calendar weeks; the training reference " +
     "rises linearly toward the goal and measured strength is tracked separately.";
   var FEEDBACK_SCHEDULE_REASON = "Three build weeks then a deload, counted back from each lift's goal test. " +
-    "Loads follow logged performance and never exceed 103 % of the estimated 1RM.";
+    "This week's loads stay within 103 % of the estimated 1RM; later weeks unlock as sessions are logged.";
 
   function localizeSets(items) {
     (items || []).forEach(function (item) {
@@ -560,7 +560,10 @@
       var bodyweight = key === "pullup" ? latestBodyweight(state.activeCycle, session.date) : 0;
       if (bodyweight == null) return;
       var isTest = phase === "test" || phase === "retry";
-      var feedback = session.program === FEEDBACK_PROGRAM;
+      // Work logged before the cycle adopted the feedback program counts too:
+      // finishing a prescription confirms its reference whichever program wrote it.
+      var feedback = session.program === FEEDBACK_PROGRAM ||
+        state.activeCycle.programRevision === FEEDBACK_PROGRAM;
       var mainSets = log.mainSets || [];
       var sets = mainSets.map(function (set) {
         var rpe = set.rpeSource === "actual" && set.rpe != null ? set.rpe : null;
@@ -934,6 +937,20 @@
     return current == null ? Infinity : (current + asNumber(offset, 0)) * READINESS_CAP - asNumber(offset, 0);
   }
 
+  // The cap is a statement about now. Measured strength only moves when work
+  // is logged, so holding every future week to today's number would flatten
+  // the rest of the cycle; each week further out is allowed one more weekly
+  // step, and the cap tightens again as that week arrives without the work.
+  function readinessCapOn(lift, liftKey, cycle, date, asOfDate, offset) {
+    var cap = readinessCap(lift, offset);
+    if (!Number.isFinite(cap) || !isIsoDate(asOfDate) || date <= asOfDate) return cap;
+    var weeksAhead = Math.max(0, Math.floor(daysBetween(mondayOf(asOfDate), mondayOf(date)) / 7));
+    if (!weeksAhead) return cap;
+    var base = asNumber(offset, 0);
+    var rate = Math.max(0, asNumber((cycle.progression || {}).maxWeeklyGain, MAX_WEEKLY_GAIN_RATE));
+    return (cap + base) * (1 + rate * weeksAhead) - base;
+  }
+
   function makeWorkSet(label, sets, reps, loadKg, rpe, rest, percentage) {
     return {
       label: label,
@@ -1171,11 +1188,12 @@
       ? Number(referenceOneRepMax)
       : (feedback
         ? Math.min(programmedOneRepMax(lift, liftKey, cycle, session.date, offset, feedback.holdWeeks),
-          readinessCap(lift, offset))
+          readinessCapOn(lift, liftKey, cycle, session.date, feedback.asOfDate, offset))
         : programmedOneRepMax(lift, liftKey, cycle, session.date, offset));
     var target = asNumber(lift.target1rm, planned);
     if (feedback) {
-      feedback.attemptBase = Math.min(target, readinessCap(lift, offset));
+      feedback.attemptBase = Math.min(target,
+        readinessCapOn(lift, liftKey, cycle, session.date, feedback.asOfDate, offset));
     }
     var workSets = workingSets(
       session.type,
@@ -1218,7 +1236,7 @@
       var pull = cycle.lifts.pullup;
       var pullSets = secondaryPullSets(phase, Math.min(
         programmedOneRepMax(pull, "pullup", cycle, session.date, bodyweight, feedback.secondaryPull.holdWeeks),
-        readinessCap(pull, bodyweight)
+        readinessCapOn(pull, "pullup", cycle, session.date, feedback.asOfDate, bodyweight)
       ), bodyweight || 0, preferences);
       if (pullSets.length) {
         workout.secondary = { liftKey: "pullup", mainExercise: LIFT_LABELS.pullup, workSets: pullSets };
@@ -1334,6 +1352,15 @@
       // Counting back can land a deload on the opening week, before there is
       // anything to recover from; start with an easy build week instead.
       if (weekStart <= mondayOf(cycle.startDate)) return phase("load-1", "Build week 1 · intro", 0);
+      // A cycle that adopted this program mid-way was on the calendar wave
+      // until then. If that wave's deload was the week before, a second light
+      // week in a row would only lose training; build instead.
+      var previousWeek = addDays(weekStart, -7);
+      if (isIsoDate(cycle.programRevisionFromDate) && previousWeek < cycle.programRevisionFromDate &&
+          previousWeek >= mondayOf(cycle.startDate) &&
+          phaseFor({ date: previousWeek }, cycle, null).key === "deload") {
+        return phase("load-1", "Build week 1", 0);
+      }
       return phase("deload", "Deload week", 3);
     }
     var resumed = (resumeDates || []).some(function (date) {
@@ -1496,7 +1523,10 @@
     var feedbackContext = function (session) {
       var key = liftKeyForType(session.type);
       var test = tests[key];
-      var context = { holdWeeks: holdWeeksSinceAnchor(cycle, key, holds.events[key], session.date) };
+      var context = {
+        holdWeeks: holdWeeksSinceAnchor(cycle, key, holds.events[key], session.date),
+        asOfDate: asOfDate
+      };
       if (test && session.date > test.date) {
         var testLog = state.logs[test.id];
         var lift = cycle.lifts[key];
