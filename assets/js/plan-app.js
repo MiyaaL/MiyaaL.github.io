@@ -21,6 +21,14 @@
     cycleMeta: app.querySelector("[data-plan-cycle-meta]"),
     ownerActions: app.querySelector("[data-plan-owner-actions]"),
     updateBodyweight: app.querySelector("[data-plan-update-bodyweight]"),
+    review: app.querySelector("[data-plan-review]"),
+    reviewDialog: app.querySelector("[data-plan-review-dialog]"),
+    reviewSummary: app.querySelector("[data-plan-review-summary]"),
+    reviewChanges: app.querySelector("[data-plan-review-changes]"),
+    reviewNote: app.querySelector("[data-plan-review-note]"),
+    reviewError: app.querySelector("[data-plan-review-error]"),
+    reviewApply: app.querySelector("[data-plan-review-apply]"),
+    reviewClear: app.querySelector("[data-plan-review-clear]"),
     edit: app.querySelector("[data-plan-edit]"),
     newCycle: app.querySelector("[data-plan-new-cycle]"),
     signOut: app.querySelector("[data-plan-sign-out]"),
@@ -441,6 +449,7 @@
     dom.auth.textContent = store.configured ? "Owner sign-in" : "Sync not configured";
     dom.ownerActions.hidden = !isOwner || isOffline;
     dom.exportJson.hidden = !isOwner;
+    dom.review.hidden = !reviewAvailable();
     setSyncState();
 
     allCyclePlans = isAllCycleView() ? allCyclePlanSet(plan) : null;
@@ -2007,6 +2016,109 @@
   dom.updateBodyweight.addEventListener("click", openBodyweightDialog);
   dom.edit.addEventListener("click", function () { openSettings(false); });
   dom.newCycle.addEventListener("click", function () { openSettings(true); });
+
+  // ---- Adjust plan to my training -------------------------------------
+  // Missed sessions and failed sets never rewrite the plan on their own: the
+  // owner may have trained on another day. This action applies them on demand.
+  function reviewAvailable() {
+    var cycle = privateState && privateState.activeCycle;
+    return Boolean(isOwner && !isOffline && cycle && cycle.status === "active" &&
+      cycle.programRevision === core.FEEDBACK_PROGRAM && viewingChartArchive === -1);
+  }
+
+  function describeSets(session) {
+    var workout = session.workout || {};
+    return (workout.workSets || []).map(function (set) {
+      return set.sets + "×" + set.reps + " @ " + core.formatLoad(set.loadKg, workout.liftKey);
+    }).join(", ") || "—";
+  }
+
+  function reviewDate(date) {
+    return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })
+      .format(new Date(date + "T00:00:00Z"));
+  }
+
+  function reviewChanges(candidateState) {
+    var today = todayInShanghai();
+    var before = core.generate(privateState, holidayCalendars, { asOfDate: today });
+    var after = core.generate(candidateState, holidayCalendars, { asOfDate: today });
+    var previous = {};
+    before.sessions.forEach(function (session) { previous[session.id] = session; });
+    return after.sessions.filter(function (session) {
+      var old = previous[session.id];
+      return old && session.date >= today && session.status === "planned" &&
+        (describeSets(old) !== describeSets(session) || (old.phase || {}).label !== (session.phase || {}).label);
+    }).map(function (session) {
+      return { session: session, old: previous[session.id] };
+    });
+  }
+
+  function openReview() {
+    if (!reviewAvailable()) return;
+    var today = todayInShanghai();
+    var cycle = privateState.activeCycle;
+    var lastReview = core.trainingReviewDate(cycle);
+    var plan = displayPlan();
+    var missed = (plan.sessions || []).filter(function (session) {
+      return session.status === "missed" && (!lastReview || session.date >= lastReview);
+    }).length;
+    var candidate;
+    var changes = [];
+    dom.reviewError.textContent = "";
+    try {
+      candidate = core.applyTrainingReview(privateState, today);
+      changes = reviewChanges(candidate);
+    } catch (error) {
+      dom.reviewError.textContent = "The plan cannot be adjusted right now.";
+    }
+    dom.reviewSummary.textContent = "Uses everything logged up to today (" + formatLongDate(today, false) +
+      ") to rewrite the sessions from today on. " +
+      (missed
+        ? missed + (missed === 1 ? " session is" : " sessions are") + " marked missed" +
+          (lastReview ? " since the last adjustment" : "") + "; if you trained on other days, log or move those sessions first."
+        : "No sessions are marked missed" + (lastReview ? " since the last adjustment." : "."));
+    dom.reviewChanges.innerHTML = changes.length
+      ? '<table><thead><tr><th scope="col">Date</th><th scope="col">Session</th><th scope="col">Now</th>' +
+        '<th scope="col">After adjusting</th></tr></thead><tbody>' +
+        changes.slice(0, 8).map(function (change) {
+          return "<tr><td>" + escapeHtml(reviewDate(change.session.date)) +
+            '<span class="plan-review-lift">' + escapeHtml(change.session.label) + "</span></td><td>" +
+            escapeHtml(change.session.label) + "</td><td>" + escapeHtml(describeSets(change.old)) + "</td><td>" +
+            escapeHtml(describeSets(change.session)) + "</td></tr>";
+        }).join("") + "</tbody></table>" +
+        (changes.length > 8 ? '<p class="plan-review-more">and ' + (changes.length - 8) + " more later sessions.</p>" : "")
+      : "<p>Nothing would change: the remaining sessions already match your training.</p>";
+    dom.reviewNote.textContent = lastReview
+      ? "Last adjusted on " + formatLongDate(lastReview, false) + ". Logged sessions are never rewritten."
+      : "The plan currently follows the programmed line. Logged sessions are never rewritten.";
+    dom.reviewApply.disabled = !candidate || !changes.length;
+    dom.reviewClear.hidden = !lastReview;
+    dom.reviewDialog.showModal();
+  }
+
+  dom.review.addEventListener("click", openReview);
+  Array.prototype.slice.call(dom.reviewDialog.querySelectorAll("[data-plan-review-cancel]")).forEach(function (button) {
+    button.addEventListener("click", function () { dom.reviewDialog.close(); });
+  });
+  dom.reviewApply.addEventListener("click", async function () {
+    var candidate;
+    try {
+      candidate = core.applyTrainingReview(privateState, todayInShanghai());
+    } catch (error) {
+      dom.reviewError.textContent = "The plan cannot be adjusted right now.";
+      return;
+    }
+    dom.reviewApply.disabled = true;
+    var saved = await commit(candidate, "The remaining sessions were adjusted to your training.");
+    dom.reviewApply.disabled = false;
+    if (saved) dom.reviewDialog.close();
+    else dom.reviewError.textContent = "The adjustment was not saved.";
+  });
+  dom.reviewClear.addEventListener("click", async function () {
+    var saved = await commit(core.clearTrainingReview(privateState), "The plan is back on the programmed line.");
+    if (saved) dom.reviewDialog.close();
+    else dom.reviewError.textContent = "The change was not saved.";
+  });
   dom.signOut.addEventListener("click", function () {
     store.signOut().catch(function (error) {
       showMessage("Sign-out failed: " + error.message, "error");

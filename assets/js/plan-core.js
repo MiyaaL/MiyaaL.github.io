@@ -154,7 +154,7 @@
   var LEGACY_SCHEDULE_REASON = "Three build weeks then a deload on calendar weeks; the training reference " +
     "rises linearly toward the goal and measured strength is tracked separately.";
   var FEEDBACK_SCHEDULE_REASON = "Three build weeks then a deload, counted back from each lift's goal test. " +
-    "This week's loads stay within 103 % of the estimated 1RM; later weeks unlock as sessions are logged.";
+    "Loads follow the programmed line; missed or failed sessions change it only when you choose to adjust the plan.";
 
   function localizeSets(items) {
     (items || []).forEach(function (item) {
@@ -486,6 +486,39 @@
     return state;
   }
 
+  function trainingReviewDate(cycle) {
+    var review = cycle && cycle.trainingReview;
+    return review && isIsoDate(review.date) ? review.date : null;
+  }
+
+  // "Adjust plan to my training": take what has been logged up to `date` as
+  // the truth and let it reshape the sessions from that day on. Until the
+  // owner does this again, later misses and failed sets change nothing.
+  function applyTrainingReview(inputState, date) {
+    var state = normalizeState(inputState);
+    var cycle = state.activeCycle;
+    if (cycle.programRevision !== FEEDBACK_PROGRAM || cycle.status !== "active" || !isIsoDate(date)) {
+      var error = new Error("training_review_unavailable");
+      error.code = "training_review_unavailable";
+      throw error;
+    }
+    refreshPerformance(state, date);
+    var estimates = {};
+    ["bench", "pullup", "squat"].forEach(function (key) {
+      var value = asNumber(cycle.lifts[key] && cycle.lifts[key].current1rm, null);
+      if (value != null) estimates[key] = value;
+    });
+    cycle.trainingReview = { date: date, estimates: estimates };
+    return state;
+  }
+
+  // Back to the programmed line: forget the last review.
+  function clearTrainingReview(inputState) {
+    var state = normalizeState(inputState);
+    delete state.activeCycle.trainingReview;
+    return state;
+  }
+
   // An edited "current" 1RM is a fresh assessment: the reference line restarts
   // from that value on that day instead of from the cycle baseline.
   function reanchorLift(cycle, liftKey, value, date) {
@@ -584,12 +617,12 @@
         value = median(sets.filter(function (set) { return set.reps === fewestReps; }).map(function (set) {
           return estimateOneRepMax(Number(set.weight) + bodyweight, set.reps, set.rpe) - bodyweight;
         }));
-      } else if (feedback && /^load-/.test(String(phase)) && mainSets.length &&
+      } else if (feedback && !VOLUME_TYPES[session.type] && /^load-/.test(String(phase)) && mainSets.length &&
           session.workout.planned1rm != null && mainSets.every(function (set) {
             return set.completed !== false;
           })) {
-        // Finishing the prescription without an RPE confirms the reference it
-        // was written from, so the readiness cap can keep rising with the work.
+        // Finishing a strength day without an RPE confirms the reference it
+        // was written from. Volume days say little about a 1RM and are left out.
         value = Number(session.workout.planned1rm);
       } else {
         return;
@@ -599,7 +632,8 @@
       // would read as a weaker lifter and drag the readiness cap down week by
       // week. Work finished without a near-limit set confirms at least the
       // reference it was written from.
-      if (feedback && /^load-/.test(String(phase)) && session.workout.planned1rm != null && mainSets.length &&
+      if (feedback && !VOLUME_TYPES[session.type] && /^load-/.test(String(phase)) &&
+          session.workout.planned1rm != null && mainSets.length &&
           mainSets.every(function (set) {
             return set.completed !== false && !(set.rpe != null && Number(set.rpe) >= 9);
           })) {
@@ -941,9 +975,13 @@
   // is logged, so holding every future week to today's number would flatten
   // the rest of the cycle; each week further out is allowed one more weekly
   // step, and the cap tightens again as that week arrives without the work.
-  function readinessCapOn(lift, liftKey, cycle, date, asOfDate, offset) {
-    var cap = readinessCap(lift, offset);
-    if (!Number.isFinite(cap) || !isIsoDate(asOfDate) || date <= asOfDate) return cap;
+  function readinessCapOn(lift, liftKey, cycle, date, feedback, offset) {
+    var asOfDate = feedback && feedback.reviewedOn;
+    // Without a manual review the measured-strength cap does not apply at all.
+    if (!isIsoDate(asOfDate)) return Infinity;
+    var reviewed = feedback.reviewed1rm && feedback.reviewed1rm[liftKey];
+    var cap = readinessCap(reviewed != null ? { current1rm: reviewed } : lift, offset);
+    if (!Number.isFinite(cap) || date <= asOfDate) return cap;
     var weeksAhead = Math.max(0, Math.floor(daysBetween(mondayOf(asOfDate), mondayOf(date)) / 7));
     if (!weeksAhead) return cap;
     var base = asNumber(offset, 0);
@@ -1188,12 +1226,12 @@
       ? Number(referenceOneRepMax)
       : (feedback
         ? Math.min(programmedOneRepMax(lift, liftKey, cycle, session.date, offset, feedback.holdWeeks),
-          readinessCapOn(lift, liftKey, cycle, session.date, feedback.asOfDate, offset))
+          readinessCapOn(lift, liftKey, cycle, session.date, feedback, offset))
         : programmedOneRepMax(lift, liftKey, cycle, session.date, offset));
     var target = asNumber(lift.target1rm, planned);
     if (feedback) {
       feedback.attemptBase = Math.min(target,
-        readinessCapOn(lift, liftKey, cycle, session.date, feedback.asOfDate, offset));
+        readinessCapOn(lift, liftKey, cycle, session.date, feedback, offset));
     }
     var workSets = workingSets(
       session.type,
@@ -1236,7 +1274,7 @@
       var pull = cycle.lifts.pullup;
       var pullSets = secondaryPullSets(phase, Math.min(
         programmedOneRepMax(pull, "pullup", cycle, session.date, bodyweight, feedback.secondaryPull.holdWeeks),
-        readinessCapOn(pull, "pullup", cycle, session.date, feedback.asOfDate, bodyweight)
+        readinessCapOn(pull, "pullup", cycle, session.date, feedback, bodyweight)
       ), bodyweight || 0, preferences);
       if (pullSets.length) {
         workout.secondary = { liftKey: "pullup", mainExercise: LIFT_LABELS.pullup, workSets: pullSets };
@@ -1378,7 +1416,8 @@
   function holdEvents(state, sessions, asOfDate) {
     var events = { bench: [], pullup: [], squat: [] };
     var resumes = { bench: [], pullup: [], squat: [] };
-    cycleLogs(state).forEach(function (log) {
+    if (!isIsoDate(asOfDate)) return { events: events, resumes: resumes };
+    cycleLogs(state, asOfDate).forEach(function (log) {
       var session = log.sessionSnapshot;
       var key = session.workout && session.workout.liftKey;
       if (!events[key] || log.status !== "completed" || session.program !== FEEDBACK_PROGRAM ||
@@ -1509,9 +1548,14 @@
     var holds = null;
     var secondaryPullHost = null;
     var testWeekIndex = null;
+    // Missed sessions, failed sets and the measured-strength cap change the
+    // prescriptions only up to the day the owner last chose "adjust plan to
+    // my training". Between reviews the plan follows the programmed line, so
+    // training on a different day than shown never silently lightens it.
+    var reviewedOn = feedbackCycle ? trainingReviewDate(cycle) : null;
     if (feedbackCycle) {
       tests = assignTestSessions(sessions, state.logs, today);
-      holds = holdEvents(state, sessions, asOfDate);
+      holds = holdEvents(state, sessions, reviewedOn);
       secondaryPullHost = secondaryPullTemplateId(cycle.template);
     } else {
       markTestSessions(sessions);
@@ -1525,7 +1569,8 @@
       var test = tests[key];
       var context = {
         holdWeeks: holdWeeksSinceAnchor(cycle, key, holds.events[key], session.date),
-        asOfDate: asOfDate
+        reviewedOn: reviewedOn,
+        reviewed1rm: reviewedOn && cycle.trainingReview.estimates ? cycle.trainingReview.estimates : null
       };
       if (test && session.date > test.date) {
         var testLog = state.logs[test.id];
@@ -2198,6 +2243,9 @@
     adoptFeedbackProgram: adoptFeedbackProgram,
     mergeStates: mergeStates,
     reanchorLift: reanchorLift,
+    applyTrainingReview: applyTrainingReview,
+    clearTrainingReview: clearTrainingReview,
+    trainingReviewDate: trainingReviewDate,
     templateTitle: templateTitle,
     localize: localize,
     localizeSession: localizeSession,

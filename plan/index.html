@@ -50,6 +50,7 @@ lang: en
             <p class="plan-cycle-meta" data-plan-cycle-meta></p>
           </div>
           <div class="plan-owner-actions" data-plan-owner-actions hidden>
+            <button class="plan-text-button" type="button" data-plan-review hidden>Adjust plan to my training</button>
             <button class="plan-text-button" type="button" data-plan-update-bodyweight>Update bodyweight</button>
             <button class="plan-text-button" type="button" data-plan-edit>Edit plan</button>
             <button class="plan-text-button" type="button" data-plan-new-cycle>Start new cycle</button>
@@ -226,6 +227,25 @@ lang: en
       <div class="plan-dialog-actions">
         <button class="plan-button" type="button" data-plan-cancel-move>Cancel</button>
         <button class="plan-button plan-button-primary" type="button" data-plan-confirm-move>Replace</button>
+      </div>
+    </dialog>
+
+    <dialog class="plan-dialog plan-review-dialog" data-plan-review-dialog aria-labelledby="plan-review-title" aria-describedby="plan-review-description">
+      <div class="plan-dialog-header">
+        <div>
+          <p class="eyebrow">ADJUST PLAN</p>
+          <h2 id="plan-review-title">Adjust the plan to my training?</h2>
+        </div>
+        <button class="plan-icon-button" type="button" data-plan-review-cancel aria-label="Close">×</button>
+      </div>
+      <p id="plan-review-description" data-plan-review-summary></p>
+      <div class="plan-review-changes" data-plan-review-changes></div>
+      <p class="plan-review-note" data-plan-review-note></p>
+      <p class="plan-form-error" data-plan-review-error role="alert"></p>
+      <div class="plan-dialog-actions">
+        <button class="plan-text-button" type="button" data-plan-review-clear hidden>Return to the programmed plan</button>
+        <button class="plan-button" type="button" data-plan-review-cancel>Cancel</button>
+        <button class="plan-button plan-button-primary" type="button" data-plan-review-apply>Adjust from today</button>
       </div>
     </dialog>
 

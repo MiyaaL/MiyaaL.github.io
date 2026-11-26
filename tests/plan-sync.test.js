@@ -205,7 +205,7 @@ test("the owner's first load adopts the feedback program without saving", async 
   legacy.version = 4;
   const { page, store } = await ownerPage(legacy);
   assert.strictEqual(store.saves, 0, "loading never writes");
-  assert.match(page.text("[data-plan-warnings]"), /later weeks unlock as sessions are logged/);
+  assert.match(page.text("[data-plan-warnings]"), /only when you choose to adjust the plan/);
   await logFirstPlanned(page);
   const stored = await store.loadPrivate();
   assert.strictEqual(stored.state.activeCycle.programRevision, core.FEEDBACK_PROGRAM);

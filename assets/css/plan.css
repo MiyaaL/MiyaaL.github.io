@@ -1513,3 +1513,102 @@
     animation: none;
   }
 }
+
+/* Adjust plan to my training: preview of what would change. */
+.plan-review-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.plan-review-dialog > p {
+  margin: 20px 30px 0;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.plan-review-changes {
+  margin: 16px 30px 0;
+  overflow-x: auto;
+}
+
+.plan-review-dialog .plan-form-error {
+  margin-inline: 30px;
+}
+
+.plan-review-dialog .plan-dialog-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.plan-review-dialog [data-plan-review-clear] {
+  margin-right: auto;
+}
+
+.plan-review-changes table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.plan-review-changes th,
+.plan-review-changes td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.plan-review-changes th {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.plan-review-changes td:first-child {
+  white-space: nowrap;
+}
+
+/* The session name moves under the date when its own column is hidden. */
+.plan-review-lift {
+  display: none;
+  margin-top: 2px;
+  color: var(--text-soft);
+  font-size: 12px;
+  white-space: normal;
+}
+
+.plan-review-changes td:nth-child(3) {
+  color: var(--text-soft);
+}
+
+.plan-review-changes td:nth-child(4) {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.plan-review-changes p,
+.plan-review-more {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.plan-review-dialog .plan-review-note {
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .plan-review-changes th:nth-child(2),
+  .plan-review-changes td:nth-child(2) {
+    display: none;
+  }
+
+  .plan-review-lift {
+    display: block;
+  }
+
+  .plan-review-changes td:first-child {
+    white-space: normal;
+  }
+}

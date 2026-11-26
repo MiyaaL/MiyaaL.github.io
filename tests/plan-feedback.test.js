@@ -11,6 +11,8 @@ const CALENDARS = [holidays(2026), holidays(2027)];
 const generate = (state, asOfDate) => core.generate(state, CALENDARS, { asOfDate });
 const on = (plan, date) => plan.sessions.find((session) => session.date === date);
 const loads = (session) => session.workout.workSets.map((set) => set.loadKg);
+// "Adjust plan to my training", pressed on `date`.
+const review = (state, date) => core.applyTrainingReview(state, date);
 const addDays = (date, days) => new Date(Date.parse(date) + days * 864e5).toISOString().slice(0, 10);
 
 function logThrough(state, lastDate, overrides) {
@@ -33,20 +35,52 @@ test("new cycles run the feedback program and name themselves after the template
   assert.ok(generate(state, "2026-11-02").sessions.every((session) => session.program === core.FEEDBACK_PROGRAM));
 });
 
-test("the reference due now never runs more than 3 % ahead of the measured 1RM", () => {
-  // Nothing is ever logged. Whatever date the plan is viewed on, the sessions
-  // of that week are held to what has been shown so far.
-  ["2026-11-02", "2026-12-07", "2027-01-11"].forEach((today) => {
+test("nothing is capped or held until the owner adjusts the plan", () => {
+  // Nothing is ever logged, and the plan is opened late in the cycle.
+  const untouched = generate(sampleState(core), "2026-11-02");
+  ["2026-12-07", "2027-01-11"].forEach((today) => {
     const plan = generate(sampleState(core), today);
+    plan.sessions.filter((session) => session.date >= today).forEach((session) => {
+      assert.strictEqual(session.workout.planned1rm, on(untouched, session.date).workout.planned1rm,
+        session.date + " still follows the programmed line when viewed on " + today);
+      assert.strictEqual(session.phase.key, on(untouched, session.date).phase.key);
+    });
+  });
+  assert.strictEqual(core.trainingReviewDate(sampleState(core).activeCycle), null);
+});
+
+test("adjusting the plan holds this week to 103 % of the measured 1RM", () => {
+  ["2026-12-07", "2027-01-11"].forEach((today) => {
+    const plan = generate(review(sampleState(core), today), today);
     plan.sessions.filter((session) => session.date >= today && session.date <= addDays(today, 6)).forEach((session) => {
       const lift = plan.cycle.lifts[session.workout.liftKey];
       const offset = session.workout.liftKey === "pullup" ? 72 : 0;
       assert.ok(session.workout.planned1rm + offset <= (lift.current1rm + offset) * 1.03 + 0.06,
-        session.date + " stays within the readiness cap when viewed on " + today);
+        session.date + " stays within the readiness cap after adjusting on " + today);
     });
   });
-  // Viewed late with nothing logged, the long layoff has held the line at the start.
-  assert.strictEqual(on(generate(sampleState(core), "2027-01-18"), "2027-01-18").workout.planned1rm, 90);
+  // After a cycle with nothing logged, the long layoff holds the line at the start.
+  const late = review(sampleState(core), "2027-01-18");
+  assert.strictEqual(on(generate(late, "2027-01-18"), "2027-01-18").workout.planned1rm, 90);
+  assert.strictEqual(core.trainingReviewDate(late.activeCycle), "2027-01-18");
+});
+
+test("an adjustment is a snapshot: later misses change nothing until the next one", () => {
+  const state = review(logThrough(sampleState(core), "2026-11-15"), "2026-11-16");
+  const onTheDay = generate(state, "2026-11-16");
+  const threeWeeksOn = generate(state, "2026-12-07");
+  onTheDay.sessions.filter((session) => session.date >= "2026-12-07").forEach((session) => {
+    assert.deepStrictEqual(loads(on(threeWeeksOn, session.date)), loads(session),
+      session.date + " is not rewritten by sessions that went unlogged after the adjustment");
+  });
+  const again = generate(review(state, "2026-12-07"), "2026-12-07");
+  assert.ok(on(again, "2026-12-07").workout.planned1rm < on(threeWeeksOn, "2026-12-07").workout.planned1rm,
+    "a second adjustment picks the three-week gap up");
+  const cleared = core.clearTrainingReview(state);
+  assert.strictEqual(core.trainingReviewDate(cleared.activeCycle), null);
+  assert.deepStrictEqual(loads(on(generate(cleared, "2026-12-07"), "2026-12-07")),
+    loads(on(generate(logThrough(sampleState(core), "2026-11-15"), "2026-12-07"), "2026-12-07")),
+    "clearing it returns to the programmed line");
 });
 
 test("today's cap does not flatten the weeks that have not arrived yet", () => {
@@ -136,13 +170,16 @@ test("editing the current 1RM re-anchors the remaining prescriptions", () => {
   assert.deepStrictEqual(loads(on(after, "2026-12-02")), loads(on(before, "2026-12-02")), "other lifts are untouched");
 });
 
-test("a missed rep or a near-limit top single holds next week's increase", () => {
+test("after adjusting, a missed rep or a near-limit top single holds next week's increase", () => {
   const base = logThrough(sampleState(core), "2026-11-08");
   const clean = generate(logThrough(base, "2026-11-15"), "2026-11-16");
   const ground = (session) => (session.date === "2026-11-09" ? {
     mainSets: [{ weight: session.workout.workSets[0].loadKg, reps: 1, rpe: 9.5 }]
   } : null);
-  const held = generate(logThrough(base, "2026-11-15", ground), "2026-11-16");
+  const groundState = logThrough(base, "2026-11-15", ground);
+  assert.strictEqual(on(generate(groundState, "2026-11-16"), "2026-11-16").workout.planned1rm,
+    on(clean, "2026-11-16").workout.planned1rm, "without an adjustment the hard single changes nothing");
+  const held = generate(review(groundState, "2026-11-16"), "2026-11-16");
   assert.ok(on(held, "2026-11-16").workout.planned1rm < on(clean, "2026-11-16").workout.planned1rm,
     "an RPE 9.5 top single pauses the bench reference for a week");
   assert.strictEqual(on(held, "2026-11-18").workout.planned1rm, on(clean, "2026-11-18").workout.planned1rm,
@@ -154,12 +191,12 @@ test("a missed rep or a near-limit top single holds next week's increase", () =>
       completed: !(index === set.sets - 1 && set.sets > 1)
     })))
   } : null);
-  const afterFail = generate(logThrough(base, "2026-11-15", failed), "2026-11-16");
+  const afterFail = generate(review(logThrough(base, "2026-11-15", failed), "2026-11-16"), "2026-11-16");
   assert.ok(on(afterFail, "2026-11-18").workout.planned1rm < on(clean, "2026-11-18").workout.planned1rm,
     "a set short of its reps holds the squat reference");
 });
 
-test("past unlogged sessions are missed, and a layoff steps the wave back", () => {
+test("past unlogged sessions are labelled missed but do not change the plan", () => {
   const state = logThrough(sampleState(core), "2026-11-08");
   const fresh = generate(logThrough(state, "2026-11-25"), "2026-11-26");
   const back = generate(state, "2026-11-26");
@@ -167,11 +204,22 @@ test("past unlogged sessions are missed, and a layoff steps the wave back", () =
   assert.strictEqual(on(back, "2026-11-27").status, "planned");
   assert.strictEqual(on(generate(state, "2026-11-02"), "2026-11-09").status, "planned",
     "nothing is missed before its date");
+  assert.strictEqual(on(back, "2026-11-27").phase.key, on(fresh, "2026-11-27").phase.key,
+    "the wave is not stepped back on its own");
+  assert.deepStrictEqual(loads(on(back, "2026-11-27")), loads(on(fresh, "2026-11-27")),
+    "and the loads are the ones that were planned");
+});
+
+test("adjusting after a layoff steps the wave back and pauses the reference", () => {
+  const state = logThrough(sampleState(core), "2026-11-08");
+  const fresh = generate(logThrough(state, "2026-11-25"), "2026-11-26");
+  const back = generate(review(state, "2026-11-26"), "2026-11-26");
   assert.strictEqual(on(fresh, "2026-11-27").phase.key, "load-3");
   assert.strictEqual(on(back, "2026-11-27").phase.key, "load-2", "the first week back repeats the previous step");
   assert.match(on(back, "2026-11-27").phase.label, /back from a layoff/);
   assert.ok(on(back, "2026-11-27").workout.planned1rm < on(fresh, "2026-11-27").workout.planned1rm,
     "the reference waited during the layoff");
+  assert.deepStrictEqual(loads(on(back, "2026-11-02")), loads(on(fresh, "2026-11-02")), "logged sessions are untouched");
 });
 
 test("the plan warns when the goal needs more than about 0.5 % a week", () => {
@@ -230,13 +278,13 @@ test("the wave is counted back from each lift's test with no deload before the t
 });
 
 test("attempts are based on what the lifter can do, capped at the goal", () => {
-  // Viewed in the test week with nothing logged all cycle, the attempts stop at the cap.
-  const untrained = generate(sampleState(core), "2027-01-25");
+  // Adjusted in the test week with nothing logged all cycle, the attempts stop at the cap.
+  const untrained = generate(review(sampleState(core), "2027-01-25"), "2027-01-25");
   const bench = untrained.sessions.find((session) => session.isTest && session.workout.liftKey === "bench");
   assert.deepStrictEqual(loads(bench), [85, 90, 92.5], "92/97/100 % of 1.03 × the current 90 kg");
   assert.match(bench.workout.guidance, /goal of 100 kg is above 103 %/);
-  // Seen from the start of the cycle the same test is still written toward the goal.
-  const ahead = generate(sampleState(core), "2026-11-02").sessions
+  // Without an adjustment the same test is written toward the goal.
+  const ahead = generate(sampleState(core), "2027-01-25").sessions
     .find((session) => session.isTest && session.workout.liftKey === "bench");
   assert.deepStrictEqual(loads(ahead), [92.5, 97.5, 100]);
   const trained = generate(logThrough(sampleState(core), "2027-01-18"), "2027-01-19");
@@ -286,7 +334,9 @@ test("a test single logged without RPE counts as a max and updates the estimate"
   const after = generate(state, "2027-01-26");
   assert.deepStrictEqual(after.performance.bench.slice(-1)[0], { date: benchTest.date, value: 90, isTest: true });
   assert.strictEqual(on(after, "2027-01-29").phase.key, "retry");
-  assert.deepStrictEqual(loads(on(after, "2027-01-29")), [85, 90, 92.5], "the goal was not reached, so the retry is attempts");
+  assert.deepStrictEqual(loads(on(after, "2027-01-29")), [92.5, 97.5, 100], "the goal was not reached, so the retry aims at it again");
+  const adjusted = generate(review(state, "2027-01-26"), "2027-01-26");
+  assert.deepStrictEqual(loads(on(adjusted, "2027-01-29")), [85, 90, 92.5], "after adjusting, the retry follows the measured 90 kg");
 });
 
 test("pull-ups get a second weekly exposure on the day furthest from the pull day", () => {
