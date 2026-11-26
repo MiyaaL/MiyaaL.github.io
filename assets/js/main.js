@@ -15,9 +15,9 @@
   function readThemeMode() {
     try {
       var stored = localStorage.getItem("theme-mode");
-      return modes.indexOf(stored) >= 0 ? stored : "dark";
+      return modes.indexOf(stored) >= 0 ? stored : "system";
     } catch (_) {
-      return "dark";
+      return "system";
     }
   }
 
@@ -115,18 +115,18 @@
     var button = document.createElement("button");
     button.className = "copy-code";
     button.type = "button";
-    button.textContent = "复制";
-    button.setAttribute("aria-label", "复制代码");
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", "Copy code");
     frame.appendChild(button);
 
     button.addEventListener("click", function () {
       copyText(pre.textContent).then(function () {
-        button.textContent = "已复制";
+        button.textContent = "Copied";
         window.setTimeout(function () {
-          button.textContent = "复制";
+          button.textContent = "Copy";
         }, 1600);
       }).catch(function () {
-        button.textContent = "复制失败";
+        button.textContent = "Copy failed";
       });
     });
   });

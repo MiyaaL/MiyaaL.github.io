@@ -1,18 +1,20 @@
 title: MiyaaL
 tagline: AI Infra
-description: 关注 LLM、VLA 基础设施、性能建模与优化分析。
+description: Research on LLM and VLA infrastructure, performance modeling, and systems optimization.
 url: https://miyaal.github.io
 baseurl: ""
 repository: MiyaaL/MiyaaL.github.io
 theme: null
 
-lang: zh-CN
+lang: en
 timezone: Asia/Shanghai
 permalink: /blog/:year/:month/:day/:title/
 
 author:
   name: MiyaaL
   url: https://github.com/MiyaaL
+
+logo: /assets/icons/og-card.png
 
 social:
   name: MiyaaL
@@ -22,23 +24,6 @@ social:
 plan:
   supabase_url: "https://buawzvkuirytticsxigm.supabase.co"
   supabase_publishable_key: "sb_publishable_OtL6z18NHoU5zoalRMPJ1A_ZdKLdx24"
-  owner_github_login: MiyaaL
-  owner_github_id: "73994563"
-  volume_revision:
-    id: "moderate-volume-v1"
-    cycleId: "cycle-2026-11-02-mvsbg0jk"
-    fromDate: "2026-11-02"
-  schedule_revision:
-    id: "linear-wave-top-set-2026-09-23"
-    previousId: "linear-wave-2026-09-23"
-    cycleId: "cycle-2026-08-03"
-    fromDate: "2026-09-25"
-    anchorDate: "2026-09-28"
-    endDate: "2026-10-31"
-    targets:
-      bench: 100
-      squat: 120
-      pullup: 20
 
 markdown: kramdown
 highlighter: rouge
@@ -69,10 +54,11 @@ defaults:
       author: MiyaaL
       math: false
       mermaid: false
+      lang: zh-CN
   - scope:
       path: ""
     values:
-      layout: page
+      image: /assets/icons/og-card.png
 
 exclude:
   - AGENTS.md
@@ -85,5 +71,9 @@ exclude:
   - scripts
   - supabase
   - tests
+  - docs
   - vendor
   - .bundle-cache
+  - node_modules
+  - package.json
+  - package-lock.json

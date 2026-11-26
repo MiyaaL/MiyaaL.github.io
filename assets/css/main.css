@@ -4,7 +4,7 @@
   --surface: #ffffff;
   --text: #1c2128;
   --text-soft: #59636e;
-  --text-faint: #7a8490;
+  --text-faint: #626c78;
   --border: #dfe3e8;
   --border-strong: #c7cdd4;
   --accent: #245da6;
@@ -28,8 +28,13 @@
   --moon-edge-glow: rgba(236, 242, 248, 0.52);
   --content-width: 1040px;
   --reading-width: 720px;
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", "PingFang SC",
+    "Microsoft YaHei", monospace;
+  --title-size: clamp(26px, 4vw, 32px);
+  --heading-size: 20px;
+  --entry-size: 18px;
 }
 
 :root[data-theme="dark"] {
@@ -38,7 +43,7 @@
   --surface: #11161d;
   --text: #e6edf3;
   --text-soft: #a2acb7;
-  --text-faint: #76808c;
+  --text-faint: #8791a0;
   --border: #282f38;
   --border-strong: #3a434e;
   --accent: #78a9e6;
@@ -91,8 +96,8 @@ body {
 .moon {
   position: absolute;
   z-index: 0;
-  top: 126px;
-  right: clamp(32px, 9vw, 176px);
+  top: 118px;
+  right: calc((100vw - var(--content-width)) / 2 - 136px);
   display: none;
   width: 72px;
   height: 72px;
@@ -101,7 +106,7 @@ body {
   transition: opacity 140ms ease;
 }
 
-@media (min-width: 781px) {
+@media (min-width: 1400px) {
   :root[data-theme="dark"] .moon {
     display: block;
   }
@@ -447,8 +452,9 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .expertise dl > div {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(150px, 1.1fr);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 20px;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);
@@ -471,7 +477,7 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .section {
-  padding: 86px 0 104px;
+  padding: 64px 0 96px;
 }
 
 .section-heading {
@@ -479,7 +485,7 @@ html[data-theme-mode="dark"] .theme-dark {
   align-items: end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 
 .section-heading .eyebrow {
@@ -488,10 +494,10 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .section-heading h2 {
   margin: 0;
-  font-size: clamp(27px, 3.5vw, 32px);
+  font-size: var(--heading-size);
   font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.25;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
 }
 
 .section-heading > a {
@@ -514,7 +520,7 @@ html[data-theme-mode="dark"] .theme-dark {
   display: grid;
   grid-template-columns: 112px minmax(0, 1fr);
   gap: 30px;
-  padding: 27px 0 29px;
+  padding: 24px 0 26px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -528,10 +534,10 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .post-entry-body h3 {
   margin: 0;
-  font-size: clamp(19px, 2.3vw, 21px);
+  font-size: var(--entry-size);
   font-weight: 600;
-  letter-spacing: -0.018em;
-  line-height: 1.4;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
 }
 
 .post-entry-body h3 a {
@@ -652,7 +658,7 @@ html[data-theme-mode="dark"] .theme-dark {
   height: 48px;
   padding: 0 66px 0 29px;
   border: 0;
-  outline: none;
+  outline: 0;
   background: transparent;
   color: var(--text);
   font-size: 14px;
@@ -664,6 +670,11 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .search-field:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent);
+}
+
+.search-field:focus-within > svg {
+  stroke: var(--accent);
 }
 
 .search-clear {
@@ -783,17 +794,18 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .post-header h1 {
   margin: 0;
-  font-size: clamp(38px, 5.5vw, 48px);
+  font-size: var(--title-size);
   font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.16;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  text-wrap: balance;
 }
 
 .post-description {
-  margin: 20px 0 0;
+  margin: 16px 0 0;
   color: var(--text-soft);
-  font-size: 17px;
-  line-height: 1.7;
+  font-size: 16px;
+  line-height: 1.75;
 }
 
 .post-meta {
@@ -812,11 +824,14 @@ html[data-theme-mode="dark"] .theme-dark {
   font-size: 13px;
 }
 
+/* overflow-x: clip keeps MathJax's visually hidden assistive nodes from widening
+   the page on phones; wide formulas, tables and code scroll inside their own box. */
 .post-content {
   padding: 42px 0 20px;
   border-top: 1px solid var(--border);
   font-size: 16px;
   line-height: 1.75;
+  overflow-x: clip;
 }
 
 .post-content > :first-child {
@@ -834,18 +849,34 @@ html[data-theme-mode="dark"] .theme-dark {
 }
 
 .post-content h2 {
-  margin: 2.25em 0 0.72em;
-  font-size: 26px;
+  padding-top: 1.1em;
+  border-top: 1px solid var(--border);
+  margin: 2.4em 0 0.72em;
+  font-size: 22px;
+}
+
+.post-content > h2:first-child,
+.post-content > blockquote:first-child + h2 {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .post-content h3 {
   margin: 2em 0 0.65em;
-  font-size: 21px;
+  font-size: 19px;
 }
 
 .post-content h4 {
   margin: 1.8em 0 0.6em;
-  font-size: 18px;
+  font-size: 17px;
+}
+
+.post-content h5,
+.post-content h6 {
+  margin: 1.6em 0 0.5em;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .post-content p,
@@ -868,6 +899,7 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .post-content a {
   color: var(--accent);
+  overflow-wrap: anywhere;
 }
 
 .post-content strong {
@@ -888,6 +920,8 @@ html[data-theme-mode="dark"] .theme-dark {
   height: auto;
   margin: 2em auto;
   border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
 }
 
 .post-content hr {
@@ -1024,7 +1058,10 @@ html[data-theme-mode="dark"] .theme-dark {
   text-align: center;
 }
 
+/* MathJax sets an inline min-width on numbered equations; without the override a
+   wide tagged formula stretches the page on phones instead of scrolling. */
 .post-content mjx-container[display="true"] {
+  min-width: 0 !important;
   max-width: 100%;
   padding: 10px 0 13px;
   margin-block: 1.35em;
@@ -1080,27 +1117,6 @@ html[data-theme-mode="dark"] .theme-dark {
   text-decoration: underline;
 }
 
-.page-shell {
-  max-width: var(--reading-width);
-  padding-top: 64px;
-  padding-bottom: 90px;
-}
-
-.page-header {
-  margin-bottom: 42px;
-}
-
-.page-header h1 {
-  margin: 0;
-  font-size: clamp(38px, 5.5vw, 48px);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-}
-
-.page-header > p:last-child {
-  color: var(--text-soft);
-}
-
 .not-found {
   display: grid;
   min-height: calc(100vh - 151px);
@@ -1114,10 +1130,10 @@ html[data-theme-mode="dark"] .theme-dark {
 
 .not-found h1 {
   margin: 0;
-  font-size: clamp(36px, 5.5vw, 46px);
+  font-size: var(--title-size);
   font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.2;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 
 .not-found h1 + p {
@@ -1175,7 +1191,7 @@ html[data-theme-mode="dark"] .theme-dark {
   }
 
   .section {
-    padding: 72px 0 86px;
+    padding: 56px 0 80px;
   }
 }
 
@@ -1229,7 +1245,7 @@ html[data-theme-mode="dark"] .theme-dark {
   .post-entry {
     grid-template-columns: 1fr;
     gap: 7px;
-    padding: 23px 0 25px;
+    padding: 20px 0 22px;
   }
 
   .post-entry-date {

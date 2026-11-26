@@ -1,24 +1,30 @@
 ---
 layout: default
 ---
-<article class="post">
+<article class="post" lang="{{ page.lang | default: 'zh-CN' }}">
   <header class="post-header container post-container">
-    <a class="back-link" href="{{ '/blog/' | relative_url }}"><span aria-hidden="true">←</span> 返回 Blog</a>
+    <a class="back-link" href="{{ '/blog/' | relative_url }}"><span aria-hidden="true">←</span> Back to Blog</a>
     {% if page.series %}
       {% assign page_series_url = "/courses/" | append: page.series_slug | append: "/" %}
       <p class="eyebrow post-series-label">
-        <a href="{{ page_series_url | relative_url }}">课程笔记 / {{ page.series }} / {{ page.course_label }}</a>
+        <a href="{{ page_series_url | relative_url }}">Course notes / {{ page.series }} / {{ page.course_label }}</a>
       </p>
     {% else %}
-      <p class="eyebrow">ARTICLE / 技术文章</p>
+      <p class="eyebrow">ARTICLE</p>
     {% endif %}
     <h1>{{ page.title }}</h1>
     {% if page.description %}<p class="post-description">{{ page.description }}</p>{% endif %}
     <div class="post-meta">
-      <time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%Y年%m月%d日" }}</time>
+      <time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%Y.%m.%d" }}</time>
+      {% assign published_day = page.date | date: "%Y%m%d" %}
+      {% assign modified_day = page.last_modified_at | date: "%Y%m%d" %}
+      {% if page.last_modified_at and modified_day != published_day %}
+        <span aria-hidden="true">·</span>
+        <span>Updated <time datetime="{{ page.last_modified_at | date_to_xmlschema }}">{{ page.last_modified_at | date: "%Y.%m.%d" }}</time></span>
+      {% endif %}
       {% if page.tags and page.tags.size > 0 %}
         <span aria-hidden="true">·</span>
-        <ul class="tag-list" aria-label="文章标签">
+        <ul class="tag-list" aria-label="Tags">
           {% for tag in page.tags %}
             <li><a href="{{ '/blog/' | relative_url }}?tag={{ tag | url_encode }}">#{{ tag }}</a></li>
           {% endfor %}
@@ -38,10 +44,10 @@ layout: default
       {% endif %}
       <footer class="post-end">
         <span aria-hidden="true"></span>
-        <p>感谢阅读。</p>
-        <a href="{{ '/blog/' | relative_url }}">继续浏览文章 <span aria-hidden="true">→</span></a>
+        <p>Thanks for reading.</p>
+        <a href="{{ '/blog/' | relative_url }}">More articles <span aria-hidden="true">→</span></a>
       </footer>
     </div>
   </div>
 </article>
-<script src="{{ '/assets/js/post-toc.js' | relative_url }}"></script>
+<script src="{{ '/assets/js/post-toc.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>

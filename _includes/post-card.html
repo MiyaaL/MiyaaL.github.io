@@ -16,13 +16,14 @@
     {% if post.series %}
       {% assign post_series_url = "/courses/" | append: post.series_slug | append: "/" %}
       <p class="post-entry-series">
-        <a href="{{ post_series_url | relative_url }}">课程笔记 / {{ post.series }} / {{ post.course_label }}</a>
+        <a href="{{ post_series_url | relative_url }}">Course notes / {{ post.series }} / {{ post.course_label }}</a>
       </p>
     {% endif %}
-    <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
-    <p>{{ post_description | truncate: 160 }}</p>
+    {% assign post_lang = post.lang | default: "zh-CN" %}
+    <h3 lang="{{ post_lang }}"><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
+    <p lang="{{ post_lang }}">{{ post_description | truncate: 160 }}</p>
     {% if post.tags and post.tags.size > 0 %}
-      <ul class="tag-list" aria-label="文章标签">
+      <ul class="tag-list" aria-label="Tags">
         {% for tag in post.tags %}
           <li><a href="{{ '/blog/' | relative_url }}?tag={{ tag | url_encode }}">#{{ tag }}</a></li>
         {% endfor %}

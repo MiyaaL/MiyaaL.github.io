@@ -465,7 +465,6 @@ require_css(
 )
 [
   ["assets/css/plan.css", ".plan-hero-inner", ".plan-hero h1", ".plan-intro", ".plan-hero .eyebrow"],
-  ["assets/css/library.css", ".library-hero-inner", ".library-hero h1", ".library-intro", ".library-hero .eyebrow"],
   ["assets/css/main.css", ".archive-hero", ".archive-hero h1", ".archive-hero > .container > p:last-child", ".archive-hero .eyebrow"]
 ].each do |stylesheet, container, title, intro, eyebrow|
   path = ROOT.join(stylesheet)
@@ -480,12 +479,42 @@ require_css(
   ".plan-sync-state",
   [/color:\s*var\(--text-soft\);/, /font-size:\s*12px;/, /font-weight:\s*500;/]
 )
-require_css(
-  errors,
-  ROOT.join("assets/css/library.css"),
-  ".library-count",
-  [/color:\s*var\(--text-soft\);/, /font-size:\s*12px;/, /font-weight:\s*500;/]
-)
+# Shared type scale: page titles, section headings and list entries must use the
+# custom properties declared in main.css instead of one-off sizes.
+main_scale = ROOT.join("assets/css/main.css")
+require_css(errors, main_scale, ":root", [/--title-size:\s*clamp\(26px,\s*4vw,\s*32px\);/, /--heading-size:\s*20px;/, /--entry-size:\s*18px;/])
+require_css(errors, main_scale, ".post-header h1", [/font-size:\s*var\(--title-size\);/, /font-weight:\s*600;/])
+require_css(errors, main_scale, ".section-heading h2", [/font-size:\s*var\(--heading-size\);/, /font-weight:\s*600;/])
+require_css(errors, main_scale, ".post-entry-body h3", [/font-size:\s*var\(--entry-size\);/, /font-weight:\s*600;/])
+require_css(errors, ROOT.join("assets/css/course.css"), ".course-hero h1", [/font-size:\s*var\(--title-size\);/])
+require_css(errors, ROOT.join("assets/css/course.css"), ".course-section-heading h2", [/font-size:\s*var\(--heading-size\);/])
+require_css(errors, ROOT.join("assets/css/course.css"), ".course-outline-body h2", [/font-size:\s*var\(--entry-size\);/])
+
+# No text below 11px anywhere, and focus outlines may only be removed where a
+# replacement focus style exists in the same stylesheet.
+ROOT.join("assets/css").glob("*.css").sort.each do |stylesheet|
+  css = stylesheet.read(encoding: "UTF-8")
+  css.each_line.with_index(1) do |line, number|
+    size = line[/font-size:\s*(\d+(?:\.\d+)?)px/, 1]
+    add_error(errors, stylesheet, "字号不得小于 11px", number) if size && size.to_f < 11
+  end
+  if css.match?(/outline:\s*(0|none)\b/) && !css.match?(/:focus-visible|:focus-within/)
+    add_error(errors, stylesheet, "移除 outline 时必须提供 :focus-visible 或 :focus-within 替代样式")
+  end
+end
+
+# Site chrome is English; templates must not reintroduce Chinese UI strings.
+%w[_layouts/default.html _layouts/post.html _includes/header.html _includes/footer.html
+   _includes/post-card.html _includes/post-toc.html _includes/series-navigation.html
+   index.html 404.html blog/index.html plan/index.html].each do |template|
+  template_path = ROOT.join(template)
+  next unless template_path.file?
+  template_path.read(encoding: "UTF-8").each_line.with_index(1) do |line, number|
+    # Liquid expressions may reference Chinese tag names; only rendered copy is checked.
+    visible = line.gsub(/\{%.*?%\}|\{\{.*?\}\}/, "")
+    add_error(errors, template_path, "站点界面文案使用英文，不得出现中文", number) if visible.match?(/\p{Han}/)
+  end
+end
 require_css(
   errors,
   ROOT.join("assets/css/main.css"),
@@ -581,7 +610,7 @@ if blog_page.include?("course-series-link")
   add_error(errors, ROOT.join("blog/index.html"), "不得恢复逐课程独占一行的旧结构")
 end
 if blog_page.scan(%q{class="topic-directory-row"}).length < 3
-  add_error(errors, ROOT.join("blog/index.html"), "主题目录至少应包含课程系列、数学推导与个人随笔三行")
+  add_error(errors, ROOT.join("blog/index.html"), "主题目录至少应包含 COURSE SERIES、DERIVATIONS、PERSONAL 三行")
 end
 if blog_page.scan(">COURSE SERIES<").length != 1
   add_error(errors, ROOT.join("blog/index.html"), "COURSE SERIES 标签必须只出现一次")

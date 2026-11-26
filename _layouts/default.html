@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="{{ page.lang | default: site.lang }}" data-theme="dark" data-theme-mode="dark">
+<html lang="{{ site.lang }}" data-theme="dark" data-theme-mode="dark">
   <head>
     {% include head.html %}
   </head>
@@ -8,15 +8,15 @@
     <div class="moon" aria-hidden="true">
       <span class="moon-crescent"></span>
     </div>
-    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     {% include header.html %}
     <main id="main-content">
       {{ content }}
     </main>
     {% include footer.html %}
-    <script src="{{ '/assets/js/main.js' | relative_url }}"></script>
+    <script src="{{ '/assets/js/main.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
     <script src="{{ '/assets/js/starfield.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    {% if page.plan or page.library %}
+    {% if page.plan %}
       {% if site.plan.supabase_url and site.plan.supabase_url != "" %}
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.9/dist/umd/supabase.min.js"></script>
       {% endif %}
@@ -26,15 +26,6 @@
     <script src="{{ '/assets/js/plan-store.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
     <script src="{{ '/assets/js/plan-chart.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
     <script src="{{ '/assets/js/plan-app.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    {% endif %}
-    {% if page.library %}
-    <script src="{{ '/assets/js/library-store.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    <script src="{{ '/assets/js/library-github.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    <script src="{{ '/assets/js/library-annotations.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    <script src="{{ '/assets/js/library-pdf-policy.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    <script src="{{ '/assets/js/library-pdf-editor.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    <script src="{{ '/assets/js/library-immersive.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
-    <script src="{{ '/assets/js/library-app.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
     {% endif %}
   </body>
 </html>

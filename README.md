@@ -1,15 +1,15 @@
 # MiyaaL.github.io
 
-MiyaaL 的个人主页与技术博客，使用 GitHub Pages 原生支持的 Jekyll 构建。
+MiyaaL 的个人主页与技术博客，使用 GitHub Pages 原生支持的 Jekyll 构建。内容、排版与提交约定见 [AGENTS.md](AGENTS.md)。
 
 站点地址：<https://miyaal.github.io>
 
 ## 功能
 
-- 中文技术简约风，支持系统、浅色、深色三种主题模式
+- 英文界面、中文文章；主题默认跟随系统，可手动切换浅色、深色
 - 首页自动展示最近 6 篇文章
-- Blog 归档支持标签筛选与本地关键词搜索
-- Plan 支持健身周期趋势图、推拉蹲 + 推训练日历，也支持按日学习计划、验收成果、总结感悟与学习生产物上传
+- Blog 归档支持标签筛选与本地关键词搜索，课程笔记按系列聚合
+- Plan 是交互式力量训练计划：周期进度图、训练日历、训练记录与 ICS 导出
 - Markdown 与 HTML 文章、Rouge 代码高亮和一键复制
 - 按文章启用 LaTeX 公式与 Mermaid 图表
 - RSS、Sitemap、SEO 元数据和响应式布局
@@ -119,19 +119,30 @@ HTML 使用 `<pre><code class="language-mermaid">...</code></pre>`。
 ![图片说明](/assets/posts/<文章短名>/image.webp)
 ```
 
-优先使用 WebP 或经过压缩的 PNG，并始终填写有意义的图片说明。
+图片使用 WebP，宽度不超过 1600px，并始终填写有意义的图片说明。
+
+## 检查与测试
+
+提交前运行文章格式检查和生产式构建：
+
+```bash
+docker compose run --rm site bundle exec ruby scripts/check_blog_format.rb
+docker compose run --rm site bundle exec jekyll build --trace
+```
+
+Plan 的单元测试与 DOM 测试使用 Node.js 22 自带的测试运行器：
+
+```bash
+npm ci
+npm test
+```
+
+同样的检查由 `.github/workflows/ci.yml` 在每次 push 和 pull request 时执行。
 
 ## 发布
 
-首次发布前，在 GitHub 创建一个名为 `MiyaaL.github.io` 的公开空仓库，不要额外生成
-README、`.gitignore` 或许可证。本地仓库已经配置 SSH 远端，之后执行：
-
-```bash
-git push -u origin main
-```
-
-在 GitHub 仓库的 **Settings → Pages** 中，将来源设为 **Deploy from a branch**，
-分支选择 **main**，目录选择 **/(root)**。以后新增文章只需：
+站点由 GitHub Pages 从 `main` 分支根目录构建（仓库 **Settings → Pages → Deploy from a branch**）。
+推送到 `main` 即发布：
 
 ```bash
 git add _posts assets/posts
@@ -143,24 +154,31 @@ git push
 
 ```text
 .
-├── _drafts/          # 按专题组织的 Markdown/HTML 草稿与模板
-├── _includes/        # 可复用页面片段
-├── _layouts/         # 页面和文章模板
-├── _posts/           # 按专题组织的已发布 Markdown/HTML 文章
+├── .github/workflows/ # CI：格式检查、Jekyll 构建、Plan 测试
+├── _drafts/           # 按专题组织的 Markdown/HTML 草稿与模板
+├── _includes/         # 可复用页面片段
+├── _layouts/          # 页面和文章模板
+├── _posts/            # 按专题组织的已发布 Markdown/HTML 文章
 │   ├── courses/
 │   │   ├── cs224n/
 │   │   └── cs336/
-│   └── derivations/  # Derivations
+│   └── derivations/
 ├── assets/
-│   ├── css/          # 站点样式
-│   ├── icons/        # 图标
-│   ├── js/           # 主题、搜索、代码复制和 Mermaid
-│   └── posts/        # 文章图片
-├── blog/             # Blog 归档页
-├── plan/             # 交互式健身 / 学习计划
-├── supabase/         # Plan 同步数据库迁移与配置说明
-├── _config.yml       # 站点配置
-└── index.html        # 首页
+│   ├── css/           # 站点、课程、文章目录与 Plan 样式
+│   ├── data/          # Plan 使用的节假日数据
+│   ├── icons/         # 图标与分享卡片
+│   ├── js/            # 主题、搜索、代码复制、目录、Mermaid 与 Plan
+│   └── posts/         # 文章图片
+├── blog/              # Blog 归档页
+├── courses/           # 课程系列索引页
+├── docs/plan/         # 训练方案评审记录
+├── plan/              # 交互式训练计划
+├── scripts/           # 文章格式与排版合约检查
+├── supabase/          # Plan 同步的数据库迁移与配置说明
+├── tests/             # Plan 的单元测试与 DOM 测试
+├── AGENTS.md          # 内容、排版与提交约定
+├── _config.yml        # 站点配置
+└── index.html         # 首页
 ```
 
 ## 许可

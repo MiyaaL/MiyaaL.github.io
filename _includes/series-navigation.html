@@ -15,15 +15,15 @@
 {% endfor %}
 {% assign series_url = "/courses/" | append: page.series_slug | append: "/" %}
 
-<nav class="series-navigation" aria-label="{{ page.series }} 课程导航">
+<nav class="series-navigation" aria-label="{{ page.series }} series navigation">
   <div class="series-navigation-header">
     <span>COURSE SERIES</span>
-    <a href="{{ series_url | relative_url }}">{{ page.series }} · 全部 {{ series_posts.size }} 篇</a>
+    <a href="{{ series_url | relative_url }}">{{ page.series }} · All {{ series_posts.size }} notes</a>
   </div>
   <div class="series-navigation-links">
     {% if previous_post %}
       <a class="series-previous" href="{{ previous_post.url | relative_url }}">
-        <span>← 上一讲 · {{ previous_post.course_label }}</span>
+        <span>← Previous · {{ previous_post.course_label }}</span>
         <strong>{{ previous_post.title }}</strong>
       </a>
     {% else %}
@@ -31,7 +31,7 @@
     {% endif %}
     {% if next_post %}
       <a class="series-next" href="{{ next_post.url | relative_url }}">
-        <span>下一讲 · {{ next_post.course_label }} →</span>
+        <span>Next · {{ next_post.course_label }} →</span>
         <strong>{{ next_post.title }}</strong>
       </a>
     {% endif %}

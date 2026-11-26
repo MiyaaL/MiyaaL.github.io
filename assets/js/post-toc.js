@@ -47,7 +47,7 @@
 
     item.className = "post-toc-level-" + level;
     link.href = "#" + encodeURIComponent(id);
-    link.textContent = usesContentFallback ? "正文" : heading.textContent.trim();
+    link.textContent = usesContentFallback ? "Article" : heading.textContent.trim();
     item.appendChild(link);
     list.appendChild(item);
   });

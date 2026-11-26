@@ -1,7 +1,7 @@
 {
   "name": "MiyaaL",
   "short_name": "MiyaaL",
-  "description": "AI Infra：LLM、VLA 基础设施、性能建模与优化分析",
+  "description": "AI Infra: LLM and VLA infrastructure, performance modeling, and systems optimization",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0e14",
@@ -11,6 +11,11 @@
       "src": "/assets/icons/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
+    },
+    {
+      "src": "/assets/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ]
 }

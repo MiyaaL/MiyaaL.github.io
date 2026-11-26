@@ -9,3 +9,4 @@ vendor/
 *.pem
 supabase-deploy.env
 supabase/.temp/
+node_modules/
