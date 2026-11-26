@@ -13,7 +13,6 @@ test("the unconfigured page previews the default template in English", async () 
   assert.strictEqual(page.text("[data-plan-title]"), "Push / Pull / Squat · 5 sessions per week");
   assert.strictEqual(page.$("[data-plan-app]").closest("[lang]").getAttribute("lang"), "en");
   assert.doesNotMatch(page.document.body.textContent, /[㐀-鿿]/, "no Chinese copy is left in the page");
-  assert.doesNotMatch(page.document.body.innerHTML, /learning/i, "the learning planner is gone");
   page.close();
 });
 

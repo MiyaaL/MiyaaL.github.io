@@ -432,10 +432,6 @@
     }
     state.archivedCycles = Array.isArray(state.archivedCycles) ? state.archivedCycles : [];
     state.logs = state.logs || {};
-    // The learning planner was removed; drop its data so the next save also
-    // clears it from the stored row and the public snapshot.
-    delete state.learningPlans;
-    delete state.activePlanId;
     delete state.activeCycle.loadAdjustments;
     delete state.activeCycle.priorities;
     delete state.activeCycle.experience;

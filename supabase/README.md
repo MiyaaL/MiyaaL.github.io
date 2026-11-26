@@ -93,12 +93,6 @@ Publishable Key 设计为浏览器公开使用；真正的访问控制由迁移�
 
 若登录账号不是 GitHub 数字 ID `73994563`，数据库函数会返回 `not_plan_owner`，无法读取或修改私有计划。
 
-### 学习计划已移除
-
-学习计划功能已从页面、核心逻辑和公开快照中整体删除。`normalizeState` 载入时会丢弃 `learningPlans` 与 `activePlanId`，`createPublicSnapshot` 不再输出 `learningPlans`。
-
-注意：**线上那一行数据在本人下一次保存之前仍然带着旧的学习计划**（私有状态和公开快照里各一份）。页面不会在载入时自动写库，所以需要本人登录后做任意一次保存（例如记录一次训练或更新体重）才会清掉。如需留底，请在保存前先点 “Back up JSON”；备份文件仍包含载入时的完整私有状态。
-
 ## 5. 验证
 
 测试只依赖 Node 22 与 `package.json` 里的 `jsdom`，不需要 Docker 或 Jekyll 构建。浏览器测试通过 `tests/helpers/dom.js` 直接读取 `plan/index.html` 源文件：

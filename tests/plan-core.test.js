@@ -151,7 +151,6 @@ test("public snapshot removes private fields", () => {
   assert(!serialized.includes("bodyweightEntries"));
   assert(!serialized.includes("private"));
   assert(!Object.prototype.hasOwnProperty.call(snapshot, "logs"));
-  assert(!Object.prototype.hasOwnProperty.call(snapshot, "learningPlans"), "the learning planner is not published");
   const withRestDay = PlanCore.normalizeState(state);
   withRestDay.activeCycle.holidayOverrides = { "2026-08-10": "off" };
   const restDayPlan = PlanCore.generate(withRestDay, [holidays2026]);

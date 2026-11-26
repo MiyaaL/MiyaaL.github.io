@@ -285,19 +285,16 @@ test("adopting the program leaves past and logged sessions exactly as they were"
   assert.strictEqual(core.adoptFeedbackProgram(archived, "2026-11-26").activeCycle.programRevision, "legacy");
 });
 
-test("stored Chinese copy is shown in English and learning data is dropped", () => {
+test("stored Chinese copy is shown in English", () => {
   const stored = sampleState(core, { program: "legacy" });
   stored.activeCycle.title = "推拉蹲 + 推";
   stored.activeCycle.template.forEach((item) => { item.label = { pull: "拉" }[item.type] || "推 · 强度"; });
   stored.activeCycle.lifts.bench.label = "杠铃卧推";
-  stored.learningPlans = [{ id: "learning-1", title: "学习计划", logs: {} }];
-  stored.activePlanId = "learning-1";
   const state = core.normalizeState(stored);
   assert.strictEqual(state.activeCycle.title, "Push / Pull / Squat · 5 sessions per week");
   assert.strictEqual(state.activeCycle.lifts.bench.label, "Bench press");
-  assert.ok(!Object.hasOwn(state, "learningPlans") && !Object.hasOwn(state, "activePlanId"));
-  assert.ok(Object.hasOwn(stored, "learningPlans"), "the input is not mutated");
-  assert.doesNotMatch(JSON.stringify(core.createPublicSnapshot(state, generate(state, "2026-11-02"))), /[㐀-鿿]|learning/i);
+  assert.strictEqual(stored.activeCycle.lifts.bench.label, "杠铃卧推", "the input is not mutated");
+  assert.doesNotMatch(JSON.stringify(core.createPublicSnapshot(state, generate(state, "2026-11-02"))), /[㐀-鿿]/);
   assert.strictEqual(core.localize("递进第 2 周"), "Build week 2");
   assert.strictEqual(core.localize("杠铃卧推 · 周期目标"), "Bench press · Goal test");
   assert.strictEqual(core.localize("2–3 分钟"), "2–3 min");
