@@ -160,6 +160,23 @@ test("uploaded data-health text is rendered as text", async () => {
   assert.match(page.$("[data-quant-alerts]").textContent, /<script>x<\/script>/);
 });
 
+test("the published health grade and availability win over the page's own rules", () => {
+  const health = core.normalizeDataHealth({
+    datasets: [
+      { id: "daily", available: true, symbols: [
+        { symbol: "510300", first: "2018-01-02", last: "2026-11-10", sessions_behind: 13, missing_sessions: [], health: "critical" },
+        { symbol: "510500", first: "2018-01-02", last: "2026-11-27", sessions_behind: 0, missing_sessions: [], health: "bogus" }
+      ] },
+      { id: "minute_1m", available: false, symbols: [] }
+    ]
+  });
+  const rows = health.datasets[0].symbols;
+  assert.equal(core.symbolLevel(rows[0]), "critical", "13 sessions behind is critical per quant-lab, not just a warning");
+  assert.equal(core.symbolLevel(rows[1]), "ok", "an unknown grade falls back to the page's rules");
+  assert.equal(health.datasets[0].collected, true);
+  assert.equal(health.datasets[1].collected, false, "available: false shows as not collected");
+});
+
 test("data-health helpers: levels, bytes and the coverage axis", () => {
   const health = core.normalizeDataHealth(sampleHealth());
   const rows = health.datasets[0].symbols;
