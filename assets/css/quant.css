@@ -484,6 +484,161 @@
   margin: 40px 0 0;
 }
 
+/* Tabs: Paper trading / Data */
+.quant-tabs {
+  display: flex;
+  gap: 24px;
+  margin: 0 0 28px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quant-tab {
+  margin-bottom: -1px;
+  padding: 8px 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.quant-tab:hover {
+  color: var(--text);
+}
+
+.quant-tab[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.quant-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Status badge: icon + word, so colour never carries the meaning alone. */
+.quant-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.quant-badge-icon {
+  font-weight: 600;
+}
+
+.quant-badge.is-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.quant-badge.is-warning {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.quant-badge.is-critical {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.quant-alerts {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.quant-alerts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.quant-alert-where {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Coverage timeline: one bar per instrument on a shared date axis; ticks are gaps. */
+.quant-coverage {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.quant-coverage-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 84px;
+  align-items: center;
+  gap: 12px;
+}
+
+.quant-coverage-behind {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.quant-coverage-label {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.quant-coverage-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+}
+
+.quant-coverage-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: var(--quant-strategy);
+}
+
+.quant-coverage-gap {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--danger);
+}
+
+.quant-coverage-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 96px 0 84px;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.quant-health td:nth-child(2) {
+  text-align: left;
+}
+
 @media (max-width: 780px) {
   .quant-hero-inner {
     flex-direction: column;

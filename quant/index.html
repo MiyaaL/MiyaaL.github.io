@@ -10,9 +10,9 @@ lang: en
 <section class="quant-hero" lang="en">
   <div class="container quant-hero-inner">
     <div>
-      <p class="eyebrow">PAPER TRADING</p>
+      <p class="eyebrow">QUANT LAB</p>
       <h1>Quant</h1>
-      <p class="quant-intro">Private results of the quant-lab paper account. Visible to the owner only.</p>
+      <p class="quant-intro">Private paper-trading results and data health for quant-lab. Visible to the owner only.</p>
     </div>
     <div class="quant-hero-actions">
       <span class="quant-state" data-quant-state>Loading</span>
@@ -31,6 +31,11 @@ lang: en
   >
     <p class="quant-message" data-quant-message role="alert" hidden></p>
 
+    <div class="quant-tabs" role="tablist" aria-label="Dashboard" data-quant-tabs hidden>
+      <button class="quant-tab" type="button" role="tab" id="quant-tab-paper" aria-controls="quant-panel-paper" aria-selected="true" data-quant-tab="paper">Paper trading</button>
+      <button class="quant-tab" type="button" role="tab" id="quant-tab-data" aria-controls="quant-panel-data" aria-selected="false" tabindex="-1" data-quant-tab="data">Data</button>
+    </div>
+
     <section class="quant-locked" data-quant-locked>
       <h2>Owner only</h2>
       <p data-quant-locked-text>Checking your session…</p>
@@ -41,7 +46,7 @@ lang: en
       <p>Run <code>make daily</code> in quant-lab after the close; it uploads the dashboard at the end.</p>
     </section>
 
-    <div data-quant-view hidden>
+    <div id="quant-panel-paper" role="tabpanel" aria-labelledby="quant-tab-paper" data-quant-view hidden>
       <p class="quant-period" data-quant-period></p>
 
       <dl class="quant-kpis" data-quant-kpis></dl>
@@ -110,6 +115,37 @@ lang: en
       </section>
 
       <p class="quant-footnote">Paper trading: simulated fills at the next open with the same costs, limits and lot sizes as the backtest. Not investment advice.</p>
+    </div>
+
+    <div id="quant-panel-data" role="tabpanel" aria-labelledby="quant-tab-data" data-quant-data hidden>
+      <section class="quant-locked" data-quant-data-empty hidden>
+        <h2>No data report uploaded yet</h2>
+        <p>Run <code>make data</code> or <code>make daily</code> in quant-lab; each ends by uploading a data-health report.</p>
+      </section>
+
+      <div data-quant-data-view hidden>
+        <p class="quant-period" data-quant-data-meta></p>
+        <dl class="quant-kpis" data-quant-data-kpis></dl>
+
+        <section class="quant-block">
+          <div class="quant-block-heading">
+            <h2>Alerts</h2>
+          </div>
+          <ul class="quant-alerts" data-quant-alerts></ul>
+        </section>
+
+        <div data-quant-datasets></div>
+
+        <section class="quant-block" data-quant-cross-block hidden>
+          <div class="quant-block-heading">
+            <h2>Cross-check</h2>
+          </div>
+          <p class="quant-caption" data-quant-cross-meta></p>
+          <div class="quant-table-wrap">
+            <table class="quant-table" data-quant-cross></table>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </section>

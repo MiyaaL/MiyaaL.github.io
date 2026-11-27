@@ -346,6 +346,136 @@
     });
   }
 
+  // ---- data health ---------------------------------------------------------
+
+  var LEVELS = ["ok", "warning", "critical"];
+
+  function text(value) {
+    return typeof value === "string" ? value : "";
+  }
+
+  function count(value) {
+    var number = finite(value);
+    return number === null ? null : Math.max(0, Math.round(number));
+  }
+
+  function level(value) {
+    return LEVELS.indexOf(value) >= 0 ? value : "warning";
+  }
+
+  // Accept only the fields the Data view renders; anything else is ignored.
+  function normalizeDataHealth(raw) {
+    var source = raw && typeof raw === "object" ? raw : {};
+    var calendar = source.calendar && typeof source.calendar === "object" ? source.calendar : {};
+    var datasets = (Array.isArray(source.datasets) ? source.datasets : []).filter(function (item) {
+      return item && typeof item === "object" && text(item.id);
+    }).map(function (item) {
+      var symbols = (Array.isArray(item.symbols) ? item.symbols : []).filter(function (row) {
+        return row && typeof row === "object" && text(row.symbol);
+      }).map(function (row) {
+        var missing = (Array.isArray(row.missing_sessions) ? row.missing_sessions : []).filter(isDate);
+        return {
+          symbol: row.symbol,
+          name: text(row.name),
+          rows: count(row.rows),
+          first: isDate(row.first) ? row.first : null,
+          last: isDate(row.last) ? row.last : null,
+          sessionsBehind: count(row.sessions_behind),
+          missingCount: count(row.missing_count) === null ? missing.length : count(row.missing_count),
+          missingSessions: missing,
+          lastStatus: text(row.last_status),
+          lastError: text(row.last_error),
+          problems: (Array.isArray(row.validation) ? row.validation : []).map(String)
+        };
+      });
+      return {
+        id: item.id,
+        frequency: text(item.frequency),
+        provider: text(item.provider),
+        adjust: text(item.adjust),
+        updatedAt: text(item.updated_at),
+        collected: item.collected !== false,
+        symbols: symbols
+      };
+    });
+    var crossCheck = source.cross_check && typeof source.cross_check === "object" ? source.cross_check : null;
+    var alerts = (Array.isArray(source.alerts) ? source.alerts : []).filter(function (item) {
+      return item && typeof item === "object" && text(item.message);
+    }).map(function (item) {
+      return { level: level(item.level), dataset: text(item.dataset), symbol: text(item.symbol), message: item.message };
+    }).sort(function (a, b) { return LEVELS.indexOf(b.level) - LEVELS.indexOf(a.level); });
+    return {
+      generatedAt: text(source.generated_at),
+      calendarSource: text(calendar.source),
+      lastSession: isDate(calendar.last_session) ? calendar.last_session : null,
+      datasets: datasets,
+      crossCheck: crossCheck ? {
+        source: text(crossCheck.source),
+        checkedAt: text(crossCheck.checked_at),
+        days: count(crossCheck.days),
+        threshold: finite(crossCheck.threshold),
+        results: (Array.isArray(crossCheck.results) ? crossCheck.results : []).filter(function (row) {
+          return row && text(row.symbol);
+        }).map(function (row) {
+          return {
+            symbol: row.symbol,
+            compared: count(row.compared),
+            overThreshold: count(row.over_threshold),
+            maxDeviation: finite(row.max_deviation)
+          };
+        })
+      } : null,
+      storage: source.storage && typeof source.storage === "object"
+        ? { files: count(source.storage.files), bytes: count(source.storage.bytes) }
+        : null,
+      alerts: alerts
+    };
+  }
+
+  // A symbol row's state: critical when its last update failed, warning when it
+  // is behind, has gaps or failed validation, ok otherwise.
+  function symbolLevel(row) {
+    if (row.lastStatus === "failed") return "critical";
+    if ((row.sessionsBehind || 0) > 0 || (row.missingCount || 0) > 0 || row.problems.length) return "warning";
+    return "ok";
+  }
+
+  function formatBytes(value) {
+    var number = finite(value);
+    if (number === null) return "—";
+    var units = ["B", "KB", "MB", "GB"];
+    var index = 0;
+    while (number >= 1024 && index < units.length - 1) {
+      number /= 1024;
+      index += 1;
+    }
+    return (index ? number.toFixed(1) : String(number)) + " " + units[index];
+  }
+
+  // Coverage bars on one shared date axis: [start, end] as fractions of the span.
+  function coverageModel(rows) {
+    var dated = rows.filter(function (row) { return row.first && row.last; });
+    if (!dated.length) return null;
+    var toTime = function (value) { return Date.UTC(+value.slice(0, 4), +value.slice(5, 7) - 1, +value.slice(8, 10)); };
+    var start = Math.min.apply(null, dated.map(function (row) { return toTime(row.first); }));
+    var end = Math.max.apply(null, dated.map(function (row) { return toTime(row.last); }));
+    var span = Math.max(end - start, 1);
+    var at = function (value) { return (toTime(value) - start) / span; };
+    return {
+      start: new Date(start).toISOString().slice(0, 10),
+      end: new Date(end).toISOString().slice(0, 10),
+      rows: dated.map(function (row) {
+        return {
+          symbol: row.symbol,
+          from: at(row.first),
+          to: at(row.last),
+          gaps: row.missingSessions.map(at),
+          behind: row.sessionsBehind || 0
+        };
+      })
+    };
+  }
+
   return {
     MONTHS: MONTHS,
     KPIS: KPIS,
@@ -362,6 +492,10 @@
     endLabels: endLabels,
     indexAtRatio: indexAtRatio,
     monthCells: monthCells,
+    normalizeDataHealth: normalizeDataHealth,
+    symbolLevel: symbolLevel,
+    formatBytes: formatBytes,
+    coverageModel: coverageModel,
     escapeXml: escapeXml
   };
 }));
