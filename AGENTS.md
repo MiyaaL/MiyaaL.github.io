@@ -164,8 +164,8 @@ $$
 
 ## Quant 私有看板
 
-- `quant/` 是 quant-lab 模拟盘的私有看板，只有所有者登录后可见。页面模板不含任何数字，`noindex` 且不进 sitemap，也不加入顶部导航。
-- 数据只存在 Supabase 的 `quant_dashboard_snapshot` 表，经 `load_quant_dashboard()` 读取；所有者校验复用 `is_fitness_plan_owner()`。不得把看板数据提交进仓库或写进模板：仓库是公开的。
+- `quant/` 是 quant-lab 的私有看板，只有所有者登录后可见，分两个标签页：Paper trading（模拟盘）和 Data（数据健康，`/quant/#data`）。页面模板不含任何数字，`noindex` 且不进 sitemap，也不加入顶部导航。
+- 数据只存在 Supabase 的 `quant_dashboard_snapshot` 表，按 `kind`（`paper` / `data`）区分，经 `load_quant_dashboard(kind)` 读取；所有者校验复用 `is_fitness_plan_owner()`。不得把看板数据提交进仓库或写进模板：仓库是公开的。
 - 上传方 quant-lab 只持有发布密钥，只能调用 `publish_quant_dashboard()` 追加快照；数据库只存该密钥的 SHA-256 摘要。不得给上传方 `service_role` key 或所有者会话。
 - 逻辑在 `assets/js/quant-core.js`（纯函数）和 `assets/js/quant-app.js`（页面），样式在 `assets/css/quant.css`，测试在 `tests/quant-dashboard.test.js`；上传内容写入页面时一律用 `textContent`，不用 `innerHTML` 拼接。
 - 图表的两种系列色（策略、基准）与 Plan 图表的前两色一致，已在两种主题的页面背景上验证；新增系列前先重新验证配色。

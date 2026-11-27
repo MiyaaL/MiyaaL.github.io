@@ -36,6 +36,12 @@ supabase/migrations/004_fitness_plan_history.sql
 - `rotate_quant_publish_key()`：仅本人调用，生成新的发布密钥并只返回一次，旧密钥立即失效；
 - `publish_quant_dashboard(key, generated_at, payload)`：授权给 `anon`，凭发布密钥追加一份快照。上传方因此不需要所有者会话，也不需要 `service_role` key；载荷上限 1 MB。
 
+`006_quant_dashboard_kinds.sql` 让看板分两类快照：`paper`（模拟盘）和 `data`（数据健康，对应页面的 Data 标签）。同样可重复执行：
+
+- 快照表增加 `kind` 列，已有的行都是 `paper`；每类各保留最近 30 份；
+- 新增 `load_quant_dashboard(kind)` 和 `publish_quant_dashboard(key, generated_at, payload, kind)`；
+- 005 的两个旧签名保持可用，含义不变：读写的都是 `paper`。所以先执行迁移、后更新 quant-lab 也不会中断。
+
 首次启用或更换密钥：所有者登录站点后，在浏览器控制台或 Dashboard 的 SQL Editor 以本人身份调用 `rotate_quant_publish_key()`，把返回值写进 quant-lab 机器上的 `~/.config/quantlab/dashboard.env`（`QUANTLAB_DASHBOARD_KEY=...`，权限 600）。SQL Editor 没有登录身份时，也可以直接写摘要：
 
 ```sql

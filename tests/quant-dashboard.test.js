@@ -73,17 +73,19 @@ function fakeClient(options) {
       async signOut() { calls.push("signOut"); session = null; return { error: null }; },
       onAuthStateChange(callback) { listeners.push(callback); return { data: { subscription: { unsubscribe() {} } } }; }
     },
-    async rpc(name) {
-      calls.push(["rpc", name]);
+    async rpc(name, args) {
+      calls.push(["rpc", name, args]);
       if (settings.rpcError) return { data: null, error: { message: settings.rpcError } };
+      const kind = (args && args.p_kind) || "paper";
+      if (kind === "data") return { data: settings.dataRows || [], error: null };
       return { data: settings.rows || [], error: null };
     }
   };
 }
 
-async function loadPage(client) {
+async function loadPage(client, url) {
   const dom = new JSDOM(pageHtml(), {
-    url: "https://miyaal.github.io/quant/",
+    url: url || "https://miyaal.github.io/quant/",
     runScripts: "outside-only",
     pretendToBeVisual: true
   });
