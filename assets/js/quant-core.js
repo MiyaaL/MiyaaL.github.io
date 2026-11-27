@@ -385,7 +385,8 @@
           missingSessions: missing,
           lastStatus: text(row.last_status),
           lastError: text(row.last_error),
-          problems: (Array.isArray(row.validation) ? row.validation : []).map(String)
+          problems: (Array.isArray(row.validation) ? row.validation : []).map(String),
+          health: LEVELS.indexOf(row.health) >= 0 ? row.health : null
         };
       });
       return {
@@ -394,7 +395,8 @@
         provider: text(item.provider),
         adjust: text(item.adjust),
         updatedAt: text(item.updated_at),
-        collected: item.collected !== false,
+        // quant-lab publishes `available`; `collected` is the earlier draft name.
+        collected: item.available !== undefined ? item.available !== false : item.collected !== false,
         symbols: symbols
       };
     });
@@ -432,9 +434,11 @@
     };
   }
 
-  // A symbol row's state: critical when its last update failed, warning when it
-  // is behind, has gaps or failed validation, ok otherwise.
+  // A symbol row's state. quant-lab grades each row (`health`) with its own staleness
+  // thresholds; that grade wins. Without it: critical when the last update failed,
+  // warning when it is behind, has gaps or failed validation, ok otherwise.
   function symbolLevel(row) {
+    if (row.health) return row.health;
     if (row.lastStatus === "failed") return "critical";
     if ((row.sessionsBehind || 0) > 0 || (row.missingCount || 0) > 0 || row.problems.length) return "warning";
     return "ok";
