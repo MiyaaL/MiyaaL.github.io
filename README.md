@@ -10,10 +10,11 @@ MiyaaL 的个人主页与技术博客，使用 GitHub Pages 原生支持的 Jeky
 - 首页自动展示最近 6 篇文章
 - Blog 归档支持标签筛选与本地关键词搜索，课程笔记按系列聚合
 - Plan 是交互式力量训练计划：周期进度图、训练日历、训练记录与 ICS 导出
+- Quant（`/quant/`）是 quant-lab 模拟盘的私有看板，仅所有者用 GitHub 登录后可见，不在导航和 sitemap 中
 - Markdown 与 HTML 文章、Rouge 代码高亮和一键复制
 - 按文章启用 LaTeX 公式与 Mermaid 图表
 - RSS、Sitemap、SEO 元数据和响应式布局
-- 站点静态部署；Plan 的可选同步后端使用 Supabase Auth、Postgres 与 RLS
+- 站点静态部署；Plan 的可选同步后端与 Quant 看板的数据都使用 Supabase Auth、Postgres 与 RLS
 
 ## 本地预览
 
