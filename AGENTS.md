@@ -162,6 +162,14 @@ $$
 - 修改训练参数（组数、百分比、减量与测试周规则）时，同一提交内更新 `supabase/README.md`。
 - 不向仓库提交受版权保护的第三方文件（书籍、论文 PDF 等），也不通过 Release 资产分发。
 
+## Quant 私有看板
+
+- `quant/` 是 quant-lab 模拟盘的私有看板，只有所有者登录后可见。页面模板不含任何数字，`noindex` 且不进 sitemap，也不加入顶部导航。
+- 数据只存在 Supabase 的 `quant_dashboard_snapshot` 表，经 `load_quant_dashboard()` 读取；所有者校验复用 `is_fitness_plan_owner()`。不得把看板数据提交进仓库或写进模板：仓库是公开的。
+- 上传方 quant-lab 只持有发布密钥，只能调用 `publish_quant_dashboard()` 追加快照；数据库只存该密钥的 SHA-256 摘要。不得给上传方 `service_role` key 或所有者会话。
+- 逻辑在 `assets/js/quant-core.js`（纯函数）和 `assets/js/quant-app.js`（页面），样式在 `assets/css/quant.css`，测试在 `tests/quant-dashboard.test.js`；上传内容写入页面时一律用 `textContent`，不用 `innerHTML` 拼接。
+- 图表的两种系列色（策略、基准）与 Plan 图表的前两色一致，已在两种主题的页面背景上验证；新增系列前先重新验证配色。
+
 ## 提交前强制检查
 
 任何涉及 `_posts/`、`_drafts/`、`assets/posts/`、课程页、文章布局或站点样式的提交，在 commit 前必须依次完成：
@@ -185,7 +193,7 @@ $$
 7. 如果修改了格式基线，必须在同一提交中更新本文件、检查器排版合约和必要的模板/CSS。
 8. 只有所有检查通过后才能 `git add` 和 `git commit`。检查失败时，agent 必须先修正，不得把问题留给用户。
 
-涉及 `plan/`、`assets/js/plan-*.js`、`assets/css/plan*.css` 或 `tests/` 的提交，还必须运行并通过：
+涉及 `plan/`、`quant/`、`assets/js/plan-*.js`、`assets/js/quant-*.js`、`assets/css/plan*.css`、`assets/css/quant.css` 或 `tests/` 的提交，还必须运行并通过：
 
 ```bash
 npm ci

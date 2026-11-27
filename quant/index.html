@@ -1,0 +1,115 @@
+---
+layout: default
+title: Quant
+description: "Private paper-trading dashboard for quant-lab."
+permalink: /quant/
+quant: true
+sitemap: false
+lang: en
+---
+<section class="quant-hero" lang="en">
+  <div class="container quant-hero-inner">
+    <div>
+      <p class="eyebrow">PAPER TRADING</p>
+      <h1>Quant</h1>
+      <p class="quant-intro">Private results of the quant-lab paper account. Visible to the owner only.</p>
+    </div>
+    <div class="quant-hero-actions">
+      <span class="quant-state" data-quant-state>Loading</span>
+      <button class="quant-text-button quant-auth-link" type="button" data-quant-sign-in>Owner sign-in</button>
+      <button class="quant-text-button" type="button" data-quant-sign-out hidden>Sign out</button>
+    </div>
+  </div>
+</section>
+
+<section class="quant-section" lang="en">
+  <div
+    class="container quant-app"
+    data-quant-app
+    data-supabase-url="{{ site.plan.supabase_url | default: '' | escape }}"
+    data-supabase-key="{{ site.plan.supabase_publishable_key | default: '' | escape }}"
+  >
+    <p class="quant-message" data-quant-message role="alert" hidden></p>
+
+    <section class="quant-locked" data-quant-locked>
+      <h2>Owner only</h2>
+      <p data-quant-locked-text>Checking your session…</p>
+    </section>
+
+    <section class="quant-locked" data-quant-empty hidden>
+      <h2>No results uploaded yet</h2>
+      <p>Run <code>make daily</code> in quant-lab after the close; it uploads the dashboard at the end.</p>
+    </section>
+
+    <div data-quant-view hidden>
+      <p class="quant-period" data-quant-period></p>
+
+      <dl class="quant-kpis" data-quant-kpis></dl>
+
+      <p class="quant-muted" data-quant-pending hidden>Charts appear once the paper account has two trading days.</p>
+
+      <div data-quant-charts hidden>
+        <section class="quant-block">
+          <div class="quant-block-heading">
+            <h2>Net value</h2>
+            <ul class="quant-legend" data-quant-legend></ul>
+          </div>
+          <p class="quant-caption">Both lines start at 100 on the first paper-trading day.</p>
+          <div class="quant-chart" data-quant-chart="equity" tabindex="0" role="group"></div>
+        </section>
+
+        <section class="quant-block">
+          <div class="quant-block-heading">
+            <h2>Drawdown</h2>
+          </div>
+          <p class="quant-caption">Fall from the highest net value reached so far. <span data-quant-drawdown-now></span></p>
+          <div class="quant-chart" data-quant-chart="drawdown" tabindex="0" role="group"></div>
+        </section>
+
+        <details class="quant-table-toggle">
+          <summary>Show the daily values as a table</summary>
+          <div class="quant-table-wrap">
+            <table class="quant-table" data-quant-table></table>
+          </div>
+        </details>
+      </div>
+
+      <section class="quant-block">
+        <div class="quant-block-heading">
+          <h2>Latest signal</h2>
+        </div>
+        <div data-quant-signal></div>
+      </section>
+
+      <section class="quant-block">
+        <div class="quant-block-heading">
+          <h2>Monthly returns</h2>
+        </div>
+        <div class="quant-table-wrap">
+          <table class="quant-table quant-monthly">
+            <thead>
+              <tr>
+                <th scope="col">Year</th>
+                <th scope="col">Jan</th><th scope="col">Feb</th><th scope="col">Mar</th>
+                <th scope="col">Apr</th><th scope="col">May</th><th scope="col">Jun</th>
+                <th scope="col">Jul</th><th scope="col">Aug</th><th scope="col">Sep</th>
+                <th scope="col">Oct</th><th scope="col">Nov</th><th scope="col">Dec</th>
+                <th scope="col">Year total</th>
+              </tr>
+            </thead>
+            <tbody data-quant-monthly></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quant-block">
+        <div class="quant-block-heading">
+          <h2>All metrics</h2>
+        </div>
+        <dl class="quant-details" data-quant-details></dl>
+      </section>
+
+      <p class="quant-footnote">Paper trading: simulated fills at the next open with the same costs, limits and lot sizes as the backtest. Not investment advice.</p>
+    </div>
+  </div>
+</section>

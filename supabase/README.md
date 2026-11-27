@@ -29,6 +29,21 @@ supabase/migrations/004_fitness_plan_history.sql
 
 `004` 可重复执行。已有项目只需补跑这一份。
 
+`005_quant_dashboard.sql` 为私有的 Quant 看板（`/quant/`）建表，与 Plan 无关，可单独执行、可重复执行：
+
+- `quant_dashboard_snapshot`：quant-lab 每次上传的一份看板快照，保留最近 30 份；`quant_dashboard_publisher`：当前发布密钥的 SHA-256 摘要。两张表都启用 RLS 且不建策略，并收回 `anon`、`authenticated` 的全部表权限，只能经下面三个函数访问；
+- `load_quant_dashboard()`：仅本人（复用 `is_fitness_plan_owner()`）读取最新一份；
+- `rotate_quant_publish_key()`：仅本人调用，生成新的发布密钥并只返回一次，旧密钥立即失效；
+- `publish_quant_dashboard(key, generated_at, payload)`：授权给 `anon`，凭发布密钥追加一份快照。上传方因此不需要所有者会话，也不需要 `service_role` key；载荷上限 1 MB。
+
+首次启用或更换密钥：所有者登录站点后，在浏览器控制台或 Dashboard 的 SQL Editor 以本人身份调用 `rotate_quant_publish_key()`，把返回值写进 quant-lab 机器上的 `~/.config/quantlab/dashboard.env`（`QUANTLAB_DASHBOARD_KEY=...`，权限 600）。SQL Editor 没有登录身份时，也可以直接写摘要：
+
+```sql
+insert into public.quant_dashboard_publisher (publisher, key_sha256)
+values ('quant-lab', encode(extensions.digest('<新密钥>', 'sha256'), 'hex'))
+on conflict (publisher) do update set key_sha256 = excluded.key_sha256, rotated_at = now();
+```
+
 ### 回退到历史版本
 
 页面没有回退界面。两个 `*_fitness_plan_history` 函数要求以本人身份登录后经 `supabase-js` 调用；在 Dashboard 的 SQL Editor 里没有登录身份，直接查表即可：
@@ -65,8 +80,8 @@ commit;
 4. 将 GitHub Client ID 和 Client Secret 填入 Supabase 的 GitHub Provider。
 5. Supabase Authentication → URL Configuration：
    - Site URL：`https://miyaal.github.io`
-   - Redirect URLs：加入 `https://miyaal.github.io/plan/`
-   - 本地预览时再加入 `http://localhost:4000/plan/`
+   - Redirect URLs：加入 `https://miyaal.github.io/plan/` 和 `https://miyaal.github.io/quant/`
+   - 本地预览时再加入 `http://localhost:4000/plan/`、`http://localhost:4000/quant/`
 
 Client Secret 不得写入 `_config.yml`、JavaScript 或 Git。
 
